@@ -1,11 +1,51 @@
 ---
-import Welcome from '../components/Welcome.astro';
 import Layout from '../layouts/Layout.astro';
-
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+import 'katex/dist/katex.min.css';
+import '../styles/global.css';
 ---
+<Layout title="walkerMath">
+  <main class="py-12 space-y-8 font-mono">
+    <!-- Hero Section -->
+    <section class="border-b border-[var(--border-color)] pb-8">
+      <h1 class="text-4xl font-bold tracking-tight mb-2">[walkerMath]</h1>
+    </section>
 
-<Layout>
-	<Welcome />
+    <!-- Quick Navigation / Feature Grid -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <a href="/notes" class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-colors rounded-md group">
+        <h2 class="text-xl font-bold mb-1 group-hover:text-[var(--accent)]">[notes] -></h2>    
+      </a>
+
+      <a href="/apps" class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-colors rounded-md group">
+        <h2 class="text-xl font-bold mb-1 group-hover:text-[var(--accent)]">[apps]-></h2>
+      </a>
+
+      <a href="/blog" class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-colors rounded-md group">
+        <h2 class="text-xl font-bold mb-1 group-hover:text-[var(--accent)]">[blog] -></h2>
+      </a>
+
+      <a href="/portfolio" class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-colors rounded-md group">
+        <h2 class="text-xl font-bold mb-1 group-hover:text-[var(--accent)]">[portfolio] -></h2>
+      </a>
+    </section>
+
+    <!-- Sample Math / Proof Block -->
+    <section class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md space-y-3">
+      <h3 class="text-sm font-bold uppercase tracking-wider text-[var(--text-muted)]">// System Test</h3>
+      <p class="text-sm">LaTeX rendering engine test:</p>
+      <div class="p-4 bg-[var(--bg-primary)] border border-[var(--border-color)] rounded text-center overflow-x-auto">
+        {`$$f(x) = \\frac{1}{\\sigma \\sqrt{2\\pi}} e^{-\\frac{1}{2}\\left(\\frac{x-\\mu}{\\sigma}\\right)^2}$$`}
+      </div>
+    </section>
+
+    <footer class="pt-8 border-t border-[var(--border-color)] flex justify-between items-center text-xs text-[var(--text-muted)]">
+      <span>walkermath.com</span>
+      <a 
+        href="/contact" 
+        class="border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-1.5 rounded hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors font-bold"
+      >
+        [contact]
+      </a>
+    </footer>
+  </main>
 </Layout>

@@ -1,0 +1,137 @@
+---
+import Layout from '../layouts/Layout.astro';
+import 'katex/dist/katex.min.css';
+import '../styles/global.css';
+
+// Replace with your actual Google Form Action URL & Entry IDs
+const GOOGLE_FORM_ACTION = "https://docs.google.com/forms/d/e/1FAIpQLScidTWiE5ZY5UNH2miAp0AnIxwtxvyKoL-J9BXVOcGFmpPctw/formResponse";
+const ENTRY_EMAIL = "entry.874222066";
+const ENTRY_SUBJECT = "entry.663908441";
+const ENTRY_MESSAGE = "entry.2072227260";
+---
+
+<Layout title="walkerMath \ contact">
+  <div class="space-y-6 font-mono max-w-2xl mx-auto">
+    <!-- Header Block -->
+    <header class="border-b border-[var(--border-color)] pb-6 flex justify-between items-end">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
+          walkerMath\contact
+        </h1>
+        <p class="text-xs text-[var(--text-muted)] mt-1">
+          // Send a message, feedback, or inquiry
+        </p>
+      </div>
+      <a 
+        href="/" 
+        class="text-xs text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
+      >
+        [&lt;- home]
+      </a>
+    </header>
+
+    <!-- Contact Form Container -->
+    <section class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md space-y-6">
+      <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+          // Message Terminal
+        </h2>
+        <span class="text-xs text-[var(--accent)] font-bold">[contact-form]</span>
+      </div>
+
+      <!-- Success Notification Message (Hidden by default) -->
+      <div id="status-message" class="hidden p-4 border border-[var(--accent)] text-[var(--accent)] bg-[var(--bg-primary)] rounded text-xs">
+        [+] Message transmitted successfully. Thank you for your feedback!
+      </div>
+
+      <form id="contact-form" class="space-y-4">
+        <!-- User Email (Optional) -->
+        <div class="space-y-1">
+          <label for="user-email" class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+            // Your Email <span class="normal-case font-normal text-[var(--text-muted)]">(optional, if you'd like a response)</span>
+          </label>
+          <input
+            id="user-email"
+            type="email"
+            name={ENTRY_EMAIL}
+            placeholder="visitor@domain.com"
+            class="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] p-3 rounded font-mono text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+          />
+        </div>
+
+        <!-- Subject -->
+        <div class="space-y-1">
+          <label for="subject" class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+            // Subject
+          </label>
+          <input
+            id="subject"
+            type="text"
+            name={ENTRY_SUBJECT}
+            required
+            placeholder="e.g., Feedback on Tape Diagram Visualizer"
+            class="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] p-3 rounded font-mono text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+          />
+        </div>
+
+        <!-- Body / Message -->
+        <div class="space-y-1">
+          <label for="body" class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+            // Message Body
+          </label>
+          <textarea
+            id="body"
+            name={ENTRY_MESSAGE}
+            rows="6"
+            required
+            placeholder="Type your message here..."
+            class="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] p-3 rounded font-mono text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] transition-colors resize-y"
+          ></textarea>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="pt-2 flex justify-end">
+          <button
+            id="submit-btn"
+            type="submit"
+            class="border border-[var(--border-color)] bg-[var(--bg-primary)] hover:border-[var(--accent)] hover:text-[var(--accent)] font-bold text-xs px-5 py-2.5 rounded transition-colors cursor-pointer"
+          >
+            [submit message] -&gt;
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+</Layout>
+
+<script is:inline define:vars={{ GOOGLE_FORM_ACTION }}>
+  const form = document.getElementById('contact-form');
+  const statusMsg = document.getElementById('status-message');
+  const submitBtn = document.getElementById('submit-btn');
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    submitBtn.innerText = '[transmitting...]';
+    submitBtn.disabled = true;
+
+    const formData = new FormData(form);
+
+    try {
+      // mode: 'no-cors' allows cross-origin POST to Google Forms
+      await fetch(GOOGLE_FORM_ACTION, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: formData,
+      });
+
+      // Show success indicator and reset form
+      form.reset();
+      form.classList.add('hidden');
+      statusMsg?.classList.remove('hidden');
+    } catch (err) {
+      alert('Transmission error. Please try again.');
+      submitBtn.innerText = '[submit message] ->';
+      submitBtn.disabled = false;
+    }
+  });
+</script>

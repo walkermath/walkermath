@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-primary: #fcfcfc;
+    --bg-surface: #ffffff;
+    --text-primary: #18181b;
+    --text-muted: #64748b;
+    --border-color: #e2e8f0;
+    --accent: #4338ca;
+  }
+
+  html.dark {
+    --bg-primary: #121212;
+    --bg-surface: #1e1e22;
+    --text-primary: #f4f4f5;
+    --text-muted: #a1a1aa;
+    --border-color: #27272a;
+    --accent: #f59e0b;
+  }
+
+  body {
+    font-family: "Courier New", Courier, monospace;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+}

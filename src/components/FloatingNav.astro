@@ -1,0 +1,72 @@
+---
+---
+
+<!-- Fixed top-right container -->
+<div class="fixed top-4 right-4 z-50 flex items-center gap-2 font-mono">
+  <!-- Expandable Menu Container -->
+  <div id="nav-menu" class="hidden flex-row items-center gap-4 bg-[var(--bg-surface)] border border-[var(--border-color)] px-4 py-2 rounded-md shadow-md text-sm">
+    <a href="/" class="hover:text-[var(--accent)] transition-colors">[home]</a>
+    <a href="/notes" class="hover:text-[var(--accent)] transition-colors">[notes]</a>
+    <a href="/apps" class="hover:text-[var(--accent)] transition-colors">[apps]</a>
+    <a href="/blog" class="hover:text-[var(--accent)] transition-colors">[blog]</a>
+    <a href="/portfolio" class="hover:text-[var(--accent)] transition-colors">[portfolio]</a>
+    <a href="/contact" class="hover:text-[var(--accent)] transition-colors">[contact]</a>
+
+    <span class="text-[var(--border-color)]">|</span>
+
+    <!-- Dark/Light Theme Toggle -->
+    <button id="theme-toggle" class="hover:text-[var(--accent)] cursor-pointer text-xs uppercase tracking-wider font-bold">
+      <span id="theme-text">Mode</span>
+    </button>
+  </div>
+
+  <!-- Menu Trigger Button -->
+  <button id="menu-toggle" class="bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] hover:text-[var(--accent)] px-3 py-2 rounded-md shadow-md cursor-pointer text-sm font-bold">
+    [<span id="menu-icon">+</span> menu]
+  </button>
+</div>
+
+<script>
+  // Theme logic
+  const themeToggle = document.getElementById('theme-toggle');
+  const themeText = document.getElementById('theme-text');
+  
+  const getTheme = () => {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('theme')) {
+      return localStorage.getItem('theme');
+    }
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  };
+
+  const setTheme = (theme: string) => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      if (themeText) themeText.textContent = '☀️ Light';
+    } else {
+      document.documentElement.classList.remove('dark');
+      if (themeText) themeText.textContent = '🌙 Dark';
+    }
+    localStorage.setItem('theme', theme);
+  };
+
+  // Initial Theme Load
+  setTheme(getTheme() || 'dark');
+
+  themeToggle?.addEventListener('click', () => {
+    const isDark = document.documentElement.classList.contains('dark');
+    setTheme(isDark ? 'light' : 'dark');
+  });
+
+  // Menu Toggle Logic
+  const menuToggle = document.getElementById('menu-toggle');
+  const navMenu = document.getElementById('nav-menu');
+  const menuIcon = document.getElementById('menu-icon');
+
+  menuToggle?.addEventListener('click', () => {
+    navMenu?.classList.toggle('hidden');
+    navMenu?.classList.toggle('flex');
+    if (menuIcon) {
+      menuIcon.textContent = navMenu?.classList.contains('hidden') ? '+' : '-';
+    }
+  });
+</script>
