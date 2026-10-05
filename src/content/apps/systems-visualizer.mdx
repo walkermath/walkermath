@@ -1,0 +1,20 @@
+---
+title: "Systems of Equations Visualizer"
+description: "A dynamic part-whole tape diagram generator for visualizing linear systems of equations in standard form."
+pubDate: "2026-10-04"
+tags: ["algebra", "systems", "visualization", "tool"]
+---
+
+import SystemsVisualizer from '../../components/apps/SystemsVisualizer.svelte';
+
+<details class="mb-8 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md p-4 group">
+  <summary class="font-mono text-xs font-bold text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] transition-colors list-none">
+    [help /!\\]
+  </summary>
+  <div class="mt-4 text-sm text-[var(--text-primary)] space-y-3 leading-relaxed">
+    <p>This interactive tool visualizes systems of linear equations in standard form ($Ax+By=C$). Each equation is mapped onto a part-whole tape diagram, grouping variables on the bottom and isolating the constant on the top to help compare proportional relationships across multiple equations.</p>
+    <p>Use the input fields below to add up to four equations to the system.</p>
+  </div>
+</details>
+
+<SystemsVisualizer client:load />
