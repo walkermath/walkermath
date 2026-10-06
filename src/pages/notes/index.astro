@@ -5,44 +5,122 @@ import 'katex/dist/katex.min.css';
 import '../../styles/global.css';
 
 const allNotes = await getCollection('notes');
+
+// Extract unique filter sets for dropdown options
+const subjects = [...new Set(allNotes.map((n) => n.data.subject).filter(Boolean))].sort();
+const units = [...new Set(allNotes.map((n) => n.data.unit).filter(Boolean))].sort();
+const tags = [...new Set(allNotes.flatMap((n) => n.data.tags || []))].sort();
 ---
 
 <Layout title="walkerMath\\notes">
-  <main class="py-12 space-y-8 font-mono">
+  <main class="py-12 space-y-8 font-mono max-w-4xl mx-auto px-4">
     <header class="border-b border-[var(--border-color)] pb-6 flex justify-between items-end">
       <div>
         <h1 class="text-3xl font-bold tracking-tight">walkerMath\notes</h1>
-        <p class="text-xs text-[var(--text-muted)] mt-1">// Course materials, statistical theory, & formulas</p>
+        <p class="text-xs text-[var(--text-muted)] mt-1">// Course notes, scaffolds, & more</p>
       </div>
-      <a href="/" class="text-xs text-[var(--text-muted)] hover:text-[var(--accent)]">[<- home]</a>
+      <a href="/" class="text-xs text-[var(--text-muted)] hover:text-[var(--accent)]">&lt;- [home]</a>
     </header>
 
-    <section class="space-y-4">
+    <!-- Filter Bar -->
+    <section class="space-y-2">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Filter:</span>
+        <button id="clear-filters" class="text-xs text-[var(--text-muted)] hover:text-[var(--accent)] underline cursor-pointer hidden">
+          [reset]
+        </button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <!-- Subject Dropdown -->
+        <div class="relative">
+          <select 
+            id="filter-subject" 
+            class="w-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs rounded p-2.5 focus:border-[var(--accent)] focus:outline-none text-[var(--text)] transition-colors cursor-pointer appearance-none"
+          >
+            <option value="">[ Subject: All ]</option>
+            {subjects.map((subj) => (
+              <option value={subj}>{subj}</option>
+            ))}
+          </select>
+          <span class="absolute right-3 top-2.5 text-xs text-[var(--text-muted)] pointer-events-none">▼</span>
+        </div>
+
+        <!-- Unit Dropdown -->
+        <div class="relative">
+          <select 
+            id="filter-unit" 
+            class="w-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs rounded p-2.5 focus:border-[var(--accent)] focus:outline-none text-[var(--text)] transition-colors cursor-pointer appearance-none"
+          >
+            <option value="">[ Unit: All ]</option>
+            {units.map((unit) => (
+              <option value={unit}>{unit}</option>
+            ))}
+          </select>
+          <span class="absolute right-3 top-2.5 text-xs text-[var(--text-muted)] pointer-events-none">▼</span>
+        </div>
+
+        <!-- Tags Dropdown / Combobox -->
+        <div class="relative">
+          <select 
+            id="filter-tag" 
+            class="w-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs rounded p-2.5 focus:border-[var(--accent)] focus:outline-none text-[var(--text)] transition-colors cursor-pointer appearance-none"
+          >
+            <option value="">[ Tag: All ]</option>
+            {tags.map((tag) => (
+              <option value={tag}>#{tag}</option>
+            ))}
+          </select>
+          <span class="absolute right-3 top-2.5 text-xs text-[var(--text-muted)] pointer-events-none">▼</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Notes Grid / List -->
+    <section id="notes-container" class="space-y-4">
       {allNotes.length === 0 ? (
         <div class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md text-sm text-[var(--text-muted)]">
           <p>[!] No published notes found in directory.</p>
         </div>
       ) : (
         allNotes.map((note) => {
-            const cleanId = note.id.replace(/\.mdx?$/, '');
-            return (
-                <a 
-                    href={`/notes/${note.id}`} 
-                    class="block p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-colors rounded-md group"
-                >
-                    <div class="flex justify-between items-start mb-2">
-                    <h2 class="text-lg font-bold group-hover:text-[var(--accent)]">[{note.data.title}]</h2>
-                    <span class="text-xs text-[var(--text-muted)]">// {note.data.category}</span>
-                    </div>
-                    <p class="text-xs text-[var(--text-muted)]">{note.data.description}</p>
+          const cleanId = note.slug || note.id.replace(/\.mdx?$/, '');
+          return (
+            <a 
+              href={`/notes/${cleanId}`} 
+              class="note-card block p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-colors rounded-md group"
+              data-subject={note.data.subject || ''}
+              data-unit={note.data.unit || ''}
+              data-tags={JSON.stringify(note.data.tags || [])}
+            >
+              <div class="flex justify-between items-start mb-2">
+                <h2 class="text-lg font-bold group-hover:text-[var(--accent)]">[{note.data.title}]</h2>
+                <span class="text-xs text-[var(--text-muted)]">// {note.data.subject || note.data.category}</span>
+              </div>
+              <p class="text-xs text-[var(--text-muted)] mb-3">{note.data.description}</p>
+              
+              <div class="flex flex-wrap gap-2 items-center">
+                {note.data.unit && (
+                  <span class="text-[10px] px-2 py-0.5 rounded border border-[var(--border-color)] text-[var(--text-muted)]">
+                    {note.data.unit}
+                  </span>
+                )}
+                {(note.data.tags || []).map((t: string) => (
+                  <span class="text-[10px] text-[var(--text-muted)] group-hover:text-[var(--text)] transition-colors">
+                    #{t}
+                  </span>
+                ))}
+              </div>
             </a>
-            );
+          );
         })
       )}
+      <div id="no-matches" class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md text-sm text-[var(--text-muted)] hidden">
+        <p>[!] No notes match selected filters.</p>
+      </div>
     </section>
 
     <footer class="pt-8 border-t border-[var(--border-color)] flex justify-between items-center text-xs text-[var(--text-muted)]">
-      <span>walkermath.com</span>
+      <span><a href="/">walkermath.com</a></span>
       <a 
         href="/contact" 
         class="border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-1.5 rounded hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors font-bold"
@@ -52,3 +130,57 @@ const allNotes = await getCollection('notes');
     </footer>
   </main>
 </Layout>
+
+<script>
+  const subjectSelect = document.getElementById('filter-subject') as HTMLSelectElement;
+  const unitSelect = document.getElementById('filter-unit') as HTMLSelectElement;
+  const tagSelect = document.getElementById('filter-tag') as HTMLSelectElement;
+  const clearBtn = document.getElementById('clear-filters') as HTMLButtonElement;
+  const noteCards = document.querySelectorAll('.note-card') as NodeListOf<HTMLElement>;
+  const noMatches = document.getElementById('no-matches') as HTMLElement;
+
+  function filterNotes() {
+    const selectedSubject = subjectSelect?.value || '';
+    const selectedUnit = unitSelect?.value || '';
+    const selectedTag = tagSelect?.value || '';
+
+    let visibleCount = 0;
+
+    noteCards.forEach((card) => {
+      const cardSubject = card.getAttribute('data-subject') || '';
+      const cardUnit = card.getAttribute('data-unit') || '';
+      const cardTags: string[] = JSON.parse(card.getAttribute('data-tags') || '[]');
+
+      const matchSubject = !selectedSubject || cardSubject === selectedSubject;
+      const matchUnit = !selectedUnit || cardUnit === selectedUnit;
+      const matchTag = !selectedTag || cardTags.includes(selectedTag);
+
+      if (matchSubject && matchUnit && matchTag) {
+        card.style.display = 'block';
+        visibleCount++;
+      } else {
+        card.style.display = 'none';
+      }
+    });
+
+    if (noMatches) {
+      noMatches.classList.toggle('hidden', visibleCount > 0);
+    }
+
+    if (clearBtn) {
+      const hasFilter = Boolean(selectedSubject || selectedUnit || selectedTag);
+      clearBtn.classList.toggle('hidden', !hasFilter);
+    }
+  }
+
+  subjectSelect?.addEventListener('change', filterNotes);
+  unitSelect?.addEventListener('change', filterNotes);
+  tagSelect?.addEventListener('change', filterNotes);
+
+  clearBtn?.addEventListener('click', () => {
+    if (subjectSelect) subjectSelect.value = '';
+    if (unitSelect) unitSelect.value = '';
+    if (tagSelect) tagSelect.value = '';
+    filterNotes();
+  });
+</script>

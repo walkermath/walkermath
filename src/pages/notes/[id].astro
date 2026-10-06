@@ -4,6 +4,7 @@ import { getCollection, render, type CollectionEntry } from 'astro:content';
 import 'katex/dist/katex.min.css';
 import '../../styles/global.css';
 
+
 export async function getStaticPaths() {
   const notes = await getCollection('notes');
   return notes.map((entry) => ({
@@ -27,7 +28,7 @@ const cleanId = entry.id.replace(/\.mdx?$/, '');
       <div>
         <h1 class="text-2xl font-bold tracking-tight">walkerMath\notes\{cleanId}</h1>    
       </div>
-      <a href="/notes" class="text-xs text-[var(--text-muted)] hover:text-[var(--accent)]">[<- notes]</a>
+      <a href="/notes" class="text-xs text-[var(--text-muted)] hover:text-[var(--accent)]">&lt;- [notes]</a>
     </header>
 
     <article class="prose dark:prose-invert max-w-none text-sm leading-relaxed space-y-4">
@@ -35,7 +36,7 @@ const cleanId = entry.id.replace(/\.mdx?$/, '');
     </article>
 
     <footer class="pt-8 border-t border-[var(--border-color)] flex justify-between items-center text-xs text-[var(--text-muted)]">
-      <span>walkermath.com</span>
+      <span><a href="/">walkermath.com</a></span>
       <a 
         href="/contact" 
         class="border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-1.5 rounded hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors font-bold"
@@ -45,3 +46,12 @@ const cleanId = entry.id.replace(/\.mdx?$/, '');
     </footer>
   </main>
 </Layout>
+
+<style is:global>
+  /* Only target display math inside the main note article/body */
+  main .katex-display,
+  article .katex-display {
+    margin-top: 1.75rem !important;
+    margin-bottom: 1.75rem !important;
+  }
+</style>

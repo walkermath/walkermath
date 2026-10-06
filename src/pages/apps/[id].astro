@@ -28,7 +28,7 @@ const cleanId = entry.id.replace(/\.mdx?$/, '');
         <h1 class="text-2xl font-bold tracking-tight">walkerMath\apps\{cleanId}</h1>
         <p class="text-xs text-[var(--text-muted)] mt-1">// {entry.data.category}</p>
       </div>
-      <a href="/apps" class="text-xs text-[var(--text-muted)] hover:text-[var(--accent)]">[<- apps]</a>
+      <a href="/apps" class="text-xs text-[var(--text-muted)] hover:text-[var(--accent)]">&lt;- [apps]</a>
     </header>
 
     <article class="prose dark:prose-invert max-w-none text-sm leading-relaxed space-y-4">
@@ -36,7 +36,7 @@ const cleanId = entry.id.replace(/\.mdx?$/, '');
     </article>
 
     <footer class="pt-8 border-t border-[var(--border-color)] flex justify-between items-center text-xs text-[var(--text-muted)]">
-      <span>walkermath.com</span>
+      <span><a href="/">walkermath.com</a></span>
       <a 
         href="/contact" 
         class="border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-1.5 rounded hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors font-bold"

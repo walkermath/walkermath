@@ -1,0 +1,360 @@
+---
+title: "Tape Diagrams"
+description: "Visualizing equality and operations using length, extending to negative numbers and absolute value, and transitioning to a robust algebraic process."
+subject: "algebra"
+unitTitle: "Unit 3: Equations, Inequalities, and Systems of Equations"
+unit: 3
+order: 2
+prev: "equations"
+next: "inverse-operations"
+tags: ["tape-diagrams", "visual-models", "absolute-value", "linear-equations"]
+pubDate: 2026-10-06
+---
+
+# **Tape diagrams**
+
+Tape diagrams are a **visual representation of quantities that use length to show equality**. Equal sides of an equation have the same lengths and are stacked on one another.
+
+<div class="my-6 max-w-xs space-y-1 text-center font-mono text-sm">
+  <div class="border border-[var(--border-color)] bg-[var(--bg-surface)] py-2 font-bold">x</div>
+  <div class="border border-[var(--border-color)] bg-[var(--bg-surface)] py-2 font-bold">5</div>
+</div>
+
+For example, our equation "$x=5$" is pictured as a tape diagram above. It's important to understand that equations and tape diagrams are merely *different representations of the same thing* (they are "equal" in a sense). "$x=5$" is one way to say *"x is the same as 5,"* and so is our tape diagram.
+
+For this tape diagram, it's arbitrary how we arranged it. We could have just as easily put the $5$ on top and the $x$ on the bottom, just as we could instead write the equation "$5=x$" to convey the same thing.
+
+Tape diagrams are most useful to help visualize equations that use basic arithmetic ($+$, $-$, $\times$, $\div$). We will discuss extensions of this model for more complicated equations as we delve further.
+
+### Examples of equalities represented as tape diagrams:
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 my-6 font-mono text-sm text-center">
+  {/* (a) */}
+  <div class="space-y-2 border border-[var(--border-color)] p-4 rounded bg-[var(--bg-surface)]">
+    <p class="font-bold text-left">a) $x + 7 = 12$</p>
+    <div class="space-y-1">
+      <div class="border border-[var(--border-color)] py-2 w-full">12</div>
+      <div class="flex">
+        <div class="border border-[var(--border-color)] py-2 w-5/12">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-7/12">7</div>
+      </div>
+    </div>
+    <p class="text-left text-xs text-[var(--accent)] font-bold">a) $x = 5$</p>
+  </div>
+
+  {/* (b) */}
+  <div class="space-y-2 border border-[var(--border-color)] p-4 rounded bg-[var(--bg-surface)]">
+    <p class="font-bold text-left">b) $4x = 28$</p>
+    <div class="space-y-1">
+      <div class="border border-[var(--border-color)] py-2 w-full">28</div>
+      <div class="flex">
+        <div class="border border-[var(--border-color)] py-2 w-1/4">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">x</div>
+      </div>
+    </div>
+    <p class="text-left text-xs text-[var(--accent)] font-bold">b) $x = 7$</p>
+  </div>
+
+  {/* (c) */}
+  <div class="space-y-2 border border-[var(--border-color)] p-4 rounded bg-[var(--bg-surface)]">
+    <p class="font-bold text-left">c) $3x - 5 = 16$</p>
+    <div class="space-y-1">
+      <div class="flex">
+        <div class="border border-[var(--border-color)] py-2 w-1/3">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/3">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/3">x</div>
+      </div>
+      <div class="flex">
+        <div class="border border-[var(--border-color)] py-2 w-3/4">16</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">5</div>
+      </div>
+    </div>
+    <p class="text-left text-xs text-[var(--accent)] font-bold">c) $x = 7$</p>
+  </div>
+</div>
+
+Note that for (c), we can visualize the subtraction of $5$ from $3x$ by placing it below the $3x$ to show that by **removing 5 from the length of 3x, we arrive at a length of 16**. Algebraically, this is the same as *adding 5 to both sides of the equation*.
+
+---
+### Negative signs
+
+With negative numbers, it's fairly straightforward to represent them in a tape diagram by placing them on the other side of the diagram, so to speak. We can visualize subtracting from a quantity by *"cutting off"* that much length. This aligns with the algebraic idea of using **zero-pairs** to balance an equation.
+
+However, with equations like "$3x = -18$" the visualization starts to break down. We can fix this by **relativizing our tape diagrams to 0**. Then, we anchor our variables to our constant quantity, which may lie on either side of 0.
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8 my-8 font-mono text-sm max-w-3xl mx-auto">
+  {/* Diagram 1: 3x = -18 */}
+  <div class="p-5 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded space-y-3">
+    <p class="font-bold text-center text-xs text-[var(--text-muted)]">// $3x = -18$</p>
+    
+    <div class="space-y-1">
+      {/* -18 constant block extending left to 0 */}
+      <div class="grid grid-cols-6">
+        <div class="col-span-5 border border-[var(--border-color)] bg-[var(--bg)] text-center py-1.5 font-bold">-18</div>
+        <div class="col-span-1"></div>
+      </div>
+      {/* 3x blocks extending left to 0 */}
+      <div class="grid grid-cols-6">
+        <div class="col-span-5 flex">
+          <div class="w-1/3 border border-[var(--border-color)] bg-[var(--bg)] text-center py-1.5 font-bold">x</div>
+          <div class="w-1/3 border-y border-r border-[var(--border-color)] bg-[var(--bg)] text-center py-1.5 font-bold">x</div>
+          <div class="w-1/3 border-y border-r border-[var(--border-color)] bg-[var(--bg)] text-center py-1.5 font-bold">x</div>
+        </div>
+        <div class="col-span-1"></div>
+      </div>
+    </div>
+
+    {/* Number line reference */}
+    <div class="pt-2">
+      <div class="grid grid-cols-6 border-t-2 border-[var(--text)] relative">
+        <div class="col-span-5 relative">
+          <span class="absolute -top-1 left-0 h-3 w-0.5 bg-[var(--text)]"></span>
+          <span class="block text-xs mt-2 -ml-3">-18</span>
+        </div>
+        <div class="col-span-1 relative">
+          <span class="absolute -top-1 left-0 h-3 w-0.5 bg-[var(--text)]"></span>
+          <span class="block text-xs mt-2 -ml-1 font-bold text-[var(--accent)]">0</span>
+          <span class="absolute -top-3.5 right-0 text-xs text-[var(--text-muted)]">+</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* Diagram 2: -5x = 30 */}
+  <div class="p-5 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded space-y-3">
+    <p class="font-bold text-center text-xs text-[var(--text-muted)]">// $-5x = 30$</p>
+    
+    <div class="space-y-1">
+      {/* Five -x blocks extending right from 0 */}
+      <div class="grid grid-cols-6">
+        <div class="col-span-1"></div>
+        <div class="col-span-5 flex">
+          <div class="w-1/5 border border-[var(--border-color)] bg-[var(--bg)] text-center py-1.5 text-xs font-bold">-x</div>
+          <div class="w-1/5 border-y border-r border-[var(--border-color)] bg-[var(--bg)] text-center py-1.5 text-xs font-bold">-x</div>
+          <div class="w-1/5 border-y border-r border-[var(--border-color)] bg-[var(--bg)] text-center py-1.5 text-xs font-bold">-x</div>
+          <div class="w-1/5 border-y border-r border-[var(--border-color)] bg-[var(--bg)] text-center py-1.5 text-xs font-bold">-x</div>
+          <div class="w-1/5 border-y border-r border-[var(--border-color)] bg-[var(--bg)] text-center py-1.5 text-xs font-bold">-x</div>
+        </div>
+      </div>
+      {/* 30 constant block extending right from 0 */}
+      <div class="grid grid-cols-6">
+        <div class="col-span-1"></div>
+        <div class="col-span-5 border border-[var(--border-color)] bg-[var(--bg)] text-center py-1.5 font-bold">30</div>
+      </div>
+    </div>
+
+    {/* Number line reference */}
+    <div class="pt-2">
+      <div class="grid grid-cols-6 border-t-2 border-[var(--text)] relative">
+        <div class="col-span-1 relative">
+          <span class="absolute -top-1 right-0 h-3 w-0.5 bg-[var(--text)]"></span>
+          <span class="block text-xs mt-2 text-right -mr-1 font-bold text-[var(--accent)]">0</span>
+        </div>
+        <div class="col-span-5 relative text-right">
+          <span class="absolute -top-1 right-0 h-3 w-0.5 bg-[var(--text)]"></span>
+          <span class="block text-xs mt-2 mr-0">30</span>
+          <span class="absolute -top-3.5 right-0 text-xs text-[var(--text-muted)]">+</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+Looking at the diagram to the left, it should be more visually obvious that each $x$ should account for taking us 6 to the left (i.e., **$x$ takes on a value of $-6$**).
+
+The diagram to the right is a representation of "$-5x = 30$". Using a tape diagram can help us visually deduce what the value of $x$ must be, but just as in solving equations algebraically, we must be especially aware of potential sign errors and misconceptions. Note that each box above the "30" is "$-x$". So, while we can easily see that each box has a length of 6, we must be careful to see that **$x$ will equal $-6$, not $6$**.
+
+As you can see, introducing negatives pushes tape diagrams to their limits, so to tackle harder equations, we'll want to build a *robust algebraic process*, which we'll get to shortly.
+---
+
+### **Tape diagrams for absolute value equations**
+
+Extending our tape diagram model of equality to accommodate negative values gives us a nice visual way to solve **absolute value equations**.
+
+So, how do we take something like $|x + 2| = 6$ and represent it visually?
+
+First, what does this equation represent? It says that if I take the absolute value of some quantity ($x + 2$, in this case) it should equal $6$.
+
+We've previously discussed how absolute value can be thought of as **<u>"distance from zero,"</u>** and that distance has no sign (it is *never negative*). So, if we relativize to $0$ and ask, *"where on the number line are we 6 away from 0?"* we end up with two answers (both at $6$ and $-6$). Let's visualize this:
+
+{/* Redesigned Clean Absolute Value Diagram */}
+<div class="my-8 max-w-xl mx-auto p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded font-mono text-sm">
+  <div class="w-full space-y-2">
+    {/* Upper row: offset negative-side segment */}
+    <div class="grid grid-cols-12">
+      <div class="col-span-2 border border-[var(--border-color)] text-center py-1 bg-[var(--bg)] text-xs font-bold">2</div>
+      <div class="col-span-10"></div>
+    </div>
+
+    {/* Middle row: variable tapes + positive offset */}
+    <div class="grid grid-cols-12 text-center">
+      <div class="col-span-6 border border-[var(--border-color)] py-2 bg-[var(--bg)] font-bold">x</div>
+      <div class="col-span-4 border-y border-r border-[var(--border-color)] py-2 bg-[var(--bg)] font-bold">x</div>
+      <div class="col-span-2 border-y border-r border-[var(--border-color)] py-2 bg-[var(--bg)] text-xs font-bold flex items-center justify-center">2</div>
+    </div>
+
+    {/* Number line axis */}
+    <div class="pt-3">
+      <div class="grid grid-cols-12 border-t-2 border-[var(--text)] relative">
+        <div class="col-span-2 relative">
+          <span class="absolute -top-1 left-0 h-3 w-0.5 bg-[var(--text)]"></span>
+          <span class="block text-xs mt-2 -ml-2">-8</span>
+        </div>
+        <div class="col-span-4 relative">
+          <span class="absolute -top-1 left-0 h-3 w-0.5 bg-[var(--text)]"></span>
+          <span class="block text-xs mt-2 -ml-2">-6</span>
+        </div>
+        <div class="col-span-4 relative">
+          <span class="absolute -top-1 left-0 h-3 w-0.5 bg-[var(--text)]"></span>
+          <span class="block text-xs mt-2 -ml-1 font-bold text-[var(--accent)]">0</span>
+        </div>
+        <div class="col-span-2 relative text-right">
+          <span class="absolute -top-1 right-0 h-3 w-0.5 bg-[var(--text)]"></span>
+          <span class="block text-xs mt-2 mr-0">6</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+---
+
+### **Moving from tape diagrams to a robust algebraic process**
+
+I like tape diagrams as a way to build a foundational, **reasoning-based approach** to solving for a variable or isolating a term in an equation. Look at the equations and their visual representation below, and try to reason what value $x$ should take.
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 my-6 font-mono text-sm text-center">
+  {/* (i) */}
+  <div class="space-y-2 border border-[var(--border-color)] p-4 rounded bg-[var(--bg-surface)]">
+    <p class="font-bold text-left">i) $3x + 5 = 2x + 12$</p>
+    <div class="space-y-1">
+      <div class="flex">
+        <div class="border border-[var(--border-color)] py-2 w-1/4">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4 font-bold">5</div>
+      </div>
+      <div class="flex">
+        <div class="border border-[var(--border-color)] py-2 w-1/4">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/2 font-bold">12</div>
+      </div>
+    </div>
+  </div>
+
+  {/* (ii) */}
+  <div class="space-y-2 border border-[var(--border-color)] p-4 rounded bg-[var(--bg-surface)]">
+    <p class="font-bold text-left">ii) $6x + 10 = 3x + 28$</p>
+    <div class="space-y-1">
+      <div class="flex">
+        <div class="border border-[var(--border-color)] py-2 w-[14%]">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-[14%]">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-[14%]">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-[14%]">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-[14%]">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-[14%]">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-[16%] font-bold">10</div>
+      </div>
+      <div class="flex">
+        <div class="border border-[var(--border-color)] py-2 w-[14%]">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-[14%]">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-[14%]">x</div>
+        <div class="border border-l-0 border-[var(--border-color)] py-2 w-[58%] font-bold">28</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+When you look at the diagrams, hopefully you're able to discern that for (i), **$x$ should be 7**, and for (ii), **$x$ should be 6**. What did your reasoning look like?
+
+#### Example reasoning:
+
+Looking at (i), we can notice that there are **2 x's on the top and bottom that both account for the same length on each tape**. So, we can use the *leftover x* on the top and the rest of the diagram to reason what $x$ must be.
+
+<div class="my-4 max-w-xs space-y-1 font-mono text-sm text-center">
+  <div class="flex">
+    <div class="border border-[var(--border-color)] py-2 w-7/12 font-bold">x</div>
+    <div class="border border-l-0 border-[var(--border-color)] py-2 w-5/12">5</div>
+  </div>
+  <div class="flex">
+    <div class="border border-[var(--border-color)] py-2 w-7/12 font-bold text-[var(--accent)]">7</div>
+    <div class="border border-l-0 border-[var(--border-color)] py-2 w-5/12">5</div>
+  </div>
+</div>
+
+Since there is a length of $5$ accounted for on the top tape to the right of $x$, and the total length must be $12$ to match the bottom, then $x$ must have a length of $7$ ($7+5=12$, making the two segments match in length). Therefore, the solution to (i) is **$[x = 7]$**.
+
+Similarly, for (ii), we can see that each side (referring to the top and bottom tapes, respectively) has **3 x's accounting for part of its length**. That means that the *remaining segments must each have equal length*.
+
+<div class="my-4 max-w-sm space-y-1 font-mono text-sm text-center">
+  <div class="flex">
+    <div class="border border-[var(--border-color)] py-2 w-1/4">x</div>
+    <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">x</div>
+    <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">x</div>
+    <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">10</div>
+  </div>
+  <div class="border border-[var(--border-color)] py-2 w-full font-bold">28</div>
+</div>
+
+Algebraically, this reduces our equation to $3x+10=28$. Think about what algebraic step would get us to that point from our original equation, and how that algebraic step relates to the reasoning we just performed by *"removing" 3 x's* from our tape diagram.
+
+Our next step would be to determine what length the 3 remaining x's on the top must occupy. Since there is a segment of $10$ accompanying them, and the total must equal a length of $28$, we can deduce that the **3 x's must occupy a total length of 18**. 
+
+<div class="my-4 max-w-sm space-y-1 font-mono text-sm text-center">
+  <div class="flex">
+    <div class="border border-[var(--border-color)] py-2 w-1/4">x</div>
+    <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">x</div>
+    <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">x</div>
+    <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">10</div>
+  </div>
+  <div class="flex">
+    <div class="border border-[var(--border-color)] py-2 w-3/4 font-bold text-[var(--accent)]">18</div>
+    <div class="border border-l-0 border-[var(--border-color)] py-2 w-1/4">10</div>
+  </div>
+</div>
+
+Then, we ask ourselves the question, *"Can I divide 18 into 3 equal parts?"* and the answer is, of course, *"Yes!"* And we've reasoned that $x$ must be $6$.
+
+Therefore, the solution to (ii) is **$[x = 6]$**.
+
+---
+
+Each step of our reasoning can be represented as an algebraic step as well. Let's walk through the algebraic process of solving equation (i):
+
+<div class="my-4 font-mono text-xs sm:text-sm grid grid-cols-1 sm:grid-cols-2 gap-4 items-center bg-[var(--bg-surface)] p-4 border border-[var(--border-color)] rounded">
+  <div class="space-y-2">
+    <div>&nbsp;</div>
+    <p>$3x + 5 = 2x + 12$</p>
+    <p>$x + 5 = 12$</p>
+    <p>$x = 7$</p>
+  </div>
+  <div class="space-y-2 text-[var(--text-muted)]">
+    <p class="font-bold text-[var(--text)] italic">goal: isolate (solve for) x algebraically</p>
+    <p>- start by subtracting 2x from both sides</p>
+    <p>- then, subtract 5 from both sides</p>
+    <p>//</p>
+  </div>
+</div>
+
+Solving equation (ii):
+
+<div class="my-4 font-mono text-xs sm:text-sm grid grid-cols-1 sm:grid-cols-2 gap-4 items-center bg-[var(--bg-surface)] p-4 border border-[var(--border-color)] rounded">
+  <div class="space-y-2">
+    <div>&nbsp;</div>
+    <p>$6x + 10 = 3x + 28$</p>
+    <p>$3x + 10 = 28$</p>
+    <p>$3x = 18$</p>
+    <p>$x = 6$</p>
+  </div>
+  <div class="space-y-2 text-[var(--text-muted)]">
+    <p class="font-bold text-[var(--text)] italic">goal: isolate (solve for) x algebraically</p>
+    <p>- start by subtracting 3x from both sides</p>
+    <p>- then, subtract 10 from both sides</p>
+    <p>- divide both sides by 3 to remove the coefficient from the x term</p>
+    <p>//</p>
+  </div>
+</div>
+
+**Try to find the parallels between the algebraic solution and the solution found by visual reasoning.**
