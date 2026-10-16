@@ -4,6 +4,7 @@ import { glob } from 'astro/loaders';
 const notesCollection = defineCollection({
   loader: glob({ pattern: '**/[^_]*.{md,mdx}', base: './src/content/notes' }),
   schema: z.object({
+    unpublished: z.boolean().default(false),
     title: z.string(),
     description: z.string(),
     subject: z.string().optional(), // e.g. "Algebra", "Statistics", "Calculus"

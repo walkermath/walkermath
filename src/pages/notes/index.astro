@@ -4,7 +4,9 @@ import { getCollection } from 'astro:content';
 import 'katex/dist/katex.min.css';
 import '../../styles/global.css';
 
-const allNotes = await getCollection('notes');
+const allNotes = await getCollection('notes', ({ data }) => {
+  return !data.unpublished;
+});
 
 // Extract unique filter sets for dropdown options
 const subjects = [...new Set(allNotes.map((n) => n.data.subject).filter(Boolean))].sort();
