@@ -28,7 +28,19 @@ const appsCollection = defineCollection({
   }),
 });
 
+const coliseumCollection = defineCollection({
+  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/coliseum" }),
+  schema: z.object({
+    title: z.string(),
+    description: z.string(),
+    topic: z.string(),             // e.g., "Algebra II", "Systems", "Statistics"
+    metricLabel: z.string().default('Score'), // e.g., "Streak", "Points", "Best Time"
+    isActive: z.boolean().default(true),
+  }),
+});
+
 export const collections = {
   notes: notesCollection,
   apps: appsCollection,
+  coliseum: coliseumCollection,
 };

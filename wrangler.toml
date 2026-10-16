@@ -1,0 +1,9 @@
+name = "walkermath"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "walkermath-leaderboards"
+database_id = "local-development-db"
+preview_database_id = "DB"
