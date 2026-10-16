@@ -56,33 +56,50 @@
     return factors;
   }
 
-  function nextRound() {
-    // Generate composite numbers between 24 and 200 with plenty of factors
+ function nextRound() {
+    var multi = 1;
+    if (roundsCleared < 11) {
+        multi = 1;
+    } else if (roundsCleared < 14) {
+        multi = 2;
+    } else if (roundsCleared < 16) {
+        multi = 3;
+    } else if (roundsCleared < 18) {
+        multi = 4;
+    } else if (roundsCleared < 20) {
+        multi = 5;
+    } else if (roundsCleared < 25) {
+        multi = 6;
+    } else {
+        multi = 10;
+    }
     let num = 48;
     let factors: number[] = [];
     do {
-      num = Math.floor(Math.random() * 177) + 24; // 24 to 200
+      num = Math.floor(Math.random() * multi*61) + 12;
       factors = getAllFactors(num);
-    } while (factors.length < 3); // Skip primes or thin factor lists
+    } while (factors.length < 4); // Need enough options now that 1 and n are included
 
     targetNumber = num;
 
-    // Pick 3 to 4 true factors to display
+    // Pick 3 to 5 true factors (can now safely include 1 or num if desired)
     const shuffledFactors = [...factors].sort(() => 0.5 - Math.random());
-    const trueFactorsCount = Math.min(shuffledFactors.length, Math.floor(Math.random() * 2) + 3);
-    const chosenTrueFactors = shuffledFactors.slice(0, trueFactorsCount);
+    const trueCount = Math.min(shuffledFactors.length, Math.floor(Math.random() * 2) + 3);
+    const chosenTrueFactors = shuffledFactors.slice(0, trueCount);
     remainingFactorsCount = chosenTrueFactors.length;
 
-    // Generate distractors (numbers between 2 and 25 that are NOT factors)
+    // Scale distractors relative to the target number so big numbers don't give themselves away
+    const maxTrue = Math.max(...chosenTrueFactors);
+    const distractorCeiling = Math.min(num - 1, Math.max(25, maxTrue + 5));
+
     const distractors: number[] = [];
-    while (distractors.length < (8 - trueFactorsCount)) {
-      const candidate = Math.floor(Math.random() * 24) + 2; // 2 to 25
-      if (num % candidate !== 0 && !distractors.includes(candidate)) {
+    while (distractors.length < (8 - trueCount)) {
+      const candidate = Math.floor(Math.random() * (distractorCeiling - 2)) + 2;
+      if (num % candidate !== 0 && !distractors.includes(candidate) && candidate !== num) {
         distractors.push(candidate);
       }
     }
 
-    // Assemble and shuffle the 8 grid buttons
     const pool: OptionButton[] = [
       ...chosenTrueFactors.map(val => ({ value: val, isFactor: true, status: 'unselected' as const })),
       ...distractors.map(val => ({ value: val, isFactor: false, status: 'unselected' as const }))
@@ -195,8 +212,8 @@
         on:click={startGame}
         class="w-full p-4 border border-[var(--border-color)] rounded hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-left cursor-pointer"
       >
-        <div class="font-bold text-sm">[engage buffer]</div>
-        <div class="text-xs text-[var(--text-muted)] mt-1">sustain throughput. don't miss.</div>
+        <div class="font-bold text-sm">[engage division protocol]</div>
+        <div class="text-xs text-[var(--text-muted)] mt-1">don't miss.</div>
       </button>
     </div>
 
