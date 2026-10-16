@@ -5,5 +5,4 @@ compatibility_date = "2026-10-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "walkermath-leaderboards"
-database_id = "local-development-db"
-preview_database_id = "DB"
+database_id = "1922dc41-cbeb-4f1e-960f-83a43ada72a4"
