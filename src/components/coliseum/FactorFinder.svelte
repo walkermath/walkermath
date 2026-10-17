@@ -73,6 +73,7 @@
     } else {
         multi = 10;
     }
+    
     let num = 48;
     let factors: number[] = [];
     do {

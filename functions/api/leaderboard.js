@@ -29,7 +29,7 @@ async function getBlocklist(secretList) {
   }
 
   if (wordSet.size === 0) {
-    ['ASS', 'BITCH', 'FUCK', 'SHIT', 'NIGGER'].forEach(w => wordSet.add(w));
+    ['BADWORDS'].forEach(w => wordSet.add(w));
   }
 
   cachedBlocklist = Array.from(wordSet);
@@ -59,12 +59,22 @@ async function isProfane(text, secretList) {
   const normalized = normalizeText(text);
   const qToGVariant = normalized.replace(/Q/g, 'G');
 
-  // Enhanced pattern check for severe slurs, full variants, and intentional short stems/abbreviations (e.g., NIQR, NIGR, NIG)
+  // Refined patterns: strictly target true n-word root variations 
+  // ensuring they start with N and follow proper phonetic structures 
+  // without capturing unrelated words like "WALKER" or "BOOKER"
   const severeSlurPatterns = [
-    /N[I1!|Y]+G+[E3!|]R*/i,
-    /N[I1!|Y]+Q+[E3!|]R*/i,
-    /^N+[I1!Y]+[GQ9K]+R*$/i
+    /^N+[I1!|Y]+G+[E3!|]R*$/i,
+    /^N+[I1!|Y]+Q+[E3!|]R*$/i,
+    /^N+[I1!Y]+G+[GQ9]+R*$/i
   ];
+
+  if (severeSlurPatterns.some(pattern => pattern.test(normalized) || pattern.test(qToGVariant))) {
+    return true;
+  }
+
+  const list = await getBlocklist(secretList);
+  return list.some(word => word.length > 0 && (normalized.includes(word) || qToGVariant.includes(word)));
+}
 
   if (severeSlurPatterns.some(pattern => pattern.test(normalized) || pattern.test(qToGVariant))) {
     return true;
