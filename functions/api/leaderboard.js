@@ -56,22 +56,17 @@ function normalizeText(text) {
 async function isProfane(text, secretList) {
   if (!text) return false;
   
-  const normalized = normalizeText(text);
-  const qToGVariant = normalized.replace(/Q/g, 'G');
+  const normalized = normalizeText(text).toLowerCase();
+  const qToGVariant = normalized.replace(/q/g, 'g');
 
-  // Refined patterns: strictly target true n-word root variations 
-  // ensuring they start with N and follow proper phonetic structures 
-  // without capturing unrelated words like "WALKER" or "BOOKER"
-  const severeSlurPatterns = [
-    /^N+[I1!|Y]+G+[E3!|]R*$/i,
-    /^N+[I1!|Y]+Q+[E3!|]R*$/i,
-    /^N+[I1!Y]+G+[GQ9]+R*$/i
-  ];
-
-  if (severeSlurPatterns.some(pattern => pattern.test(normalized) || pattern.test(qToGVariant))) {
+  // Explicitly catch common custom spellings that bypass standard blocklists
+  const explicitVariations = ['niqr', 'niqq', 'nigq', 'nigr'];
+  
+  if (explicitVariations.some(term => normalized.includes(term) || qToGVariant.includes(term))) {
     return true;
   }
 
+  // Fallback to checking the standard blocklist
   const list = await getBlocklist(secretList);
   return list.some(word => word.length > 0 && (normalized.includes(word) || qToGVariant.includes(word)));
 }
