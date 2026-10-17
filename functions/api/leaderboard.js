@@ -60,21 +60,13 @@ async function isProfane(text, secretList) {
   const qToGVariant = normalized.replace(/q/g, 'g');
 
   // Explicitly catch common custom spellings that bypass standard blocklists
-  const explicitVariations = ['niqr', 'niqq', 'nigq', 'nigr'];
+  const explicitVariations = ['niqr', 'niqq', 'nigq', 'nigr', 'nigg', 'niqg', 'niqe', 'nikkr', 'kkk', 'nikker', 'nicker', 'nicr', 'niccr','nicccr', 'nikr', 'nickr', 'nikcr', 'nikccr', 'nikkcr', 'nikckr', 'nickkr', 'nicckr', 'nickcr'];
   
   if (explicitVariations.some(term => normalized.includes(term) || qToGVariant.includes(term))) {
     return true;
   }
 
   // Fallback to checking the standard blocklist
-  const list = await getBlocklist(secretList);
-  return list.some(word => word.length > 0 && (normalized.includes(word) || qToGVariant.includes(word)));
-}
-
-  if (severeSlurPatterns.some(pattern => pattern.test(normalized) || pattern.test(qToGVariant))) {
-    return true;
-  }
-
   const list = await getBlocklist(secretList);
   return list.some(word => word.length > 0 && (normalized.includes(word) || qToGVariant.includes(word)));
 }
@@ -106,6 +98,19 @@ export async function onRequestGet(context) {
     FROM leaderboard_entries
     WHERE challenge_id = ?
   `;
+  const params = [challengeId];
+
+  const teacher = searchParams.get('teacher');
+  if (teacher && teacher !== 'ALL') {
+    query += ` AND UPPER(teacher) = ?`;
+    params.push(teacher.toUpperCase());
+  }
+
+  const classPeriod = searchParams.get('class_period');
+  if (classPeriod && classPeriod !== 'ALL') {
+    query += ` AND UPPER(class_period) = ?`;
+    params.push(classPeriod.toUpperCase());
+  }
   
   const timeframe = searchParams.get('timeframe') || 'all';
   if (timeframe === 'daily') {
@@ -117,7 +122,7 @@ export async function onRequestGet(context) {
   query += ` ORDER BY score DESC, duration_ms ASC LIMIT 25`;
 
   try {
-    const { results } = await context.env.DB.prepare(query).bind(challengeId).all();
+    const { results } = await context.env.DB.prepare(query).bind(...params).all();
     return new Response(JSON.stringify(results), {
       headers: { 'Content-Type': 'application/json' }
     });
@@ -131,34 +136,28 @@ export async function onRequestPost(context) {
     const body = await context.request.json();
     const { challenge_id, display_name, class_period, teacher, score, duration_ms } = body;
 
-    const cleanDisplay = (display_name || 'ANON').trim().toUpperCase().slice(0, 6);
-    const cleanPeriod = (class_period || 'OPEN').trim().toUpperCase().slice(0, 10);
-    const cleanTeacher = (teacher || 'GENERAL').trim().toUpperCase().slice(0, 20);
-
     if (!challenge_id || typeof score !== 'number' || typeof duration_ms !== 'number') {
       return new Response(JSON.stringify({ error: 'Invalid payload' }), { status: 400 });
     }
 
-    // Alpha-only check for display name and teacher name
-    const alphaOnlyRegex = /^[A-Z\s]+$/;
-    if (cleanDisplay && !alphaOnlyRegex.test(cleanDisplay)) {
-      return new Response(JSON.stringify({ error: 'Display name must contain letters only.' }), { status: 400 });
+    const cleanDisplay = (display_name || 'ANON').trim().toUpperCase().slice(0, 6);
+    const cleanPeriod = (class_period || '').trim().toUpperCase();
+    const cleanTeacher = (teacher || 'GENERA').trim().toUpperCase().slice(0, 6);
+
+    if (!/^[A-Z]{1,6}$/.test(cleanDisplay)) {
+      return new Response(JSON.stringify({ error: 'Display name must be 1-6 letters (A-Z only).' }), { status: 400 });
     }
-    if (cleanTeacher && !alphaOnlyRegex.test(cleanTeacher)) {
-      return new Response(JSON.stringify({ error: 'Teacher name must contain letters only.' }), { status: 400 });
+    if (!/^[A-Z]{1,6}$/.test(cleanTeacher)) {
+      return new Response(JSON.stringify({ error: 'Teacher name must be 1-6 letters (A-Z only).' }), { status: 400 });
+    }
+    if (!/^P[0-9]$/.test(cleanPeriod)) {
+      return new Response(JSON.stringify({ error: 'Invalid class period.' }), { status: 400 });
     }
 
-    // Alphanumeric check for class period (e.g. P0 - P9)
-    const periodRegex = /^[A-Z0-9\s]+$/;
-    if (cleanPeriod && !periodRegex.test(cleanPeriod)) {
-      return new Response(JSON.stringify({ error: 'Invalid class period format.' }), { status: 400 });
-    }
-
-    // Server-side multi-language profanity check across input fields
+    // Server-side multi-language profanity check across text fields
     const blocklistSecret = context.env.PROFANITY_BLOCKLIST;
     if (
       (await isProfane(cleanDisplay, blocklistSecret)) ||
-      (await isProfane(cleanPeriod, blocklistSecret)) ||
       (await isProfane(cleanTeacher, blocklistSecret))
     ) {
       return new Response(JSON.stringify({ error: 'Inappropriate language detected in submission.' }), { status: 400 });
@@ -176,7 +175,8 @@ export async function onRequestPost(context) {
       DO UPDATE SET 
         score = MAX(leaderboard_entries.score, excluded.score),
         duration_ms = CASE 
-          WHEN excluded.score >= leaderboard_entries.score THEN excluded.duration_ms 
+          WHEN excluded.score > leaderboard_entries.score THEN excluded.duration_ms
+          WHEN excluded.score = leaderboard_entries.score THEN MIN(leaderboard_entries.duration_ms, excluded.duration_ms)
           ELSE leaderboard_entries.duration_ms 
         END,
         class_period = excluded.class_period,

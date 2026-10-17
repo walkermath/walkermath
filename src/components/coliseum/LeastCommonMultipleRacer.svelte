@@ -1,22 +1,10 @@
 <!-- src/components/coliseum/LeastCommonMultipleRacer.svelte -->
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { getSavedProfile, saveProfile } from '../../lib/playerStorage';
+  import { onDestroy } from 'svelte';
+  import LeaderboardPrompt from './LeaderboardPrompt.svelte';
 
   let gameState: 'menu' | 'playing' | 'gameover' = 'menu';
   let mode: '60s' | 'streak' = '60s';
-
-  // Player Details
-  let playerName = '';
-  let teacherName = '';
-  let classPeriod = '';
-
-  onMount(() => {
-    const saved = getSavedProfile();
-    playerName = saved.tag;
-    teacherName = saved.teacher;
-    classPeriod = saved.class_period;
-  });
 
   let score = 0;
   let correctCount = 0;
@@ -71,12 +59,11 @@
   function nextQuestion() {
     userAnswer = '';
     
-    // Choose pairs where LCM is manageable for mental math (<= 72)
     let a = 2, b = 3;
     let computed = 6;
     do {
-      a = Math.floor(Math.random() * 14) + 2; // 2 to 15
-      b = Math.floor(Math.random() * 14) + 2; // 2 to 15
+      a = Math.floor(Math.random() * 14) + 2;
+      b = Math.floor(Math.random() * 14) + 2;
       computed = lcm(a, b);
     } while (a === b || computed > 72);
 
@@ -136,35 +123,6 @@
     clearInterval(timerInterval);
     gameState = 'gameover';
     durationMs = Date.now() - startTime;
-  }
-
-  async function submitScore() {
-    saveProfile({ tag: playerName, teacher: teacherName, class_period: classPeriod });
-    const challengeId = mode === '60s' ? 'lcm-racer-60s' : 'lcm-racer-streak';
-
-    try {
-      const res = await fetch('/api/leaderboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          challenge_id: challengeId,
-          display_name: playerName || 'ANON',
-          class_period: classPeriod || 'OPEN',
-          teacher: teacherName || 'GENERAL',
-          score,
-          duration_ms: durationMs
-        })
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        window.location.href = '/coliseum#leaderboards';
-      } else {
-        alert(`[!] ${data.error || 'Failed to save score.'}`);
-      }
-    } catch (err) {
-      alert('[!] Network error while submitting score.');
-    }
   }
 
   onDestroy(() => {
@@ -265,80 +223,15 @@
 
   <!-- GAME OVER STATE -->
   {:else if gameState === 'gameover'}
-    <div class="space-y-6 text-center py-4">
-      <div class="space-y-2">
-        <h2 class="text-2xl font-bold">// TIME UP</h2>
-        <p class="text-xs text-[var(--text-muted)]">final score recorded for [{mode.toUpperCase()}]</p>
-      </div>
-
-      <div class="p-6 border border-[var(--border-color)] bg-black/20 rounded space-y-3">
-        <div class="text-3xl font-bold text-[var(--accent)]">{score}</div>
-        <div class="text-xs text-[var(--text-muted)] space-y-1">
-          <div>correct: {correctCount} | wrong: {wrongCount}</div>
-          <div>time elapsed: {(durationMs / 1000).toFixed(2)}s</div>
-        </div>
-      </div>
-
-      <!-- Credential Inputs Entry -->
-      <div class="p-4 border border-[var(--border-color)] bg-black/20 rounded space-y-4 text-xs text-left">
-        <div class="text-[var(--text-muted)]">// enter credentials to log score:</div>
-        
-        <div class="space-y-1">
-          <span class="text-[var(--text-muted)]">initials / tag (max 6 chars):</span>
-          <input 
-            type="text" 
-            bind:value={playerName} 
-            maxlength="6" 
-            placeholder="MATH"
-            class="w-full px-3 py-1.5 rounded border border-[var(--border-color)] bg-black text-white text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)]"
-          />
-        </div>
-
-        <div class="grid grid-cols-2 gap-3">
-          <div class="space-y-1">
-            <span class="text-[var(--text-muted)]">class period:</span>
-            <select 
-              bind:value={classPeriod} 
-              class="w-full px-3 py-1.5 rounded border border-[var(--border-color)] bg-black text-white text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)] cursor-pointer"
-            >
-              <option value="" disabled selected>select</option>
-              {#each ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] as p}
-                <option value="P{p}">period {p}</option>
-              {/each}
-            </select>
-          </div>
-
-          <div class="space-y-1">
-            <span class="text-[var(--text-muted)]">teacher:</span>
-            <input 
-              type="text" 
-              bind:value={teacherName} 
-              maxlength="20" 
-              placeholder="WALKER"
-              class="w-full px-3 py-1.5 rounded border border-[var(--border-color)] bg-black text-white text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)]"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div class="space-y-3">
-        <button 
-          on:click={submitScore}
-          class="w-full py-3 rounded border border-[var(--accent)] text-[var(--accent)] bg-[var(--bg-surface)] font-bold hover:bg-[var(--accent)] hover:text-black transition-colors cursor-pointer text-xs"
-        >
-          [post score to leaderboard]
-        </button>
-      </div>
-
-      <div>
-        <button 
-          on:click={() => { gameState = 'menu'; }}
-          class="text-xs text-[var(--text-muted)] hover:text-[var(--accent)] underline cursor-pointer"
-        >
-          &lt;- [try again without saving]
-        </button>
-      </div>
-    </div>
+    <LeaderboardPrompt
+      challengeId={mode === '60s' ? 'lcm-racer-60s' : 'lcm-racer-streak'}
+      {score}
+      {durationMs}
+      headerTitle="// TIME UP"
+      headerSubtitle="final score recorded for [{mode.toUpperCase()}]"
+      stats={[`correct: ${correctCount} | wrong: ${wrongCount}`]}
+      on:retry={() => { gameState = 'menu'; }}
+    />
   {/if}
 
 </div>
