@@ -112,10 +112,10 @@
           <select
             bind:value={activeChallengeId}
             on:change={handleChallengeChange}
-            class="px-2.5 py-1 rounded border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs text-[var(--text-main)] hover:bg-black/40 focus:outline-none focus:border-[var(--accent)] transition-colors cursor-pointer"
+            class="px-2.5 py-1 rounded border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs text-[var(--text-main)] hover:border-[var(--accent)] focus:outline-none focus:border-[var(--accent)] transition-colors cursor-pointer"
           >
             {#each challenges as c}
-              <option value={c} class="bg-[var(--bg-surface)] text-white">{c}</option>
+              <option value={c} class="bg-[var(--bg-surface)] text-[var(--text-main)">{c}</option>
             {/each}
           </select>
         {:else}
@@ -129,11 +129,11 @@
         <select
           bind:value={selectedTeacher}
           on:change={fetchStandings}
-          class="px-2.5 py-1 rounded border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs text-[var(--text-main)] hover:bg-black/40 focus:outline-none focus:border-[var(--accent)] transition-colors cursor-pointer uppercase"
+          class="px-2.5 py-1 rounded border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs text-[var(--text-main)] hover:border-[var(--accent)] focus:outline-none focus:border-[var(--accent)] transition-colors cursor-pointer uppercase"
         >
-          <option value="ALL" class="bg-[var(--bg-surface)] text-white">ALL</option>
+          <option value="ALL" class="bg-[var(--bg-surface)] text-[var(--text-main)">ALL</option>
           {#each availableTeachers as t}
-            <option value={t} class="bg-[var(--bg-surface)] text-white">{t}</option>
+            <option value={t} class="bg-[var(--bg-surface)] text-[var(--text-main)">{t}</option>
           {/each}
         </select>
       </div>
@@ -143,12 +143,12 @@
         <span class="text-xs text-[var(--text-muted)]">period:</span>
         <select
           bind:value={selectedPeriod}
-          on:change={fetchStandings}
-          class="px-2.5 py-1 rounded border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs text-[var(--text-main)] hover:bg-black/40 focus:outline-none focus:border-[var(--accent)] transition-colors cursor-pointer uppercase"
+          on:change={fetchStandings}  
+          class="px-2.5 py-1 rounded border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs text-[var(--text-main)] hover:border-[var(--accent)] focus:outline-none focus:border-[var(--accent)] transition-colors cursor-pointer uppercase"
         >
-          <option value="ALL" class="bg-[var(--bg-surface)] text-white">ALL</option>
+          <option value="ALL" class="bg-[var(--bg-surface)] text-[var(--text-main)">ALL</option>
           {#each availablePeriods as p}
-            <option value={p} class="bg-[var(--bg-surface)] text-white">{p}</option>
+            <option value={p} class="bg-[var(--bg-surface)] text-[var(--text-main)">{p}</option>
           {/each}
         </select>
       </div>
