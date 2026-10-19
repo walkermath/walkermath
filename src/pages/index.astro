@@ -1,7 +1,13 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import '../styles/global.css';
+
+const sampleEquation = katex.renderToString(
+  String.raw`f(x | \mu, \sigma) = \frac{1}{\sigma \sqrt{2\pi}} e^{-\frac{1}{2}\left(\frac{x-\mu}{\sigma}\right)^2}`,
+  { displayMode: true, throwOnError: false }
+);
 ---
 <Layout title="walkerMath">
   <main class="py-12 space-y-8 font-mono">
@@ -33,9 +39,10 @@ import '../styles/global.css';
     <section class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md space-y-3">
       <h3 class="text-sm font-bold uppercase tracking-wider text-[var(--text-muted)]">// System Test</h3>
       <p class="text-sm">LaTeX rendering engine test:</p>
-      <div class="p-4 bg-[var(--bg-primary)] border border-[var(--border-color)] rounded text-center overflow-x-auto">
-        {`$$f(x) = \\frac{1}{\\sigma \\sqrt{2\\pi}} e^{-\\frac{1}{2}\\left(\\frac{x-\\mu}{\\sigma}\\right)^2}$$`}
-      </div>
+      <div 
+        class="p-4 bg-[var(--bg-primary)] border border-[var(--border-color)] rounded text-center overflow-x-auto"
+        set:html={sampleEquation}
+      />
     </section>
 
     <footer class="pt-8 border-t border-[var(--border-color)] flex justify-between items-center text-xs text-[var(--text-muted)]">
