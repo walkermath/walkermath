@@ -69,7 +69,7 @@ async function isProfane(text, secretList) {
   // Fallback to checking the standard blocklist
   const list = await getBlocklist(secretList);
   return list.some(word => word.length > 0 && (normalized.includes(word) || qToGVariant.includes(word)));
-}
+} 
 
 export async function onRequestGet(context) {
   const { searchParams } = new URL(context.request.url);

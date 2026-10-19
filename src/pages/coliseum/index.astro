@@ -7,11 +7,8 @@ import '../../styles/global.css';
 
 const challenges = await getCollection('coliseum', ({ data }) => data.isActive);
 
-const challengeList = challenges.map((c) => ({
-  id: c.id,
-  title: c.data.title,
-  metricLabel: c.data.metricLabel
-}));
+// Extract unique topics (e.g., 'number-sense', 'algebra', etc.) sorted alphabetically
+const topics = Array.from(new Set(challenges.map((c) => c.data.topic))).sort();
 ---
 
 <Layout title="walkerMath\coliseum">
@@ -21,23 +18,47 @@ const challengeList = challenges.map((c) => ({
         <h1 class="text-3xl font-bold tracking-tight">walkerMath\coliseum</h1>
         <p class="text-xs text-[var(--text-muted)] mt-1">// competitive interactive challenges</p>
       </div>
-      <a href="/" class="text-xs text-[var(--text-muted)] hover:text-[var(--accent)]">&lt;- [home]</a>
+      <a href="/" class="text-xs text-[var(--text-muted)] hover:text-[var(--accent)]">&lt;[home]</a>
     </header>
 
-    <!-- Terminal-Style Tab Switcher -->
-    <nav class="flex items-center gap-3 border-b border-[var(--border-color)] pb-4 text-xs">
-      <button
-        data-tab-target="challenges"
-        class="tab-btn px-3 py-1.5 rounded border border-[var(--accent)] text-[var(--accent)] bg-[var(--bg-surface)] font-bold transition-colors cursor-pointer"
-      >
-        [challenges ({challenges.length})]
-      </button>
-      <button
-        data-tab-target="leaderboards"
-        class="tab-btn px-3 py-1.5 rounded border border-[var(--border-color)] text-[var(--text-muted)] bg-[var(--bg-surface)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
-      >
-        [leaderboards]
-      </button>
+    <!-- Terminal-Style Tab Switcher + Topic Filter -->
+    <nav class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--border-color)] pb-4 text-xs">
+      <div class="flex items-center gap-3">
+        <button
+          data-tab-target="challenges"
+          id="tab-btn-challenges"
+          class="tab-btn px-3 py-1.5 rounded border border-[var(--accent)] text-[var(--accent)] bg-[var(--bg-surface)] font-bold transition-colors cursor-pointer"
+        >
+          [challenges (<span id="challenge-count">{challenges.length}</span>)]
+        </button>
+        <button
+          data-tab-target="leaderboards"
+          class="tab-btn px-3 py-1.5 rounded border border-[var(--border-color)] text-[var(--text-muted)] bg-[var(--bg-surface)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+        >
+          [leaderboards]
+        </button>
+      </div>
+
+      <!-- Topic Filter Dropdown (Visible on Challenges Tab) -->
+      {topics.length > 0 && (
+        <div id="topic-filter-wrapper" class="flex items-center gap-2">
+          <span class="text-[var(--text-muted)]">// type:</span>
+          <select
+            id="topic-filter"
+            class="px-2.5 py-1.5 rounded border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs text-[var(--text-main)] hover:bg-black/40 focus:outline-none focus:border-[var(--accent)] transition-colors cursor-pointer"
+          >
+            <option value="ALL" class="bg-[var(--bg-surface)] text-white">all ({challenges.length})</option>
+            {topics.map((topic) => {
+              const count = challenges.filter((c) => c.data.topic === topic).length;
+              return (
+                <option value={topic} class="bg-[var(--bg-surface)] text-white">
+                  {topic} ({count})
+                </option>
+              );
+            })}
+          </select>
+        </div>
+      )}
     </nav>
 
     <!-- ========================================== -->
@@ -49,11 +70,12 @@ const challengeList = challenges.map((c) => ({
           <p>[!] No active challenges found in src/content/coliseum/.</p>
         </div>
       ) : (
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div id="challenges-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
           {challenges.map((entry) => (
             <a 
               href={`/coliseum/${entry.id}`}
-              class="group flex flex-col justify-between p-5 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md hover:border-[var(--accent)] transition-colors"
+              data-topic={entry.data.topic}
+              class="challenge-card group flex flex-col justify-between p-5 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md hover:border-[var(--accent)] transition-colors"
             >
               <div class="space-y-2">
                 <div class="flex items-center justify-between text-xs text-[var(--text-muted)]">
@@ -73,7 +95,7 @@ const challengeList = challenges.map((c) => ({
               <div class="mt-6 pt-3 border-t border-[var(--border-color)] flex items-center justify-between text-xs">
                 <span class="text-[var(--text-muted)]">id: {entry.id}</span>
                 <span class="text-[var(--text-muted)] group-hover:text-[var(--accent)] font-bold">
-                  [launch] &gt;
+                  [launch] -&gt;
                 </span>
               </div>
             </a>
@@ -105,12 +127,17 @@ const challengeList = challenges.map((c) => ({
       const buttons = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
       const panelChallenges = document.getElementById('tab-panel-challenges');
       const panelLeaderboards = document.getElementById('tab-panel-leaderboards');
+      const topicFilterWrapper = document.getElementById('topic-filter-wrapper');
+      const topicSelect = document.getElementById('topic-filter') as HTMLSelectElement | null;
+      const cards = document.querySelectorAll<HTMLElement>('.challenge-card');
+      const countSpan = document.getElementById('challenge-count');
 
       function setActiveTab(tabName: string) {
         const isLeaderboards = tabName === 'leaderboards';
 
         panelChallenges?.classList.toggle('hidden', isLeaderboards);
         panelLeaderboards?.classList.toggle('hidden', !isLeaderboards);
+        topicFilterWrapper?.classList.toggle('hidden', isLeaderboards);
 
         buttons.forEach((btn) => {
           const active = btn.dataset.tabTarget === tabName;
@@ -120,6 +147,23 @@ const challengeList = challenges.map((c) => ({
           btn.classList.toggle('border-[var(--border-color)]', !active);
           btn.classList.toggle('text-[var(--text-muted)]', !active);
         });
+      }
+
+      function filterByTopic() {
+        if (!topicSelect) return;
+        const selected = topicSelect.value;
+        let visibleCount = 0;
+
+        cards.forEach((card) => {
+          const cardTopic = card.dataset.topic;
+          const match = selected === 'ALL' || cardTopic === selected;
+          card.classList.toggle('hidden', !match);
+          if (match) visibleCount++;
+        });
+
+        if (countSpan) {
+          countSpan.textContent = String(visibleCount);
+        }
       }
 
       if (window.location.hash === '#leaderboards') {
@@ -133,6 +177,8 @@ const challengeList = challenges.map((c) => ({
           history.replaceState(null, '', target === 'leaderboards' ? '#leaderboards' : '/coliseum');
         });
       });
+
+      topicSelect?.addEventListener('change', filterByTopic);
     }
 
     initColiseumTabs();

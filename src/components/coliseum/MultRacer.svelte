@@ -148,6 +148,7 @@
         >
           <div class="font-bold text-sm">[sprint]</div>
           <div class="text-xs text-[var(--text-muted)] mt-1">what can you do with 60 seconds?</div>
+          <div class="text-xs font-bold text-[var(--accent)] mt-3 text-right">[start] -&gt;</div>
         </button>
 
         <button 
@@ -156,6 +157,7 @@
         >
           <div class="font-bold text-sm">[streak]</div>
           <div class="text-xs text-[var(--text-muted)] mt-1">flawless execution.</div>
+          <div class="text-xs font-bold text-[var(--accent)] mt-3 text-right">[start] -&gt;</div>
         </button>
       </div>
     </div>

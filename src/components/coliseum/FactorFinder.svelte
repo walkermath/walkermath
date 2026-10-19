@@ -172,6 +172,7 @@
       >
         <div class="font-bold text-sm">[engage division protocol]</div>
         <div class="text-xs text-[var(--text-muted)] mt-1">don't miss.</div>
+        <div class="text-xs font-bold text-[var(--accent)] mt-3 text-right">[start] -&gt;</div>
       </button>
     </div>
 

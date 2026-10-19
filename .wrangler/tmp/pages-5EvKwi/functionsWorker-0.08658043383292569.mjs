@@ -953,7 +953,7 @@ async function getBlocklist(secretList) {
     }
   }
   if (wordSet.size === 0) {
-    ["ASS", "BITCH", "FUCK", "SHIT", "NIGGER"].forEach((w) => wordSet.add(w));
+    ["BADWORDS"].forEach((w) => wordSet.add(w));
   }
   cachedBlocklist = Array.from(wordSet);
   return cachedBlocklist;
@@ -984,14 +984,10 @@ function normalizeText(text) {
 __name(normalizeText, "normalizeText");
 async function isProfane(text, secretList) {
   if (!text) return false;
-  const normalized = normalizeText(text);
-  const qToGVariant = normalized.replace(/Q/g, "G");
-  const severeSlurPatterns = [
-    /N[I1!|Y]+G+[E3!|]R*/i,
-    /N[I1!|Y]+Q+[E3!|]R*/i,
-    /^N+[I1!Y]+[GQ9K]+R*$/i
-  ];
-  if (severeSlurPatterns.some((pattern) => pattern.test(normalized) || pattern.test(qToGVariant))) {
+  const normalized = normalizeText(text).toLowerCase();
+  const qToGVariant = normalized.replace(/q/g, "g");
+  const explicitVariations = ["niqr", "niqq", "nigq", "nigr", "nigg", "niqg", "niqe", "nikkr", "kkk", "nikker", "nicker", "nicr", "niccr", "nicccr", "nikr", "nickr", "nikcr", "nikccr", "nikkcr", "nikckr", "nickkr", "nicckr", "nickcr"];
+  if (explicitVariations.some((term) => normalized.includes(term) || qToGVariant.includes(term))) {
     return true;
   }
   const list = await getBlocklist(secretList);
@@ -1022,6 +1018,17 @@ async function onRequestGet(context2) {
     FROM leaderboard_entries
     WHERE challenge_id = ?
   `;
+  const params = [challengeId];
+  const teacher = searchParams.get("teacher");
+  if (teacher && teacher !== "ALL") {
+    query += ` AND UPPER(teacher) = ?`;
+    params.push(teacher.toUpperCase());
+  }
+  const classPeriod = searchParams.get("class_period");
+  if (classPeriod && classPeriod !== "ALL") {
+    query += ` AND UPPER(class_period) = ?`;
+    params.push(classPeriod.toUpperCase());
+  }
   const timeframe = searchParams.get("timeframe") || "all";
   if (timeframe === "daily") {
     query += ` AND created_at >= datetime('now', '-1 day')`;
@@ -1030,7 +1037,7 @@ async function onRequestGet(context2) {
   }
   query += ` ORDER BY score DESC, duration_ms ASC LIMIT 25`;
   try {
-    const { results } = await context2.env.DB.prepare(query).bind(challengeId).all();
+    const { results } = await context2.env.DB.prepare(query).bind(...params).all();
     return new Response(JSON.stringify(results), {
       headers: { "Content-Type": "application/json" }
     });
@@ -1043,25 +1050,23 @@ async function onRequestPost(context2) {
   try {
     const body = await context2.request.json();
     const { challenge_id, display_name, class_period, teacher, score, duration_ms } = body;
-    const cleanDisplay = (display_name || "ANON").trim().toUpperCase().slice(0, 6);
-    const cleanPeriod = (class_period || "OPEN").trim().toUpperCase().slice(0, 10);
-    const cleanTeacher = (teacher || "GENERAL").trim().toUpperCase().slice(0, 20);
     if (!challenge_id || typeof score !== "number" || typeof duration_ms !== "number") {
       return new Response(JSON.stringify({ error: "Invalid payload" }), { status: 400 });
     }
-    const alphaOnlyRegex = /^[A-Z\s]+$/;
-    if (cleanDisplay && !alphaOnlyRegex.test(cleanDisplay)) {
-      return new Response(JSON.stringify({ error: "Display name must contain letters only." }), { status: 400 });
+    const cleanDisplay = (display_name || "ANON").trim().toUpperCase().slice(0, 6);
+    const cleanPeriod = (class_period || "").trim().toUpperCase();
+    const cleanTeacher = (teacher || "GENERA").trim().toUpperCase().slice(0, 6);
+    if (!/^[A-Z]{1,6}$/.test(cleanDisplay)) {
+      return new Response(JSON.stringify({ error: "Display name must be 1-6 letters (A-Z only)." }), { status: 400 });
     }
-    if (cleanTeacher && !alphaOnlyRegex.test(cleanTeacher)) {
-      return new Response(JSON.stringify({ error: "Teacher name must contain letters only." }), { status: 400 });
+    if (!/^[A-Z]{1,6}$/.test(cleanTeacher)) {
+      return new Response(JSON.stringify({ error: "Teacher name must be 1-6 letters (A-Z only)." }), { status: 400 });
     }
-    const periodRegex = /^[A-Z0-9\s]+$/;
-    if (cleanPeriod && !periodRegex.test(cleanPeriod)) {
-      return new Response(JSON.stringify({ error: "Invalid class period format." }), { status: 400 });
+    if (!/^P[0-9]$/.test(cleanPeriod)) {
+      return new Response(JSON.stringify({ error: "Invalid class period." }), { status: 400 });
     }
     const blocklistSecret = context2.env.PROFANITY_BLOCKLIST;
-    if (await isProfane(cleanDisplay, blocklistSecret) || await isProfane(cleanPeriod, blocklistSecret) || await isProfane(cleanTeacher, blocklistSecret)) {
+    if (await isProfane(cleanDisplay, blocklistSecret) || await isProfane(cleanTeacher, blocklistSecret)) {
       return new Response(JSON.stringify({ error: "Inappropriate language detected in submission." }), { status: 400 });
     }
     const now = /* @__PURE__ */ new Date();
@@ -1075,7 +1080,8 @@ async function onRequestPost(context2) {
       DO UPDATE SET 
         score = MAX(leaderboard_entries.score, excluded.score),
         duration_ms = CASE 
-          WHEN excluded.score >= leaderboard_entries.score THEN excluded.duration_ms 
+          WHEN excluded.score > leaderboard_entries.score THEN excluded.duration_ms
+          WHEN excluded.score = leaderboard_entries.score THEN MIN(leaderboard_entries.duration_ms, excluded.duration_ms)
           ELSE leaderboard_entries.duration_ms 
         END,
         class_period = excluded.class_period,
@@ -1101,7 +1107,7 @@ async function onRequestPost(context2) {
 }
 __name(onRequestPost, "onRequestPost");
 
-// ../.wrangler/tmp/pages-omFm0d/functionsRoutes-0.8317223119704151.mjs
+// ../.wrangler/tmp/pages-5EvKwi/functionsRoutes-0.2312821333946582.mjs
 var routes = [
   {
     routePath: "/api/leaderboard",
@@ -1612,7 +1618,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env2, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// ../.wrangler/tmp/bundle-SwyBbl/middleware-insertion-facade.js
+// ../.wrangler/tmp/bundle-0UOelO/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -1644,7 +1650,7 @@ function __facade_invoke__(request, env2, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// ../.wrangler/tmp/bundle-SwyBbl/middleware-loader.entry.ts
+// ../.wrangler/tmp/bundle-0UOelO/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
@@ -1746,4 +1752,4 @@ export {
   __INTERNAL_WRANGLER_MIDDLEWARE__,
   middleware_loader_entry_default as default
 };
-//# sourceMappingURL=functionsWorker-0.5799183259606142.mjs.map
+//# sourceMappingURL=functionsWorker-0.08658043383292569.mjs.map

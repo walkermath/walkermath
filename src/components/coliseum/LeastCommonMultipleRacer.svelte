@@ -151,6 +151,7 @@
         >
           <div class="font-bold text-sm">[sprint]</div>
           <div class="text-xs text-[var(--text-muted)] mt-1">15 and 4? your time limit.</div>
+          <div class="text-xs font-bold text-[var(--accent)] mt-3 text-right">[start] -&gt;</div>
         </button>
 
         <button 
@@ -159,6 +160,7 @@
         >
           <div class="font-bold text-sm">[streak]</div>
           <div class="text-xs text-[var(--text-muted)] mt-1">don't overheat.</div>
+          <div class="text-xs font-bold text-[var(--accent)] mt-3 text-right">[start] -&gt;</div>
         </button>
       </div>
     </div>

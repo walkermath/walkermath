@@ -147,6 +147,7 @@
         >
           <div class="font-bold text-sm">[sprint]</div>
           <div class="text-xs text-[var(--text-muted)] mt-1">can 60 seconds divide you?</div>
+          <div class="text-xs font-bold text-[var(--accent)] mt-3 text-right">[start] -&gt;</div>
         </button>
 
         <button 
@@ -155,6 +156,7 @@
         >
           <div class="font-bold text-sm">[streak]</div>
           <div class="text-xs text-[var(--text-muted)] mt-1">finesse or flounder.</div>
+          <div class="text-xs font-bold text-[var(--accent)] mt-3 text-right">[start] -&gt;</div>
         </button>
       </div>
     </div>
