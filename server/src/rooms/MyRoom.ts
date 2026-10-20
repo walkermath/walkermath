@@ -10,6 +10,10 @@ export class MyRoom extends Room<{ state: MyRoomState }> {
       /**
        * Handle "yourMessageType" message.
        */
+      this.broadcast("yourMessageType", {
+        senderId: client.sessionId,
+        text: message.text
+      });
       console.log(client.sessionId, "sent a message:", message);
     },
   };
