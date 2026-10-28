@@ -1,4 +1,14 @@
 // functions/api/leaderboard.js
+import {
+  EVENTS,
+  GAMES,
+  isEventId,
+  normalizeLevel,
+  normalizeTags,
+  normalizeVariant,
+  parseChallengeId,
+  raceWeight
+} from '../../src/lib/coliseumBoards.ts';
 
 let cachedBlocklist = null;
 
@@ -71,87 +81,165 @@ async function isProfane(text, secretList) {
   return list.some(word => word.length > 0 && (normalized.includes(word) || qToGVariant.includes(word)));
 } 
 
+const json = (data, status = 200) =>
+  new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+
+// SQL fragment: race-time weight for a row's level (multiplier ^ RACE_LEVEL_FAVOR), 1 for games without weights.
+function weightCase(game) {
+  const n = GAMES[game]?.raceWeights?.length || 0;
+  if (!n) return '1.0';
+  const whens = Array.from({ length: n }, (_, i) => `WHEN ${i + 1} THEN ${raceWeight(game, i + 1).toFixed(6)}`).join(' ');
+  return `CASE level ${whens} ELSE 1.0 END`;
+}
+
+// GET /api/leaderboard?list=true
+//   -> [{ game, event, entries, players }]            which boards exist
+// GET /api/leaderboard?game=..&event=..[&band=..|&level=..][&variant=typed|tiles][&teacher=..][&class_period=..][&timeframe=..]
+//   -> { rankBy, players, entries: [...] }            one row per player: their best result across the filtered strata
+// (the old ?challenge_id=gcd-racer-60s form still works; it is parsed into game + event)
 export async function onRequestGet(context) {
   const { searchParams } = new URL(context.request.url);
-  const challengeId = searchParams.get('challenge_id');
-  const listChallenges = searchParams.get('list') === 'true';
 
-  if (listChallenges) {
+  if (searchParams.get('list') === 'true') {
     try {
       const { results } = await context.env.DB.prepare(`
-        SELECT DISTINCT challenge_id FROM leaderboard_entries ORDER BY challenge_id ASC
+        SELECT game, event, COUNT(*) AS entries, COUNT(DISTINCT display_name) AS players
+        FROM leaderboard_entries
+        GROUP BY game, event
+        ORDER BY game ASC, event ASC
       `).all();
-      return new Response(JSON.stringify(results.map(r => r.challenge_id)), {
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return json(results);
     } catch (err) {
-      return new Response(JSON.stringify({ error: 'Database error' }), { status: 500 });
+      return json({ error: 'Database error' }, 500);
     }
   }
-  
-  if (!challengeId) {
-    return new Response(JSON.stringify({ error: 'Missing challenge_id' }), { status: 400 });
+
+  let game = searchParams.get('game');
+  let event = searchParams.get('event');
+  const legacyId = searchParams.get('challenge_id');
+  if (!game && legacyId) ({ game, event } = parseChallengeId(legacyId));
+  game = (game || '').trim().toLowerCase();
+  if (!game || !event || !isEventId(event)) {
+    return json({ error: 'Missing or invalid game/event' }, 400);
   }
 
-  let query = `
-    SELECT display_name, class_period, teacher, school_year, score, duration_ms, created_at
-    FROM leaderboard_entries
-    WHERE challenge_id = ?
-  `;
-  const params = [challengeId];
+  const rankBy = EVENTS[event].rankBy;
+  const where = ['game = ?', 'event = ?'];
+  const params = [game, event];
 
+  // --- strata filters (level band / level / variant) ---
+  const band = GAMES[game]?.bands?.find(b => b.id === searchParams.get('band'));
+  if (band) {
+    where.push('level BETWEEN ? AND ?');
+    params.push(band.lo, band.hi);
+  } else {
+    const level = normalizeLevel(game, searchParams.get('level'));
+    if (level > 0) {
+      where.push('level = ?');
+      params.push(level);
+    }
+  }
+
+  const variant = searchParams.get('variant');
+  if (variant === 'tiles') {
+    where.push(`variant = ''`);
+  } else if (variant && variant !== 'all') {
+    const v = normalizeVariant(game, variant);
+    if (v) {
+      where.push('variant = ?');
+      params.push(v);
+    }
+  }
+
+  // --- class / time filters ---
   const teacher = searchParams.get('teacher');
   if (teacher && teacher !== 'ALL') {
-    query += ` AND UPPER(teacher) = ?`;
+    where.push('UPPER(teacher) = ?');
     params.push(teacher.toUpperCase());
   }
-
   const classPeriod = searchParams.get('class_period');
   if (classPeriod && classPeriod !== 'ALL') {
-    query += ` AND UPPER(class_period) = ?`;
+    where.push('UPPER(class_period) = ?');
     params.push(classPeriod.toUpperCase());
   }
-  
   const timeframe = searchParams.get('timeframe') || 'all';
-  if (timeframe === 'daily') {
-    query += ` AND created_at >= datetime('now', '-1 day')`;
-  } else if (timeframe === 'weekly') {
-    query += ` AND created_at >= datetime('now', '-7 days')`;
-  }
+  if (timeframe === 'daily') where.push(`created_at >= datetime('now', '-1 day')`);
+  else if (timeframe === 'weekly') where.push(`created_at >= datetime('now', '-7 days')`);
 
-  query += ` ORDER BY score DESC, duration_ms ASC LIMIT 25`;
+  // Score events: highest score first. Time events: fastest level-adjusted time first, so a
+  // level-10 run and a level-1 run can share one board (see RACE_LEVEL_FAVOR in coliseumBoards.ts).
+  const adjusted = rankBy === 'time' ? `duration_ms * 1.0 / (${weightCase(game)})` : 'duration_ms * 1.0';
+  const order = rankBy === 'time' ? 'adjusted_ms ASC, score DESC' : 'score DESC, duration_ms ASC';
+
+  const sql = `
+    WITH filtered AS (
+      SELECT display_name, class_period, teacher, school_year, score, duration_ms, created_at,
+             level, variant, tags, ${adjusted} AS adjusted_ms
+      FROM leaderboard_entries
+      WHERE ${where.join(' AND ')}
+    ),
+    ranked AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY display_name ORDER BY ${order}) AS rn
+      FROM filtered
+    )
+    SELECT display_name, class_period, teacher, school_year, score, duration_ms, created_at,
+           level, variant, tags, adjusted_ms
+    FROM ranked
+    WHERE rn = 1
+    ORDER BY ${order}
+    LIMIT 25
+  `;
+  const countSql = `SELECT COUNT(DISTINCT display_name) AS n FROM leaderboard_entries WHERE ${where.join(' AND ')}`;
 
   try {
-    const { results } = await context.env.DB.prepare(query).bind(...params).all();
-    return new Response(JSON.stringify(results), {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    const [{ results }, countRes] = await Promise.all([
+      context.env.DB.prepare(sql).bind(...params).all(),
+      context.env.DB.prepare(countSql).bind(...params).all()
+    ]);
+    return json({ rankBy, players: countRes.results?.[0]?.n ?? results.length, entries: results });
   } catch (err) {
-    return new Response(JSON.stringify({ error: 'Database error' }), { status: 500 });
+    console.error('D1 GET Error:', err.message);
+    return json({ error: 'Database error' }, 500);
   }
 }
 
+// POST body: { game, event, level?, variant?, tags?, display_name, class_period, teacher, score, duration_ms }
+// (or the old { challenge_id, ... }, which is parsed into game + event)
 export async function onRequestPost(context) {
   try {
     const body = await context.request.json();
-    const { challenge_id, display_name, class_period, teacher, score, duration_ms } = body;
+    const { display_name, class_period, teacher, score, duration_ms } = body;
 
-    if (!challenge_id || typeof score !== 'number' || typeof duration_ms !== 'number') {
-      return new Response(JSON.stringify({ error: 'Invalid payload' }), { status: 400 });
+    let game = body.game;
+    let event = body.event;
+    if (!game && body.challenge_id) ({ game, event } = parseChallengeId(body.challenge_id));
+    game = String(game || '').trim().toLowerCase();
+
+    if (
+      !/^[a-z0-9-]{1,60}$/.test(game) ||
+      !isEventId(String(event)) ||
+      typeof score !== 'number' || !Number.isFinite(score) ||
+      typeof duration_ms !== 'number' || !Number.isFinite(duration_ms)
+    ) {
+      return json({ error: 'Invalid payload' }, 400);
     }
+
+    const level = normalizeLevel(game, body.level);
+    const variant = normalizeVariant(game, body.variant);
+    const tags = normalizeTags(body.tags);
 
     const cleanDisplay = (display_name || 'ANON').trim().toUpperCase().slice(0, 6);
     const cleanPeriod = (class_period || '').trim().toUpperCase();
     const cleanTeacher = (teacher || 'GENERA').trim().toUpperCase().slice(0, 6);
 
     if (!/^[A-Z]{1,6}$/.test(cleanDisplay)) {
-      return new Response(JSON.stringify({ error: 'Display name must be 1-6 letters (A-Z only).' }), { status: 400 });
+      return json({ error: 'Display name must be 1-6 letters (A-Z only).' }, 400);
     }
     if (!/^[A-Z]{1,6}$/.test(cleanTeacher)) {
-      return new Response(JSON.stringify({ error: 'Teacher name must be 1-6 letters (A-Z only).' }), { status: 400 });
+      return json({ error: 'Teacher name must be 1-6 letters (A-Z only).' }, 400);
     }
     if (!/^P[0-9]$/.test(cleanPeriod)) {
-      return new Response(JSON.stringify({ error: 'Invalid class period.' }), { status: 400 });
+      return json({ error: 'Invalid class period.' }, 400);
     }
 
     // Server-side multi-language profanity check across text fields
@@ -160,7 +248,7 @@ export async function onRequestPost(context) {
       (await isProfane(cleanDisplay, blocklistSecret)) ||
       (await isProfane(cleanTeacher, blocklistSecret))
     ) {
-      return new Response(JSON.stringify({ error: 'Inappropriate language detected in submission.' }), { status: 400 });
+      return json({ error: 'Inappropriate language detected in submission.' }, 400);
     }
 
     const now = new Date();
@@ -168,36 +256,66 @@ export async function onRequestPost(context) {
     const month = now.getMonth();
     const schoolYear = month >= 6 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
 
-    await context.env.DB.prepare(`
-      INSERT INTO leaderboard_entries (challenge_id, display_name, class_period, teacher, school_year, score, duration_ms, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-      ON CONFLICT(challenge_id, display_name) 
-      DO UPDATE SET 
+    const insertSql = `
+      INSERT INTO leaderboard_entries
+        (game, event, level, variant, tags, display_name, class_period, teacher, school_year, score, duration_ms, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(game, event, level, variant, display_name)
+    `;
+
+    // Score events keep a player's best score in a stratum (fastest time breaks ties).
+    const scoreRankedUpsert = `
+      DO UPDATE SET
         score = MAX(leaderboard_entries.score, excluded.score),
-        duration_ms = CASE 
+        duration_ms = CASE
           WHEN excluded.score > leaderboard_entries.score THEN excluded.duration_ms
           WHEN excluded.score = leaderboard_entries.score THEN MIN(leaderboard_entries.duration_ms, excluded.duration_ms)
-          ELSE leaderboard_entries.duration_ms 
+          ELSE leaderboard_entries.duration_ms
+        END,
+        tags = CASE
+          WHEN excluded.score > leaderboard_entries.score THEN excluded.tags
+          ELSE leaderboard_entries.tags
         END,
         class_period = excluded.class_period,
         teacher = excluded.teacher,
-        created_at = CASE 
-          WHEN excluded.score > leaderboard_entries.score THEN datetime('now') 
-          ELSE leaderboard_entries.created_at 
+        created_at = CASE
+          WHEN excluded.score > leaderboard_entries.score THEN datetime('now')
+          ELSE leaderboard_entries.created_at
         END
-    `).bind(
-      challenge_id, 
-      cleanDisplay, 
-      cleanPeriod, 
-      cleanTeacher, 
-      schoolYear, 
-      score, 
-      duration_ms
+    `;
+
+    // Time events keep a player's fastest time in a stratum (higher score breaks ties).
+    const timeRankedUpsert = `
+      DO UPDATE SET
+        duration_ms = MIN(leaderboard_entries.duration_ms, excluded.duration_ms),
+        score = CASE
+          WHEN excluded.duration_ms < leaderboard_entries.duration_ms THEN excluded.score
+          WHEN excluded.duration_ms = leaderboard_entries.duration_ms THEN MAX(leaderboard_entries.score, excluded.score)
+          ELSE leaderboard_entries.score
+        END,
+        tags = CASE
+          WHEN excluded.duration_ms < leaderboard_entries.duration_ms THEN excluded.tags
+          ELSE leaderboard_entries.tags
+        END,
+        class_period = excluded.class_period,
+        teacher = excluded.teacher,
+        created_at = CASE
+          WHEN excluded.duration_ms < leaderboard_entries.duration_ms THEN datetime('now')
+          ELSE leaderboard_entries.created_at
+        END
+    `;
+
+    await context.env.DB.prepare(
+      insertSql + (EVENTS[event].rankBy === 'time' ? timeRankedUpsert : scoreRankedUpsert)
+    ).bind(
+      game, event, level, variant, tags,
+      cleanDisplay, cleanPeriod, cleanTeacher, schoolYear,
+      Math.round(score), Math.round(duration_ms)
     ).run();
 
-    return new Response(JSON.stringify({ success: true, schoolYear }), { status: 201 });
+    return json({ success: true, schoolYear, game, event }, 201);
   } catch (err) {
-    console.error("D1 POST Error:", err.message);
-    return new Response(JSON.stringify({ error: 'Failed to record entry' }), { status: 500 });
+    console.error('D1 POST Error:', err.message);
+    return json({ error: 'Failed to record entry' }, 500);
   }
 }

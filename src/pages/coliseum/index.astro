@@ -5,7 +5,11 @@ import Leaderboard from '../../components/coliseum/Leaderboard.svelte';
 import 'katex/dist/katex.min.css';
 import '../../styles/global.css';
 
-const challenges = await getCollection('coliseum', ({ data }) => data.isActive);
+const challenges = (await getCollection('coliseum', ({ data }) => data.isActive)).sort(
+  (a, b) =>
+    a.data.topic.localeCompare(b.data.topic, undefined, { sensitivity: 'base' }) ||
+    a.data.title.localeCompare(b.data.title, undefined, { sensitivity: 'base' })
+);
 
 // Extract unique topics (e.g., 'number-sense', 'algebra', etc.) sorted alphabetically
 const topics = Array.from(new Set(challenges.map((c) => c.data.topic))).sort();

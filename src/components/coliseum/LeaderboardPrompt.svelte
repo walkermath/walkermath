@@ -6,6 +6,12 @@
   export let challengeId: string;
   export let score: number;
   export let durationMs: number;
+  /** difficulty level the run was played on (0 = none) */
+  export let level: number = 0;
+  /** filterable variant that gets its own stratum, e.g. 'typed' */
+  export let variant: string = '';
+  /** non-stratifying info about the run, e.g. 'lin-rt' (which equation types were on) */
+  export let tags: string = '';
   export let headerTitle: string = '// TIME UP';
   export let headerSubtitle: string = 'final score recorded.';
   export let stats: string[] = [];
@@ -74,7 +80,10 @@
           class_period: classPeriod,
           teacher: cleanTeacher,
           score,
-          duration_ms: durationMs
+          duration_ms: durationMs,
+          level,
+          variant,
+          tags
         })
       });
 
@@ -98,7 +107,7 @@
     <p class="text-xs text-[var(--text-muted)]">{headerSubtitle}</p>
   </div>
 
-  <div class="p-6 border border-[var(--border-color)] bg-black/20 rounded space-y-3">
+  <div class="p-6 border border-[var(--border-color)] bg-[var(--well)] rounded space-y-3">
     <div class="text-3xl font-bold text-[var(--accent)]">{score}</div>
     <div class="text-xs text-[var(--text-muted)] space-y-1">
       {#each stats as statLine}
@@ -109,11 +118,11 @@
   </div>
 
   <!-- Credential Inputs Entry -->
-  <div class="p-4 border border-[var(--border-color)] bg-black/20 rounded space-y-4 text-xs text-left">
+  <div class="p-4 border border-[var(--border-color)] bg-[var(--well)] rounded space-y-4 text-xs text-left">
     <div class="text-[var(--text-muted)]">// enter credentials to log score (A-Z only, max 6 chars):</div>
     
     {#if errorMsg}
-      <div class="p-2 border border-red-500/50 bg-red-950/30 text-red-400 rounded text-xs">
+      <div class="p-2 border border-[var(--bad)] bg-[var(--bad-bg)] text-[var(--bad)] rounded text-xs">
         [!] {errorMsg}
       </div>
     {/if}
@@ -126,7 +135,7 @@
         on:input={handleNameInput}
         maxlength="6" 
         placeholder="MATH"
-        class="w-full px-3 py-1.5 rounded border border-[var(--border-color)] bg-black text-white text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)]"
+        class="w-full px-3 py-1.5 rounded border-2 border-[var(--edge)] bg-[var(--tile)] text-[var(--text-primary)] text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)]"
       />
     </div>
 
@@ -135,7 +144,7 @@
         <span class="text-[var(--text-muted)]">class period:</span>
         <select 
           bind:value={classPeriod} 
-          class="w-full px-3 py-1.5 rounded border border-[var(--border-color)] bg-black text-white text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)] cursor-pointer"
+          class="w-full px-3 py-1.5 rounded border-2 border-[var(--edge)] bg-[var(--tile)] text-[var(--text-primary)] text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)] cursor-pointer"
         >
           <option value="" disabled selected>select</option>
           {#each ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] as p}
@@ -152,7 +161,7 @@
           on:input={handleTeacherInput}
           maxlength="6" 
           placeholder="WALKER"
-          class="w-full px-3 py-1.5 rounded border border-[var(--border-color)] bg-black text-white text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)]"
+          class="w-full px-3 py-1.5 rounded border-2 border-[var(--edge)] bg-[var(--tile)] text-[var(--text-primary)] text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)]"
         />
       </div>
     </div>
@@ -162,7 +171,7 @@
     <button 
       on:click={submitScore}
       disabled={isSubmitting}
-      class="w-full py-3 rounded border border-[var(--accent)] text-[var(--accent)] bg-[var(--bg-surface)] font-bold hover:bg-[var(--accent)] hover:text-black transition-colors cursor-pointer text-xs disabled:opacity-50"
+      class="w-full py-3 rounded border border-[var(--accent)] text-[var(--accent)] bg-[var(--bg-surface)] font-bold hover:bg-[var(--accent)] hover:text-[var(--bg-surface)] transition-colors cursor-pointer text-xs disabled:opacity-50"
     >
       {isSubmitting ? '[submitting...]' : '[post score to leaderboard]'}
     </button>

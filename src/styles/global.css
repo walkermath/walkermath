@@ -8,6 +8,17 @@
     --text-muted: #64748b;
     --border-color: #e2e8f0;
     --accent: #4338ca;
+
+    /* game surfaces: light-theme values (dark-theme values below match the original black overlays) */
+    --well: color-mix(in srgb, var(--text-primary) 3%, var(--bg-surface));
+    --well-strong: color-mix(in srgb, var(--text-primary) 7%, var(--bg-surface));
+    --tile: #ffffff;
+    --edge: #94a3b8;
+    --ok: #047857;
+    --ok-bg: #d1fae5;
+    --bad: #b91c1c;
+    --bad-bg: #fee2e2;
+    --warn: #b45309;
   }
 
   html.dark {
@@ -17,6 +28,16 @@
     --text-muted: #a1a1aa;
     --border-color: #27272a;
     --accent: #f59e0b;
+
+    --well: rgb(0 0 0 / 0.2);
+    --well-strong: rgb(0 0 0 / 0.4);
+    --tile: rgb(0 0 0 / 0.6);
+    --edge: #27272a;
+    --ok: #34d399;
+    --ok-bg: rgb(2 44 34 / 0.4);
+    --bad: #f87171;
+    --bad-bg: rgb(69 10 10 / 0.4);
+    --warn: #fbbf24;
   }
 
   body {
