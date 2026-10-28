@@ -97,6 +97,10 @@
   let stage: 'ops' | 'operand' = 'ops';
   let pendingOp: BankOp | null = null;
   let inputMode: 'bank' | 'type' = 'bank';
+  // chosen on the menu and locked for the whole run
+  let typedMode = false;
+  let runTyped = false;
+  const TYPED_MULTIPLIER = 1.2;
   let bank: Operand[] = [];
   let typedValue = '';
   let inputError = '';
@@ -109,6 +113,8 @@
   let solveBonus = 0;
 
   $: multiplier = MULTIPLIERS[level - 1];
+  // typed runs earn a small bonus on points (race ranks by time, and typed runs have their own board)
+  $: pointMult = multiplier * (runTyped ? TYPED_MULTIPLIER : 1);
   $: stepMix = STEP_DIST[level - 1]
     .map((pct, i) => (pct > 0 ? `${i === 4 ? '5+' : i + 1}-step ${pct}%` : ''))
     .filter(Boolean)
@@ -159,6 +165,8 @@
   function startGame(selectedMode: Mode) {
     mode = selectedMode;
     runFamilies = [...selectedFamilies];
+    runTyped = typedMode;
+    inputMode = runTyped ? 'type' : 'bank';
     gameState = 'playing';
     score = 0;
     solvedCount = 0;
@@ -285,7 +293,7 @@
 
     let awarded = 0;
     if (result.quality === 'optimal') {
-      awarded = Math.round(OPTIMAL_PTS * multiplier);
+      awarded = Math.round(OPTIMAL_PTS * pointMult);
       score += awarded;
       totalOptimal++;
       feedback = { kind: 'optimal', text: `// OPTIMAL STEP (+${awarded})` };
@@ -314,7 +322,7 @@
     extraneousText = bad.length
       ? `// ${bad.map(v => `x = ${fmtFrac(v)}`).join(' and ')} ${bad.length > 1 ? 'are' : 'is'} extraneous: ${bad.length > 1 ? 'they do' : 'it does'} not check in the original equation.`
       : '';
-    solveBonus = Math.round(SOLVE_PTS * multiplier);
+    solveBonus = Math.round(SOLVE_PTS * pointMult);
     score += solveBonus;
     solvedCount++;
     paused = true;
@@ -413,6 +421,16 @@
         <div class="text-[var(--text-muted)]">// mix: {stepMix}</div>
       </div>
 
+      <div class="p-4 border border-[var(--border-color)] bg-[var(--well)] rounded text-xs">
+        <label class="flex items-start gap-3 cursor-pointer">
+          <input type="checkbox" bind:checked={typedMode} class="accent-[var(--accent)] mt-0.5" />
+          <span>
+            type my own answers
+            <span class="text-[var(--text-muted)]">no number bank. +{TYPED_MULTIPLIER}&times; points, and race times go on the typed-answers board.</span>
+          </span>
+        </label>
+      </div>
+
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
           on:click={() => startGame('race10')}
@@ -467,7 +485,7 @@
             <div class="text-xs text-[var(--warn)]">{extraneousText}</div>
           {/if}
           <div class="text-xs text-[var(--ok)] font-bold">
-            // +{solveBonus} pts ({SOLVE_PTS} &times; {multiplier.toFixed(1)})
+            // +{solveBonus} pts ({SOLVE_PTS} &times; {pointMult.toFixed(2)})
           </div>
           <div class="text-xs text-[var(--text-muted)]">
             steps: {steps.length} | optimal: {stepOptimalCount}
@@ -561,20 +579,7 @@
               <button on:click={cancelOperand} class="hover:text-[var(--accent)] underline cursor-pointer">
                 &lt;- [back]
               </button>
-              <div class="flex items-center gap-2">
-                <button
-                  on:click={() => setInputMode('bank')}
-                  class="px-2 py-1 rounded border cursor-pointer transition-colors {inputMode === 'bank' ? 'border-[var(--accent)] text-[var(--accent)] font-bold' : 'border-[var(--border-color)] hover:text-[var(--accent)]'}"
-                >
-                  [number bank]
-                </button>
-                <button
-                  on:click={() => setInputMode('type')}
-                  class="px-2 py-1 rounded border cursor-pointer transition-colors {inputMode === 'type' ? 'border-[var(--accent)] text-[var(--accent)] font-bold' : 'border-[var(--border-color)] hover:text-[var(--accent)]'}"
-                >
-                  [type value]
-                </button>
-              </div>
+              <span>{inputMode === 'type' ? 'typed answers' : 'number bank'}</span>
             </div>
 
             <div class="text-sm text-center">
@@ -589,11 +594,11 @@
             {/if}
 
             {#if inputMode === 'bank'}
-              <div class="grid grid-cols-3 gap-3 max-w-sm mx-auto">
+              <div class="grid grid-cols-4 gap-2 max-w-md mx-auto">
                 {#each bank as tile, i}
                   <button
                     on:click={() => pickTile(i)}
-                    class="h-14 rounded border-2 border-[var(--edge)] bg-[var(--tile)] text-[var(--text-primary)] text-lg font-bold hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer select-none"
+                    class="h-12 rounded border-2 border-[var(--edge)] bg-[var(--tile)] text-[var(--text-primary)] text-base sm:text-lg font-bold hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer select-none"
                   >
                     {tileText(pendingOp, tile)}
                   </button>
@@ -636,6 +641,7 @@
     <LeaderboardPrompt
       challengeId={mode === '60s' ? 'algebraic-step-finder-60s' : 'algebraic-step-finder-race10'}
       {level}
+      variant={runTyped ? 'typed' : ''}
       tags={familyTags}
       {score}
       {durationMs}
@@ -644,6 +650,7 @@
       stats={[
         `equations solved: ${solvedCount} | level: ${level} (${multiplier.toFixed(1)}x)`,
         `optimal steps: ${totalOptimal} | messy steps: ${totalMessy}`,
+        `input: ${runTyped ? `typed (${TYPED_MULTIPLIER}x points)` : 'number bank'}`,
         `types: ${FAMILY_OPTIONS.filter(f => runFamilies.includes(f.id)).map(f => f.label).join(', ')}`
       ]}
       on:retry={() => { gameState = 'menu'; }}

@@ -72,6 +72,7 @@ export const GAMES: Record<string, GameDef> = {
       { id: '7-9', label: 'levels 7-9', lo: 7, hi: 9 },
       { id: '10', label: 'level 10 ranked ladder', lo: 10, hi: 10, ladder: true }
     ],
+    variants: [{ id: 'typed', label: 'typed answers' }],
     raceWeights: ASF_MULTIPLIERS
   },
   'split-the-middle': {
