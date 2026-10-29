@@ -1,0 +1,13 @@
+---
+// src/pages/teach/index.astro
+// Teacher area. Everything loads in the browser after sign-in, so the page itself stays static.
+import Layout from '../../layouts/Layout.astro';
+import TeachApp from '../../components/teach/TeachApp.svelte';
+import '../../styles/global.css';
+---
+
+<Layout title="walkerMath\teach">
+  <main class="py-12">
+    <TeachApp client:only="svelte" />
+  </main>
+</Layout>

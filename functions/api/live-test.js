@@ -1,5 +1,5 @@
 // functions/api/live-test.js
-// Phase 0 network check for the /live-test page. No sign-in, nothing stored.
+// Phase 1 network check for the /live-test page. No sign-in, nothing stored.
 //
 //   GET with "Upgrade: websocket"  -> WebSocket, handed to the shared test room (echo)
 //   plain GET                      -> polling fallback snapshot from the same room

@@ -1,0 +1,14 @@
+# Copy to .dev.vars (git-ignored) for `npx wrangler pages dev dist`.
+# In production, set the same names under Pages project > Settings > Variables and Secrets.
+
+# Google Cloud Console > APIs & Services > Credentials > your OAuth client (Web application)
+GOOGLE_CLIENT_ID="1234567890-abc.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET="GOCSPX-..."
+
+# Who may sign in as a teacher: email=BOARDCODE, optional :sandbox. Comma-separated.
+# BOARDCODE must be in src/lib/teachers.ts. Use the email of the Google account you sign in with.
+TEACHER_ACCOUNTS="you@school.org=WALKER, you@gmail.com=WALKER:sandbox"
+
+# Long random string. Keys PIN hashes and rate-limit keys. Changing it invalidates every PIN.
+# Generate one with:  node -e "console.log(crypto.randomBytes(32).toString('base64url'))"
+AUTH_SECRET="replace-me"

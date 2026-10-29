@@ -1,5 +1,5 @@
 // live-worker/src/LessonRoom.ts
-// One LessonRoom per running lesson (Phase 3). In Phase 0 it is a bare echo room used by the
+// One LessonRoom per running lesson (Phase 4). In Phase 1 it is a bare echo room used by the
 // /live-test page to check that WebSockets get through the school network.
 //
 // Uses the WebSocket Hibernation API (ctx.acceptWebSocket), so an idle room is not billed for

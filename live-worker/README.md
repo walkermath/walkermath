@@ -34,7 +34,7 @@ npx wrangler pages dev dist
 `wrangler pages dev` reads the `LESSON_ROOM` binding from the root `wrangler.toml` and connects to
 the Worker started in terminal 1. Open http://localhost:8788/live-test.
 
-## Phase 0
+## Phase 1 (current)
 
 Right now the room only echoes messages for `/live-test`, the page that checks whether WebSockets
 get through the school network. It falls back to polling if they don't.
