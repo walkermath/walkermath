@@ -1,7 +1,9 @@
 <!-- src/components/coliseum/LeaderboardPrompt.svelte -->
 <script lang="ts">
   import { onMount, createEventDispatcher } from 'svelte';
-  import { getSavedProfile, saveProfile } from '../../lib/playerStorage';
+  import { getSavedProfile, saveProfile } from '../../lib/playerStorage.ts';
+  import { getAlias, rerollAlias } from '../../lib/pseudonym.ts';
+  import { TEACHERS } from '../../lib/teachers.ts';
 
   export let challengeId: string;
   export let score: number;
@@ -18,57 +20,43 @@
 
   const dispatch = createEventDispatcher();
 
-  let playerName = '';
+  // The alias is generated for the device; students never type a name.
+  let alias = '';
   let teacherName = '';
   let classPeriod = '';
   let isSubmitting = false;
   let errorMsg = '';
 
-  // Helper to strictly enforce alpha-only (A-Z) and max 6 characters
-  function sanitizeAlpha6(val: string): string {
-    if (!val) return '';
-    return val.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 6);
-  }
-
   onMount(() => {
     const saved = getSavedProfile();
-    playerName = sanitizeAlpha6(saved.tag || '');
-    teacherName = sanitizeAlpha6(saved.teacher || '');
+    alias = getAlias();
+    teacherName = TEACHERS.includes(saved.teacher) ? saved.teacher : TEACHERS.length === 1 ? TEACHERS[0] : '';
     classPeriod = saved.class_period || '';
   });
 
-  function handleNameInput(e: Event) {
-    const target = e.target as HTMLInputElement;
-    playerName = sanitizeAlpha6(target.value);
-    target.value = playerName;
-  }
-
-  function handleTeacherInput(e: Event) {
-    const target = e.target as HTMLInputElement;
-    teacherName = sanitizeAlpha6(target.value);
-    target.value = teacherName;
+  function reroll() {
+    alias = rerollAlias();
+    errorMsg = '';
   }
 
   async function submitScore() {
     errorMsg = '';
-    const cleanName = sanitizeAlpha6(playerName);
-    const cleanTeacher = sanitizeAlpha6(teacherName);
 
-    if (!cleanName) {
-      errorMsg = 'Please enter a display name (1-6 letters).';
+    if (!alias) {
+      errorMsg = 'Could not create an alias on this device. Reload the page and try again.';
       return;
     }
     if (!classPeriod) {
       errorMsg = 'Please select a class period (0-9).';
       return;
     }
-    if (!cleanTeacher) {
-      errorMsg = 'Please enter a teacher name (1-6 letters).';
+    if (!teacherName) {
+      errorMsg = 'Please select a teacher.';
       return;
     }
 
     isSubmitting = true;
-    saveProfile({ tag: cleanName, teacher: cleanTeacher, class_period: classPeriod });
+    saveProfile({ teacher: teacherName, class_period: classPeriod });
 
     try {
       const res = await fetch('/api/leaderboard', {
@@ -76,9 +64,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           challenge_id: challengeId,
-          display_name: cleanName,
+          display_name: alias,
           class_period: classPeriod,
-          teacher: cleanTeacher,
+          teacher: teacherName,
           score,
           duration_ms: durationMs,
           level,
@@ -91,7 +79,13 @@
       if (res.ok) {
         window.location.href = '/coliseum#leaderboards';
       } else {
-        errorMsg = data.error || 'Failed to save score.';
+        if (data.code === 'alias_rejected') {
+          // rare: the random alias tripped the filter. Roll a new one; the student just resubmits.
+          alias = rerollAlias();
+          errorMsg = 'That alias was not accepted, so we picked a new one. Press post again.';
+        } else {
+          errorMsg = data.error || 'Failed to save score.';
+        }
         isSubmitting = false;
       }
     } catch (err) {
@@ -119,8 +113,8 @@
 
   <!-- Credential Inputs Entry -->
   <div class="p-4 border border-[var(--border-color)] bg-[var(--well)] rounded space-y-4 text-xs text-left">
-    <div class="text-[var(--text-muted)]">// enter credentials to log score (A-Z only, max 6 chars):</div>
-    
+    <div class="text-[var(--text-muted)]">// your scores post under an auto-generated alias. no names are collected.</div>
+
     {#if errorMsg}
       <div class="p-2 border border-[var(--bad)] bg-[var(--bad-bg)] text-[var(--bad)] rounded text-xs">
         [!] {errorMsg}
@@ -128,22 +122,31 @@
     {/if}
 
     <div class="space-y-1">
-      <span class="text-[var(--text-muted)]">display name / tag (max 6 letters):</span>
-      <input 
-        type="text" 
-        value={playerName}
-        on:input={handleNameInput}
-        maxlength="6" 
-        placeholder="MATH"
-        class="w-full px-3 py-1.5 rounded border-2 border-[var(--edge)] bg-[var(--tile)] text-[var(--text-primary)] text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)]"
-      />
+      <span class="text-[var(--text-muted)]">your alias:</span>
+      <div class="flex items-center gap-2">
+        <div
+          aria-label="your alias"
+          class="flex-1 px-3 py-1.5 rounded border-2 border-[var(--edge)] bg-[var(--tile)] text-[var(--accent)] text-sm font-bold tracking-wide select-all"
+        >
+          {alias || '...'}
+        </div>
+        <button
+          type="button"
+          on:click={reroll}
+          title="Reroll alias"
+          class="px-3 py-1.5 rounded border-2 border-[var(--edge)] bg-[var(--tile)] text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+        >
+          <span aria-hidden="true">&#127922;</span> reroll
+        </button>
+      </div>
+      <div class="text-[var(--text-muted)]">a new alias starts a fresh record: earlier scores stay under the old one.</div>
     </div>
 
     <div class="grid grid-cols-2 gap-3">
       <div class="space-y-1">
         <span class="text-[var(--text-muted)]">class period:</span>
-        <select 
-          bind:value={classPeriod} 
+        <select
+          bind:value={classPeriod}
           class="w-full px-3 py-1.5 rounded border-2 border-[var(--edge)] bg-[var(--tile)] text-[var(--text-primary)] text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)] cursor-pointer"
         >
           <option value="" disabled selected>select</option>
@@ -154,15 +157,16 @@
       </div>
 
       <div class="space-y-1">
-        <span class="text-[var(--text-muted)]">teacher (max 6 letters):</span>
-        <input 
-          type="text" 
-          value={teacherName}
-          on:input={handleTeacherInput}
-          maxlength="6" 
-          placeholder="WALKER"
-          class="w-full px-3 py-1.5 rounded border-2 border-[var(--edge)] bg-[var(--tile)] text-[var(--text-primary)] text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)]"
-        />
+        <span class="text-[var(--text-muted)]">teacher:</span>
+        <select
+          bind:value={teacherName}
+          class="w-full px-3 py-1.5 rounded border-2 border-[var(--edge)] bg-[var(--tile)] text-[var(--text-primary)] text-sm uppercase tracking-widest focus:outline-none focus:border-[var(--accent)] cursor-pointer"
+        >
+          <option value="" disabled>select</option>
+          {#each TEACHERS as t}
+            <option value={t}>{t}</option>
+          {/each}
+        </select>
       </div>
     </div>
   </div>
