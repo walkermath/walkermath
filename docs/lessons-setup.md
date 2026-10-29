@@ -43,8 +43,18 @@ Locally: copy `.dev.vars.example` to `.dev.vars` and fill it in (`.dev.vars` is 
 The sandbox email must be the address of the Google account you actually sign in with. A
 forwarding address only works if a Google account was created with it.
 
-Production: Cloudflare dashboard > Workers & Pages > walkermath > Settings > Variables and
-Secrets. Add all four, marking `GOOGLE_CLIENT_SECRET` and `AUTH_SECRET` as **Secret** (Encrypt).
+Production: this project manages plain variables through `wrangler.toml`, so the dashboard only
+accepts **Secrets**. Add all four as Secrets (that also keeps the teacher emails out of the repo):
+Cloudflare dashboard > Workers & Pages > walkermath > Settings > Variables and Secrets > Add >
+type **Secret**. Or from the command line, one at a time (it prompts for the value):
+
+```sh
+npx wrangler pages secret put GOOGLE_CLIENT_ID     --project-name walkermath
+npx wrangler pages secret put GOOGLE_CLIENT_SECRET --project-name walkermath
+npx wrangler pages secret put TEACHER_ACCOUNTS     --project-name walkermath
+npx wrangler pages secret put AUTH_SECRET          --project-name walkermath
+```
+
 Use a **different** `AUTH_SECRET` from the local one. Never change it once students have cards:
 every PIN is keyed with it.
 

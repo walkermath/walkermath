@@ -1,5 +1,5 @@
 # Copy to .dev.vars (git-ignored) for `npx wrangler pages dev dist`.
-# In production, set the same names under Pages project > Settings > Variables and Secrets.
+# In production, add the same four names as Secrets (see docs/lessons-setup.md).
 
 # Google Cloud Console > APIs & Services > Credentials > your OAuth client (Web application)
 GOOGLE_CLIENT_ID="1234567890-abc.apps.googleusercontent.com"
