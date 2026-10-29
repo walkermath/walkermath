@@ -31,7 +31,18 @@ and use the sandbox account until then.
 
 ## 2. Settings
 
-Locally: copy `.dev.vars.example` to `.dev.vars` and fill it in (`.dev.vars` is git-ignored).
+Locally: create a file named `.dev.vars` in the project root (it is git-ignored; never commit it)
+with these four lines:
+
+```
+GOOGLE_CLIENT_ID="1234567890-abc.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET="GOCSPX-..."
+TEACHER_ACCOUNTS="you@school.org=WALKER, you@gmail.com=WALKER:sandbox"
+AUTH_SECRET="a-long-random-string"
+```
+
+`TEACHER_ACCOUNTS` entries are `email=BOARDCODE`, with an optional `:sandbox`; the board code must be
+in `src/lib/teachers.ts`. Changing `AUTH_SECRET` invalidates every PIN.
 
 | Name | Value |
 | --- | --- |
