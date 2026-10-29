@@ -9,6 +9,8 @@ import {
   parseChallengeId,
   raceWeight
 } from '../../src/lib/coliseumBoards.ts';
+import { isValidAlias } from '../../src/lib/pseudonym.ts';
+import { isKnownTeacher } from '../../src/lib/teachers.ts';
 
 let cachedBlocklist = null;
 
@@ -66,11 +68,13 @@ function normalizeText(text) {
 async function isProfane(text, secretList) {
   if (!text) return false;
   
-  const normalized = normalizeText(text).toLowerCase();
-  const qToGVariant = normalized.replace(/q/g, 'g');
+  // normalizeText() returns UPPERCASE and so do the blocklist entries, so compare in uppercase
+  // (this used to lowercase one side, which meant no blocklist word could ever match).
+  const normalized = normalizeText(text);
+  const qToGVariant = normalized.replace(/Q/g, 'G');
 
   // Explicitly catch common custom spellings that bypass standard blocklists
-  const explicitVariations = ['niqr', 'niqq', 'nigq', 'nigr', 'nigg', 'niqg', 'niqe', 'nikkr', 'kkk', 'nikker', 'nicker', 'nicr', 'niccr','nicccr', 'nikr', 'nickr', 'nikcr', 'nikccr', 'nikkcr', 'nikckr', 'nickkr', 'nicckr', 'nickcr'];
+  const explicitVariations = ['NIQR', 'NIQQ', 'NIGQ', 'NIGR', 'NIGG', 'NIQG', 'NIQE', 'NIKKR', 'KKK', 'NIKKER', 'NICKER', 'NICR', 'NICCR','NICCCR', 'NIKR', 'NICKR', 'NIKCR', 'NIKCCR', 'NIKKCR', 'NIKCKR', 'NICKKR', 'NICCKR', 'NICKCR'];
   
   if (explicitVariations.some(term => normalized.includes(term) || qToGVariant.includes(term))) {
     return true;
@@ -228,27 +232,28 @@ export async function onRequestPost(context) {
     const variant = normalizeVariant(game, body.variant);
     const tags = normalizeTags(body.tags);
 
-    const cleanDisplay = (display_name || 'ANON').trim().toUpperCase().slice(0, 6);
-    const cleanPeriod = (class_period || '').trim().toUpperCase();
-    const cleanTeacher = (teacher || 'GENERA').trim().toUpperCase().slice(0, 6);
+    // PRIVACY: students never type a name. display_name must be an alias produced by
+    // src/lib/pseudonym.ts, and teacher must come from src/lib/teachers.ts, so free text cannot
+    // reach the database even from a hand-built request. Request headers (CF-Connecting-IP,
+    // X-Forwarded-For, User-Agent) are deliberately never read or stored here.
+    const cleanDisplay = String(display_name || '').trim();
+    const cleanPeriod = String(class_period || '').trim().toUpperCase();
+    const cleanTeacher = String(teacher || '').trim().toUpperCase();
 
-    if (!/^[A-Z]{1,6}$/.test(cleanDisplay)) {
-      return json({ error: 'Display name must be 1-6 letters (A-Z only).' }, 400);
+    if (!/^[A-Za-z0-9]{3,16}$/.test(cleanDisplay) || !isValidAlias(cleanDisplay)) {
+      return json({ error: 'Invalid player alias.', code: 'alias_rejected' }, 400);
     }
-    if (!/^[A-Z]{1,6}$/.test(cleanTeacher)) {
-      return json({ error: 'Teacher name must be 1-6 letters (A-Z only).' }, 400);
+    if (!isKnownTeacher(cleanTeacher)) {
+      return json({ error: 'Unknown teacher.' }, 400);
     }
     if (!/^P[0-9]$/.test(cleanPeriod)) {
       return json({ error: 'Invalid class period.' }, 400);
     }
 
-    // Server-side multi-language profanity check across text fields
-    const blocklistSecret = context.env.PROFANITY_BLOCKLIST;
-    if (
-      (await isProfane(cleanDisplay, blocklistSecret)) ||
-      (await isProfane(cleanTeacher, blocklistSecret))
-    ) {
-      return json({ error: 'Inappropriate language detected in submission.' }, 400);
+    // Defensive layer: the alias is built from curated words, but the random tail is still
+    // screened (the client rerolls automatically on this code).
+    if (await isProfane(cleanDisplay, context.env.PROFANITY_BLOCKLIST)) {
+      return json({ error: 'Alias not accepted.', code: 'alias_rejected' }, 400);
     }
 
     const now = new Date();
