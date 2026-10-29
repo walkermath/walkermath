@@ -1,9 +1,9 @@
 <!-- src/components/coliseum/LeaderboardPrompt.svelte -->
 <script lang="ts">
   import { onMount, createEventDispatcher } from 'svelte';
-  import { getSavedProfile, saveProfile } from '../../lib/playerStorage';
-  import { getAlias, rerollAlias } from '../../lib/pseudonym';
-  import { TEACHERS } from '../../lib/teachers';
+  import { getSavedProfile, saveProfile } from '../../lib/playerStorage.ts';
+  import { getAlias, rerollAlias } from '../../lib/pseudonym.ts';
+  import { TEACHERS } from '../../lib/teachers.ts';
 
   export let challengeId: string;
   export let score: number;
