@@ -5,9 +5,11 @@ import 'katex/dist/katex.min.css';
 
 interface Props {
   title: string;
+  /** Wider page for tools like the lesson builder. */
+  wide?: boolean;
 }
 
-const { title } = Astro.props;
+const { title, wide = false } = Astro.props;
 ---
 
 <!doctype html>
@@ -18,7 +20,7 @@ const { title } = Astro.props;
     <link rel="icon" type="image/svg+xml" href="/favicon.png" />
     <title>{title}</title>
   </head>
-  <body class="min-h-screen p-6 md:p-12 max-w-4xl mx-auto">
+  <body class:list={['min-h-screen p-6 md:p-12 mx-auto', wide ? 'max-w-6xl' : 'max-w-4xl']}>
     <FloatingNav />
     <slot />
   </body>

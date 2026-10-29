@@ -1,9 +1,9 @@
-// End-to-end check of the Phase 2 Pages Functions against a D1 stand-in built on node:sqlite.
+// End-to-end check of the lesson Pages Functions (Phases 2-3) against a D1 stand-in built on node:sqlite.
 // Run from the repo root (no npm install needed, Node 22.6+):
 //   npm run test:lessons
 // Uses node:sqlite as a stand-in for D1 and a fake Google token endpoint.
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
 
@@ -14,7 +14,9 @@ const load = (p) => import(pathToFileURL(`${repo}/${p}`).href);
 function makeD1() {
   const sql = new DatabaseSync(':memory:');
   sql.exec('PRAGMA foreign_keys = ON;');
-  sql.exec(readFileSync(`${repo}/migrations/0001_teachers_classes.sql`, 'utf8'));
+  for (const f of readdirSync(`${repo}/migrations`).filter((f) => f.endsWith('.sql')).sort()) {
+    sql.exec(readFileSync(`${repo}/migrations/${f}`, 'utf8'));
+  }
   const stmt = (text, args = []) => ({
     bind: (...a) => stmt(text, a),
     async first() { const r = sql.prepare(text).all(...args); return r[0] ?? null; },
@@ -39,7 +41,7 @@ const env = {
   AUTH_SECRET: 'test-secret-'.repeat(4),
   GOOGLE_CLIENT_ID: 'client-123.apps.googleusercontent.com',
   GOOGLE_CLIENT_SECRET: 'shh',
-  TEACHER_ACCOUNTS: 'walkerb@castleberryisd.net=WALKER, brett@example.com=WALKER:sandbox'
+  ADMIN_EMAIL: 'walkerb@castleberryisd.net'
 };
 
 /* ---------- request helpers ---------- */
@@ -84,6 +86,12 @@ const lookup = await load('functions/api/class/lookup.js');
 const signin = await load('functions/api/class/signin.js');
 const sme = await load('functions/api/class/me.js');
 const slogout = await load('functions/api/class/logout.js');
+const adminR = await load('functions/api/teach/admin/teachers.js');
+const lessonsIdx = await load('functions/api/teach/lessons/index.js');
+const lessonOne = await load('functions/api/teach/lessons/[lessonId]/index.js');
+const runsIdx = await load('functions/api/teach/lessons/[lessonId]/runs/index.js');
+const runOne = await load('functions/api/teach/lessons/[lessonId]/runs/[runId].js');
+const upcoming = await load('functions/api/teach/runs.js');
 const { isValidAlias } = await load('src/lib/pseudonym.ts');
 
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -118,6 +126,7 @@ console.log('teacher sign-in');
   assert.equal(denied.location, '/teach?signin=denied');
   assert.equal(denied.session, null);
   assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM teachers').first()).n, 0);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM allowed_teachers').first()).n, 0);
   ok('unlisted Google account is refused and nothing is stored');
 
   const badNonce = await signInTeacher('walkerb@castleberryisd.net', 'g-1', { nonce: 'forged' });
@@ -142,7 +151,9 @@ console.log('teacher sign-in');
   jar.teacher = good.session;
   const row = await env.DB.prepare('SELECT * FROM teacher_sessions').first();
   assert.notEqual(row.token_hash, good.session.split('=')[1]);
-  ok('listed account signs in; only a hash of the session token is stored');
+  const own = await env.DB.prepare('SELECT * FROM allowed_teachers').all();
+  assert.deepEqual(own.results.map((r) => [r.email, r.board_code, r.sandbox]), [['walkerb@castleberryisd.net', 'WALKER', 0]]);
+  ok('the ADMIN_EMAIL account signs in and gets its own list row; only a hash of the session token is stored');
 
   const again = await signInTeacher('walkerb@castleberryisd.net', 'g-1');
   assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM teachers').first()).n, 1);
@@ -175,6 +186,40 @@ console.log('teacher API');
     assert.equal(res.status, 400, why);
   }
   ok('class validation rejects bad input');
+
+  const r2 = await body(await call(me, 'GET', T('/api/teach/me'), {}, teachMw));
+  assert.equal(r2.teacher.isAdmin, true);
+  const tz = await call(me, 'PATCH', T('/api/teach/me', { method: 'PATCH', body: { timeZone: 'Mars/Base' } }), {}, teachMw);
+  assert.equal(tz.status, 400);
+  const tz2 = await body(await call(me, 'PATCH', T('/api/teach/me', { method: 'PATCH', body: { timeZone: 'America/Chicago' } }), {}, teachMw));
+  assert.equal(tz2.teacher.timeZone, 'America/Chicago');
+  ok('/me reports admin; time zone is validated and saved');
+}
+
+console.log('teacher list (admin)');
+{
+  const add = (b) => call(adminR, 'POST', T('/api/teach/admin/teachers', { method: 'POST', body: b }), {}, teachMw);
+  assert.equal((await add({ email: 'not-an-email', boardCode: 'WALKER' })).status, 400);
+  assert.equal((await add({ email: 'x@y.org', boardCode: 'NOPE' })).status, 400);
+  const added = await add({ email: ' Brett@Example.com ', boardCode: 'walker', sandbox: true, note: 'testing' });
+  assert.equal(added.status, 201);
+  assert.deepEqual((await body(added)).teacher, { email: 'brett@example.com', boardCode: 'WALKER', sandbox: true, note: 'testing', addedAt: (await env.DB.prepare('SELECT added_at FROM allowed_teachers WHERE email = ?1').bind('brett@example.com').first()).added_at });
+  assert.equal((await add({ email: 'brett@example.com' })).status, 409);
+  const list = await body(await call(adminR, 'GET', T('/api/teach/admin/teachers'), {}, teachMw));
+  assert.deepEqual(list.teachers.map((t) => [t.email, t.isAdmin]), [['brett@example.com', false], ['walkerb@castleberryisd.net', true]]);
+  ok('admin adds a teacher (email normalized, board code checked, duplicates refused) and lists everyone');
+
+  const noAdmin = await call(adminR, 'DELETE', T('/api/teach/admin/teachers?email=walkerb@castleberryisd.net', { method: 'DELETE' }), {}, teachMw);
+  assert.equal(noAdmin.status, 400);
+  ok("the admin can't remove themselves");
+
+  const other = await signInTeacher('brett@example.com', 'g-2');
+  const peek = await call(adminR, 'GET', req('/api/teach/admin/teachers', { cookie: other.session }), {}, teachMw);
+  assert.equal(peek.status, 403);
+  const meB = await body(await call(me, 'GET', req('/api/teach/me', { cookie: other.session }), {}, teachMw));
+  assert.equal(meB.teacher.sandbox, true);
+  assert.equal(meB.teacher.isAdmin, false);
+  ok('an added teacher signs in as sandbox and cannot see the teacher list');
 }
 
 let cls, aliases;
@@ -311,20 +356,179 @@ console.log('teacher controls');
   ok('student "switch" clears the device cookie');
 }
 
+console.log('lessons');
+{
+  const { publicModule } = await load('src/lib/lesson/modules.ts');
+  const { utcToZoned } = await load('src/lib/lesson/time.ts');
+  const L = (path, opts = {}) => T(path, opts);
+  const uuid = () => crypto.randomUUID();
+
+  const made = await call(lessonsIdx, 'POST', L('/api/teach/lessons', { method: 'POST', body: {} }), {}, teachMw);
+  assert.equal(made.status, 201);
+  let lesson = (await body(made)).lesson;
+  assert.equal(lesson.title, 'Untitled lesson');
+  assert.equal(lesson.durationSec, 3000);
+  assert.deepEqual(lesson.modules, []);
+  ok('new blank lesson');
+
+  const q1 = uuid();
+  const spec = [
+    { id: uuid(), type: 'prompt', title: 'Bellwork', plannedSec: 360, pacing: 'flex', minSec: null, onTimeUp: 'auto',
+      config: { questions: [{ id: q1, kind: 'number', text: 'Solve 2x + 3 = 11', choices: [], answer: '4' },
+                            { id: uuid(), kind: 'choice', text: 'Which is linear?', choices: ['y = x^2', 'y = 3x', ''], answer: '1' }] } },
+    { id: uuid(), type: 'notes', title: 'Notes', plannedSec: 600, pacing: 'flex', minSec: 480, onTimeUp: 'auto',
+      config: { source: 'note', noteId: 'equations', markdown: '', revealSections: true } },
+    { id: uuid(), type: 'activity', title: 'Learning activity 1', plannedSec: 360, pacing: 'flex', minSec: null, onTimeUp: 'auto',
+      config: { instructions: 'Card sort with your partner.', links: [{ label: '', url: 'https://walkermath.com/apps' }], doneTap: true } },
+    { id: uuid(), type: 'activity', title: 'Learning activity 2', plannedSec: 420, pacing: 'flex', minSec: null, onTimeUp: 'auto',
+      config: { instructions: 'Gallery walk.', links: [], doneTap: false } },
+    { id: uuid(), type: 'independent', title: 'Independent work', plannedSec: 900, pacing: 'flex', minSec: null, onTimeUp: 'auto',
+      config: { instructions: 'Practice set A, 1-12.', links: [], response: 'short' } },
+    { id: uuid(), type: 'prompt', title: 'Exit ticket', plannedSec: 240, pacing: 'locked', minSec: 120, onTimeUp: 'hold',
+      config: { questions: [{ id: uuid(), kind: 'text', text: 'What is slope?', choices: [], answer: '' }] } }
+  ];
+  const save = (extra = {}) =>
+    call(lessonOne, 'PUT', L(`/api/teach/lessons/${lesson.id}`, { method: 'PUT', body: {
+      baseUpdatedAt: lesson.updatedAt, title: 'Solving linear equations', objective: 'Solve two-step equations.',
+      successCriteria: 'I can isolate x.', durationSec: 2880, modules: spec, ...extra } }), { lessonId: lesson.id }, teachMw);
+
+  for (const [bad, why] of [
+    [{ durationSec: 2890 }, 'duration not whole minutes'],
+    [{ title: '  ' }, 'empty title'],
+    [{ modules: [{ ...spec[0], plannedSec: 100 }] }, 'not a 15-s step'],
+    [{ modules: [{ ...spec[2], config: { links: [{ url: 'javascript:alert(1)' }] } }] }, 'bad link'],
+    [{ modules: [{ ...spec[0], config: { questions: [{ kind: 'text', text: '' }] } }] }, 'empty question'],
+    [{ modules: [spec[0], spec[0]] }, 'duplicate module id'],
+    [{ modules: [{ ...spec[1], minSec: 900 }] }, 'floor above plan']
+  ]) {
+    assert.equal((await save(bad)).status, 400, why);
+  }
+  ok('lesson validation rejects bad input');
+
+  const saved = await save();
+  assert.equal(saved.status, 200);
+  const prev = lesson.updatedAt;
+  lesson = (await body(saved)).lesson;
+  assert.ok(lesson.updatedAt > prev);
+  assert.equal(lesson.modules.length, 6);
+  assert.deepEqual(lesson.modules.map((m) => m.plannedSec).reduce((a, b) => a + b), 2880);
+  assert.equal(lesson.modules[0].config.questions[0].answer, '4');
+  assert.deepEqual(lesson.modules[0].config.questions[1].choices, ['y = x^2', 'y = 3x']);
+  assert.equal(lesson.modules[2].config.links[0].label, 'walkermath.com');
+  assert.equal(lesson.modules[5].minSec, null); // locked modules have no floor
+  ok("the spec's 48-minute lesson saves, in order, with cleaned-up fields");
+
+  const raw = await env.DB.prepare('SELECT config_json, private_json FROM lesson_modules WHERE id = ?1').bind(spec[0].id).first();
+  assert.ok(!raw.config_json.includes('"4"'));
+  assert.equal(JSON.parse(raw.private_json).answers[q1], '4');
+  const pub = JSON.stringify(publicModule(lesson.modules[0]));
+  assert.ok(!pub.includes('answer'));
+  ok('answer keys are stored apart and never in the student-facing shape');
+
+  const stale = await call(lessonOne, 'PUT', L(`/api/teach/lessons/${lesson.id}`, { method: 'PUT', body: {
+    baseUpdatedAt: prev, title: 'x', durationSec: 2880, modules: [] } }), { lessonId: lesson.id }, teachMw);
+  assert.equal(stale.status, 409);
+  assert.equal((await body(await call(lessonOne, 'GET', L(`/api/teach/lessons/${lesson.id}`), { lessonId: lesson.id }, teachMw))).lesson.modules.length, 6);
+  ok('a save from a stale tab is refused and changes nothing');
+
+  const b = await signInTeacher('brett@example.com', 'g-2');
+  assert.equal((await call(lessonOne, 'GET', req(`/api/teach/lessons/${lesson.id}`, { cookie: b.session }), { lessonId: lesson.id }, teachMw)).status, 404);
+  const steal = await call(lessonsIdx, 'POST', req('/api/teach/lessons', { method: 'POST', body: { copyFrom: lesson.id }, cookie: b.session }), {}, teachMw);
+  assert.equal(steal.status, 404);
+  ok("another teacher can't open or copy this lesson");
+
+  const copy = (await body(await call(lessonsIdx, 'POST', L('/api/teach/lessons', { method: 'POST', body: { copyFrom: lesson.id } }), {}, teachMw))).lesson;
+  assert.equal(copy.title, 'Solving linear equations (copy)');
+  assert.equal(copy.modules.length, 6);
+  assert.ok(copy.modules.every((m, i) => m.id !== lesson.modules[i].id));
+  assert.equal(copy.modules[0].config.questions[0].answer, '4');
+  ok('duplicate makes an independent copy (new ids, answer keys kept)');
+
+  // deliveries: the same lesson for two periods
+  const tz = 'America/Chicago';
+  const tomorrow = utcToZoned(Date.now() + 86400000, tz).date;
+  const p5 = (await body(await call(classesIdx, 'POST', T('/api/teach/classes', { method: 'POST', body: { name: 'Algebra II', period: 'P5', bellStart: '13:22', bellEnd: '14:15' } }), {}, teachMw))).class;
+  const addRun = (b2, id = lesson.id) => call(runsIdx, 'POST', L(`/api/teach/lessons/${id}/runs`, { method: 'POST', body: b2 }), { lessonId: id }, teachMw);
+  const r1 = await addRun({ classId: cls.id, date: tomorrow, startTime: '09:51', endTime: '10:44' });
+  assert.equal(r1.status, 201);
+  const run1 = (await body(r1)).run;
+  assert.deepEqual(utcToZoned(run1.scheduledStart, tz), { date: tomorrow, time: '09:51' });
+  assert.equal(run1.scheduledEnd - run1.scheduledStart, 53 * 60000);
+  const r2 = await body(await addRun({ classId: p5.id, date: tomorrow, startTime: '13:22', endTime: '14:15' }));
+  assert.equal(r2.runs.length, 2);
+  assert.deepEqual(r2.runs.map((r) => r.period), ['P3', 'P5']);
+  ok('the lesson is scheduled for two periods (times stored in the teacher\'s zone and UTC)');
+
+  for (const [bad, why] of [
+    [{ classId: cls.id, date: tomorrow, startTime: '10:00', endTime: '10:30' }, 'overlaps P3'],
+    [{ classId: cls.id, date: '2020-01-01', startTime: '09:51', endTime: '10:44' }, 'in the past'],
+    [{ classId: cls.id, date: tomorrow, startTime: '11:00', endTime: '11:03' }, 'too short'],
+    [{ classId: 'nope', date: tomorrow, startTime: '11:00', endTime: '12:00' }, 'not your class'],
+    [{ classId: cls.id, date: '11/2', startTime: '11:00', endTime: '12:00' }, 'bad date']
+  ]) {
+    assert.equal((await addRun(bad)).status, 400, why);
+  }
+  const clash = await body(await addRun({ classId: cls.id, date: tomorrow, startTime: '10:00', endTime: '10:30' }, copy.id));
+  assert.match(clash.error, /Solving linear equations/);
+  ok('deliveries are checked: no overlaps per class, no past times, real dates, own classes only');
+
+  const up = await body(await call(upcoming, 'GET', L('/api/teach/runs'), {}, teachMw));
+  assert.deepEqual(up.runs.map((r) => [r.lessonTitle, r.period]), [['Solving linear equations', 'P3'], ['Solving linear equations', 'P5']]);
+  const list = await body(await call(lessonsIdx, 'GET', L('/api/teach/lessons'), {}, teachMw));
+  const summary = list.lessons.find((l) => l.id === lesson.id);
+  assert.equal(summary.plannedSec, 2880);
+  assert.equal(summary.moduleCount, 6);
+  assert.equal(summary.nextRunAt, run1.scheduledStart);
+  ok('teach home lists upcoming deliveries and lesson summaries');
+
+  const moved = await body(await call(runOne, 'PATCH', L(`/api/teach/lessons/${lesson.id}/runs/${run1.id}`, { method: 'PATCH', body: { classId: cls.id, date: tomorrow, startTime: '09:55', endTime: '10:44' } }), { lessonId: lesson.id, runId: run1.id }, teachMw));
+  assert.equal(moved.run.startTime, '09:55');
+  const left = await body(await call(runOne, 'DELETE', L(`/api/teach/lessons/${lesson.id}/runs/${run1.id}`, { method: 'DELETE' }), { lessonId: lesson.id, runId: run1.id }, teachMw));
+  assert.equal(left.runs.length, 1);
+  ok('a delivery can be moved and removed');
+
+  await env.DB.prepare("UPDATE lesson_runs SET status = 'ended' WHERE lesson_id = ?1").bind(lesson.id).run();
+  assert.equal((await call(runOne, 'DELETE', L(`/api/teach/lessons/${lesson.id}/runs/${r2.run.id}`, { method: 'DELETE' }), { lessonId: lesson.id, runId: r2.run.id }, teachMw)).status, 400);
+  assert.equal((await call(lessonOne, 'DELETE', L(`/api/teach/lessons/${lesson.id}`, { method: 'DELETE' }), { lessonId: lesson.id }, teachMw)).status, 400);
+  const arch = await body(await call(lessonOne, 'PATCH', L(`/api/teach/lessons/${lesson.id}`, { method: 'PATCH', body: { archived: true } }), { lessonId: lesson.id }, teachMw));
+  assert.equal(arch.lesson.archived, true);
+  assert.equal((await addRun({ classId: cls.id, date: tomorrow, startTime: '09:51', endTime: '10:44' })).status, 400);
+  ok('a taught lesson can be archived but not deleted; its past deliveries are kept');
+
+  assert.equal((await call(lessonOne, 'DELETE', L(`/api/teach/lessons/${copy.id}`, { method: 'DELETE' }), { lessonId: copy.id }, teachMw)).status, 200);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM lesson_modules WHERE lesson_id = ?1').bind(copy.id).first()).n, 0);
+  ok('deleting an untaught lesson removes its modules');
+}
+
 console.log('allowlist and clean-up');
 {
-  const saved = env.TEACHER_ACCOUNTS;
-  env.TEACHER_ACCOUNTS = 'brett@example.com=WALKER:sandbox';
-  assert.equal((await call(me, 'GET', T('/api/teach/me'), {}, teachMw)).status, 401);
-  assert.equal((await call(lookup, 'POST', req('/api/class/lookup', { method: 'POST', body: { passcode: cls.passcode } }), {}, classMw)).status, 404);
-  env.TEACHER_ACCOUNTS = saved;
-  ok('removing an email from TEACHER_ACCOUNTS locks out the teacher and closes their classes');
+  // brett's sandbox class with one signed-in student
+  const b = await signInTeacher('brett@example.com', 'g-2');
+  const B = (path, opts = {}) => req(path, { cookie: b.session, ...opts });
+  const bc = (await body(await call(classesIdx, 'POST', B('/api/teach/classes', { method: 'POST', body: { name: 'Test', period: 'P1' } }), {}, teachMw))).class;
+  assert.equal((await body(await call(lookup, 'POST', req('/api/class/lookup', { method: 'POST', body: { passcode: bc.passcode } }), {}, classMw))).class.test, true);
+  const [card] = (await body(await call(aliasesR, 'POST', B(`/api/teach/classes/${bc.id}/aliases`, { method: 'POST', body: { count: 1 } }), { classId: bc.id }, teachMw))).created;
+  const sb = cookieOf(await call(signin, 'POST', req('/api/class/signin', { method: 'POST', body: { passcode: bc.passcode, alias: card.alias, pin: card.pin } }), {}, classMw), '__Host-wm_student');
+  assert.equal((await body(await call(sme, 'GET', req('/api/class/me', { cookie: sb }), {}, classMw))).student.test, true);
+  ok("a sandbox teacher's class shows TEST to students");
 
-  const before = (await env.DB.prepare('SELECT COUNT(*) n FROM student_aliases').first()).n;
+  const removed = await call(adminR, 'DELETE', T('/api/teach/admin/teachers?email=brett@example.com', { method: 'DELETE' }), {}, teachMw);
+  assert.equal(removed.status, 200);
+  assert.equal((await call(me, 'GET', B('/api/teach/me'), {}, teachMw)).status, 401);
+  assert.equal((await call(lookup, 'POST', req('/api/class/lookup', { method: 'POST', body: { passcode: bc.passcode } }), {}, classMw)).status, 404);
+  assert.equal((await body(await call(sme, 'GET', req('/api/class/me', { cookie: sb }), {}, classMw))).student, null);
+  ok('removing a teacher signs them out and closes their classes to students');
+
+  await call(adminR, 'POST', T('/api/teach/admin/teachers', { method: 'POST', body: { email: 'brett@example.com', sandbox: true } }), {}, teachMw);
+  assert.equal((await call(lookup, 'POST', req('/api/class/lookup', { method: 'POST', body: { passcode: bc.passcode } }), {}, classMw)).status, 200);
+  assert.ok((await body(await call(sme, 'GET', req('/api/class/me', { cookie: sb }), {}, classMw))).student);
+  ok('adding them back restores their classes and student devices');
+
+  const before = (await env.DB.prepare('SELECT COUNT(*) n FROM student_aliases WHERE class_id = ?1').bind(cls.id).first()).n;
   const del = await call(classOne, 'DELETE', T(`/api/teach/classes/${cls.id}`, { method: 'DELETE' }), { classId: cls.id }, teachMw);
   assert.equal(del.status, 200);
-  const after = (await env.DB.prepare('SELECT COUNT(*) n FROM student_aliases').first()).n;
-  const sess = (await env.DB.prepare('SELECT COUNT(*) n FROM student_sessions').first()).n;
+  const after = (await env.DB.prepare('SELECT COUNT(*) n FROM student_aliases WHERE class_id = ?1').bind(cls.id).first()).n;
+  const sess = (await env.DB.prepare('SELECT COUNT(*) n FROM student_sessions s JOIN student_aliases a ON a.id = s.alias_id WHERE a.class_id = ?1').bind(cls.id).first()).n;
   assert.equal(before, 30);
   assert.equal(after, 0);
   assert.equal(sess, 0);

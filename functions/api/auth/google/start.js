@@ -7,7 +7,7 @@ import { redirect, setCookie } from '../../../../src/lib/server/http.ts';
 import { OAUTH_COOKIE } from '../../../../src/lib/server/sessions.ts';
 
 export async function onRequestGet({ request, env }) {
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.AUTH_SECRET || !env.TEACHER_ACCOUNTS) {
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.AUTH_SECRET || !env.ADMIN_EMAIL) {
     return redirect('/teach?signin=unconfigured');
   }
 

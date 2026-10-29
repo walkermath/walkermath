@@ -4,7 +4,6 @@
 import { normalizePasscode } from '../classroom.ts';
 import { clientIp, fail } from './http.ts';
 import { bump, ipLimit } from './rateLimit.ts';
-import { teacherAccounts } from './accounts.ts';
 
 /** Count this request against the per-IP join limit; a Response means "stop, send this". */
 export async function joinGate(env: any, request: Request): Promise<Response | null> {
@@ -28,13 +27,15 @@ export async function classForPasscode(env: any, passcode: unknown): Promise<Joi
   const code = normalizePasscode(passcode);
   if (!code) return null;
   const row = await env.DB.prepare(
-    `SELECT c.id, c.name, c.period, t.email, t.sandbox
-       FROM classes c JOIN teachers t ON t.id = c.teacher_id
+    `SELECT c.id, c.name, c.period, al.sandbox
+       FROM classes c
+       JOIN teachers t ON t.id = c.teacher_id
+       JOIN allowed_teachers al ON al.email = t.email
       WHERE c.passcode = ?1 AND c.archived = 0`
   )
     .bind(code)
     .first();
-  if (!row || !teacherAccounts(env).has(String(row.email).toLowerCase())) return null;
+  if (!row) return null;
   return { id: row.id, name: row.name, period: row.period, test: !!row.sandbox };
 }
 

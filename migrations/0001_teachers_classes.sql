@@ -9,7 +9,7 @@
 -- Times are Unix epoch milliseconds (UTC). IDs are random UUIDs.
 -- No student names, emails or school IDs are stored anywhere in this database.
 
--- One row per signed-in teacher. Who may sign in is decided by the TEACHER_ACCOUNTS setting,
+-- One row per signed-in teacher. Who may sign in is decided by allowed_teachers (migration 0002),
 -- checked on every request, so removing an email there locks that account out immediately.
 CREATE TABLE IF NOT EXISTS teachers (
   id            TEXT PRIMARY KEY,

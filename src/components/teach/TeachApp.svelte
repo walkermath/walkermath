@@ -1,14 +1,33 @@
 <!-- src/components/teach/TeachApp.svelte -->
-<!-- /teach: Google sign-in for teachers, then the class manager. -->
+<!-- The teacher area shell: Google sign-in, the header and sub-nav, then the screen for `view`. -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api, ApiError } from '../../lib/api.ts';
   import ClassManager from './ClassManager.svelte';
+  import TeachHome from './TeachHome.svelte';
+  import LessonBuilder from './LessonBuilder.svelte';
+  import TeacherAdmin from './TeacherAdmin.svelte';
 
-  type Teacher = { email: string; displayName: string; boardCode: string; sandbox: boolean };
+  type View = 'home' | 'classes' | 'lesson' | 'teachers';
+  type Teacher = {
+    email: string;
+    displayName: string;
+    boardCode: string;
+    sandbox: boolean;
+    timeZone: string;
+    isAdmin: boolean;
+  };
+
+  let { view = 'home' }: { view?: View } = $props();
+
+  const TABS: { view: View; href: string; label: string; admin?: boolean }[] = [
+    { view: 'home', href: '/teach', label: 'lessons' },
+    { view: 'classes', href: '/teach/classes', label: 'classes' },
+    { view: 'teachers', href: '/teach/teachers', label: 'teachers', admin: true }
+  ];
 
   const SIGNIN_MESSAGES: Record<string, string> = {
-    denied: "That Google account isn't on the teacher list. Sign in with the account you registered.",
+    denied: "That Google account isn't on the teacher list. Ask the site admin to add it, or sign in with another account.",
     cancelled: 'Sign-in was cancelled.',
     expired: 'Sign-in took too long or was started in another tab. Try again.',
     failed: "Google sign-in didn't complete. Try again.",
@@ -28,6 +47,15 @@
     }
     try {
       teacher = (await api<{ teacher: Teacher }>('/api/teach/me')).teacher;
+      // Lesson times are typed in this device's time zone; keep the server's copy in step.
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz && teacher.timeZone !== tz) {
+        try {
+          teacher = (await api<{ teacher: Teacher }>('/api/teach/me', { method: 'PATCH', body: { timeZone: tz } })).teacher;
+        } catch {
+          // not fatal: the saved zone is used
+        }
+      }
     } catch (e) {
       if (!(e instanceof ApiError && e.status === 401)) error = (e as Error).message;
     } finally {
@@ -48,7 +76,19 @@
   <header class="border-b border-[var(--border-color)] pb-6 flex flex-wrap justify-between items-end gap-4">
     <div>
       <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">walkerMath\teach</h1>
-      <p class="text-xs text-[var(--text-muted)] mt-1">// classes, rosters and live lessons</p>
+      <p class="text-xs text-[var(--text-muted)] mt-1">// lessons, classes and live delivery</p>
+      {#if teacher}
+        <nav class="flex gap-4 text-sm mt-3">
+          {#each TABS.filter((t) => !t.admin || teacher?.isAdmin) as t}
+            <a
+              href={t.href}
+              class="hover:text-[var(--accent)] transition-colors {view === t.view || (view === 'lesson' && t.view === 'home')
+                ? 'text-[var(--accent)] font-bold'
+                : ''}">[{t.label}]</a
+            >
+          {/each}
+        </nav>
+      {/if}
     </div>
     {#if teacher}
       <div class="text-xs text-right space-y-1">
@@ -76,7 +116,19 @@
         // sandbox account: classes here show a TEST banner to anyone who joins. use your school account for real classes.
       </p>
     {/if}
-    <ClassManager />
+    {#if view === 'classes'}
+      <ClassManager />
+    {:else if view === 'lesson'}
+      <LessonBuilder />
+    {:else if view === 'teachers'}
+      {#if teacher.isAdmin}
+        <TeacherAdmin me={teacher.email} />
+      {:else}
+        <p class="text-xs text-[var(--text-muted)]">only the site admin can manage teachers.</p>
+      {/if}
+    {:else}
+      <TeachHome />
+    {/if}
   {:else if !error}
     <section class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md space-y-4 max-w-md">
       <h2 class="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">// teacher sign-in</h2>

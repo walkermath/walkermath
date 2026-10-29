@@ -6,12 +6,12 @@
 // 3. Read the ID token's claims and check issuer, audience, expiry, nonce and email_verified.
 //    The token comes straight from Google over TLS in this server-to-server call, so per OpenID
 //    Connect Core 3.1.3.7 the TLS connection stands in for signature verification. No library needed.
-// 4. The verified email must be on the TEACHER_ACCOUNTS allowlist; otherwise nothing is stored.
+// 4. The verified email must be in allowed_teachers (or be an ADMIN_EMAIL); otherwise nothing is stored.
 // 5. Upsert the teacher row, start a session, go to /teach.
 
 import { base64urlDecode, newId, safeEqual } from '../../../../src/lib/server/crypto.ts';
 import { clearCookie, readCookie, redirect } from '../../../../src/lib/server/http.ts';
-import { teacherAccounts } from '../../../../src/lib/server/accounts.ts';
+import { accountForSignIn } from '../../../../src/lib/server/accounts.ts';
 import { OAUTH_COOKIE, startTeacherSession } from '../../../../src/lib/server/sessions.ts';
 
 const GOOGLE_ISSUERS = new Set(['https://accounts.google.com', 'accounts.google.com']);
@@ -81,7 +81,7 @@ export async function onRequestGet({ request, env }) {
   }
 
   const email = claims.email.toLowerCase();
-  const account = teacherAccounts(env).get(email);
+  const account = await accountForSignIn(env, email);
   if (!account) return back('denied'); // nothing about this person is stored
 
   const displayName = typeof claims.name === 'string' ? claims.name.slice(0, 80) : '';

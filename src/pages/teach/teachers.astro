@@ -1,0 +1,13 @@
+---
+// src/pages/teach/teachers.astro
+// Static shell; the screen loads its data from /api/teach after sign-in.
+import Layout from '../../layouts/Layout.astro';
+import TeachApp from '../../components/teach/TeachApp.svelte';
+import '../../styles/global.css';
+---
+
+<Layout title="walkerMath\teach\teachers">
+  <main class="py-12">
+    <TeachApp client:only="svelte" view="teachers" />
+  </main>
+</Layout>

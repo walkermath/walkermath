@@ -4,7 +4,7 @@
 
 import { randomToken, sha256Hex } from './crypto.ts';
 import { clearCookie, readCookie, setCookie } from './http.ts';
-import { teacherAccounts } from './accounts.ts';
+import { isAdmin } from './accounts.ts';
 
 export const TEACHER_COOKIE = '__Host-wm_teacher';
 export const STUDENT_COOKIE = '__Host-wm_student';
@@ -28,6 +28,7 @@ export interface Teacher {
   boardCode: string;
   sandbox: boolean;
   timeZone: string;
+  isAdmin: boolean;
 }
 
 export interface Student {
@@ -64,26 +65,26 @@ export async function startTeacherSession(db: any, teacherId: string): Promise<s
 export async function currentTeacher(env: any, request: Request): Promise<Teacher | null> {
   const token = readCookie(request, TEACHER_COOKIE);
   if (!token || token.length > 100) return null;
+  // Joining allowed_teachers means removing someone from the list ends their sessions at once.
   const row = await env.DB.prepare(
-    `SELECT t.id, t.email, t.display_name, t.board_code, t.sandbox, t.time_zone
-       FROM teacher_sessions s JOIN teachers t ON t.id = s.teacher_id
+    `SELECT t.id, t.email, t.display_name, t.time_zone, a.board_code, a.sandbox
+       FROM teacher_sessions s
+       JOIN teachers t ON t.id = s.teacher_id
+       JOIN allowed_teachers a ON a.email = t.email
       WHERE s.token_hash = ?1 AND s.expires_at > ?2`
   )
     .bind(await sha256Hex(token), Date.now())
     .first();
   if (!row) return null;
 
-  // Still on the allowlist? Removing an email from TEACHER_ACCOUNTS ends its sessions at once.
-  const account = teacherAccounts(env).get(String(row.email).toLowerCase());
-  if (!account) return null;
-
   return {
     id: row.id,
     email: row.email,
     displayName: row.display_name,
-    boardCode: account.boardCode,
-    sandbox: account.sandbox,
-    timeZone: row.time_zone
+    boardCode: row.board_code,
+    sandbox: !!row.sandbox,
+    timeZone: row.time_zone,
+    isAdmin: isAdmin(env, row.email)
   };
 }
 
@@ -110,11 +111,12 @@ export async function currentStudent(env: any, request: Request): Promise<Studen
   const token = readCookie(request, STUDENT_COOKIE);
   if (!token || token.length > 100) return null;
   const row = await env.DB.prepare(
-    `SELECT a.id AS alias_id, a.alias, c.id AS class_id, c.name, c.period, t.board_code, t.sandbox
+    `SELECT a.id AS alias_id, a.alias, c.id AS class_id, c.name, c.period, al.board_code, al.sandbox
        FROM student_sessions s
        JOIN student_aliases a ON a.id = s.alias_id
        JOIN classes c ON c.id = a.class_id
        JOIN teachers t ON t.id = c.teacher_id
+       JOIN allowed_teachers al ON al.email = t.email
       WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND a.retired = 0 AND c.archived = 0`
   )
     .bind(await sha256Hex(token), Date.now())
