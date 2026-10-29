@@ -7,6 +7,10 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit"
   },
+  "allowScripts": {
+    "esbuild": true,
+    "workerd": true
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.0.0",
     "typescript": "^6.0.3",
