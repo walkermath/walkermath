@@ -1,10 +1,11 @@
 <!-- src/components/teach/NotesEditor.svelte -->
-<!-- A Notes module's content: a freeform blackboard (nothing to prepare) or pre-written slides. -->
-<!-- Slides are Markdown with $...$ math; a line of --- splits a slide; a walkerMath note can be -->
-<!-- imported as a copy, cut into slides at its headings. Either way the finished module is a -->
-<!-- slideshow students can reopen after it ends. -->
+<!-- A Notes module's content: an ordered list of pages. A page with Markdown is a pre-written slide; -->
+<!-- a page with none is a blank blackboard. In class the teacher can write on any page and add a blank -->
+<!-- board after the current one. Markdown has $...$ math; a line of --- splits a slide; a walkerMath -->
+<!-- note can be imported as a copy, cut into slides at its headings. The finished module is a -->
+<!-- slideshow students can reopen, including pages the teacher skipped. -->
 <script lang="ts">
-  import { LIMITS, NOTES_MODES, newSlide, type NotesMode } from '../../lib/lesson/modules.ts';
+  import { LIMITS, newSlide } from '../../lib/lesson/modules.ts';
   import { noteToSlides, splitSlides } from '../../lib/lesson/slides.ts';
   import SlideView from './SlideView.svelte';
   import { btn, field, heading, label } from './ui.ts';
@@ -16,7 +17,7 @@
     config = $bindable(),
     notes = []
   }: {
-    config: { mode: NotesMode; slides: EditableSlide[] };
+    config: { slides: EditableSlide[] };
     notes?: Note[];
   } = $props();
 
@@ -44,21 +45,18 @@
     return [...groups];
   });
 
-  function setMode(mode: NotesMode) {
-    config.mode = mode;
-    if (mode === 'prewritten' && config.slides.length === 0) config.slides.push(newSlide());
-  }
-
-  function addSlide() {
+  /** Adds a blank page after the open one. Left blank it's a blackboard; type into it and it's a slide. */
+  function addPage() {
     if (full) return;
-    config.slides.splice(current + 1, 0, newSlide());
-    current += 1;
+    config.slides.splice(si + 1, 0, newSlide());
+    current = si + 1;
   }
 
   function removeSlide(i: number) {
     const s = config.slides[i];
-    if (s.markdown.trim() && !confirm(`Delete slide ${i + 1}?`)) return;
+    if (s.markdown.trim() && !confirm(`Delete page ${i + 1}?`)) return;
     config.slides.splice(i, 1);
+    if (config.slides.length === 0) config.slides.push(newSlide()); // a module is never empty: one blank board
     if (current >= config.slides.length) current = Math.max(0, config.slides.length - 1);
   }
 
@@ -80,7 +78,7 @@
     config.slides[i].markdown = keep[0];
     config.slides.splice(i + 1, 0, ...keep.slice(1).map((md) => newSlide(md)));
     message = `split into ${keep.length} slides.`;
-    if (keep.length < parts.length) error = `Only ${LIMITS.slides} slides fit in one module; the rest was left out.`;
+    if (keep.length < parts.length) error = `Only ${LIMITS.slides} pages fit in one module; the rest was left out.`;
   }
 
   async function importNote() {
@@ -108,7 +106,7 @@
         current += 1;
       }
       message = `added ${added.length} slide${added.length === 1 ? '' : 's'} from "${note.title}". it's your copy: edit freely.`;
-      if (cut) error = `Only ${LIMITS.slides} slides fit in one module; the rest of the note was left out.`;
+      if (cut) error = `Only ${LIMITS.slides} pages fit in one module; the rest of the note was left out.`;
       importId = '';
     } catch (e) {
       error = (e as Error).message;
@@ -123,45 +121,20 @@
       .find((l) => l.trim())
       ?.replace(/^#+\s*/, '')
       .replace(/[*_`]/g, '')
-      .slice(0, 40) || '(blank)';
+      .slice(0, 40) || 'blackboard';
 </script>
 
 <div class="space-y-4">
-  <div class="grid gap-2 sm:grid-cols-2">
-    {#each NOTES_MODES as m}
-      <label
-        class="flex gap-2 p-3 rounded border-2 cursor-pointer {config.mode === m.id
-          ? 'border-[var(--accent)]'
-          : 'border-[var(--line)] hover:border-[var(--accent)]'}"
-      >
-        <input type="radio" name="notes-mode" class="mt-0.5" checked={config.mode === m.id} onchange={() => setMode(m.id)} />
-        <span>
-          <span class="font-bold text-sm">{m.label}</span>
-          <span class="block {label}">
-            {m.id === 'freeform'
-              ? 'write live with a pen; [next board] gives you a clean one.'
-              : 'Markdown and $math$ you prepare, or a walkerMath note.'}
-          </span>
-        </span>
-      </label>
-    {/each}
-  </div>
-
-  {#if config.mode === 'freeform'}
-    <p class="{label} leading-relaxed">
-      // nothing to prepare. in class you get a blackboard (pen color, thickness, eraser) that every student sees live.
-      when a board is full, [next board] starts a clean one. students can flip back to earlier boards and tap the
-      live board to rejoin. when the module ends, the boards stay with the lesson as a slideshow.
-    </p>
-    {#if config.slides.length}
-      <p class={label}>// your {config.slides.length} pre-written slide{config.slides.length === 1 ? ' is' : 's are'} kept in case you switch back.</p>
-    {/if}
-  {:else}
+  <p class="{label} leading-relaxed">
+    // every Notes module starts as one blank blackboard: in class you write on it with a pen (color, thickness, eraser) and
+    students watch live. add slides if you want some of it prepared. you can write on slides too, and add a blackboard
+    after any page. students keep every page afterwards, including ones you skipped.
+  </p>
     {#if error}<p class="p-2 rounded border border-[var(--bad)] text-[var(--bad)]">{error}</p>{/if}
     {#if message}<p class="text-[var(--ok)]">{message}</p>{/if}
 
     <div class="flex flex-wrap items-center gap-2">
-      <button type="button" class={btn} onclick={addSlide} disabled={full}>[+ slide]</button>
+      <button type="button" class={btn} onclick={addPage} disabled={full} title="Blank = a blackboard. Type into it to make it a slide.">[+ page]</button>
       <span class={label}>or import</span>
       <select class="{field} w-auto max-w-xs p-1" bind:value={importId} disabled={full || importing}>
         <option value="">a walkerMath note...</option>
@@ -173,7 +146,7 @@
       </select>
       <button type="button" class={btn} onclick={importNote} disabled={!importId || importing || full}>{importing ? '[importing...]' : '[import]'}</button>
       <span class="flex-1"></span>
-      <span class={label}>{config.slides.length}/{LIMITS.slides} slides · {Math.round(total / 1000)}k/{LIMITS.markdown / 1000}k</span>
+      <span class={label}>{config.slides.length}/{LIMITS.slides} pages · {Math.round(total / 1000)}k/{LIMITS.markdown / 1000}k</span>
     </div>
     {#if notes.length === 0}
       <p class={label}>// the notes list didn't load (it's built with the site: run npm run build).</p>
@@ -182,7 +155,7 @@
     {#if slide}
       <div class="grid gap-4 lg:grid-cols-[11rem_minmax(0,1fr)] items-start">
         <!-- slide strip -->
-        <ol class="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible lg:max-h-[42rem] lg:overflow-y-auto pb-1" aria-label="Slides">
+        <ol class="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible lg:max-h-[42rem] lg:overflow-y-auto pb-1" aria-label="Pages">
           {#each config.slides as s, i (s.id)}
             <li class="shrink-0 w-40">
               <button
@@ -191,7 +164,7 @@
                   ? 'border-[var(--accent)]'
                   : 'border-transparent hover:border-[var(--line)]'}"
                 onclick={() => (current = i)}
-                aria-label="Slide {i + 1}: {firstLine(s.markdown)}"
+                aria-label="Page {i + 1}: {firstLine(s.markdown)}"
               >
                 <div class="pointer-events-none"><SlideView markdown={s.markdown} onoverflow={(o) => (tall[s.id] = o)} /></div>
                 <div class="flex justify-between {label} mt-1">
@@ -206,7 +179,7 @@
         <!-- the open slide -->
         <div class="space-y-2 min-w-0">
           <div class="flex flex-wrap items-center gap-2">
-            <span class={heading}>// slide {si + 1}</span>
+            <span class={heading}>// page {si + 1}{slide && !slide.markdown.trim() ? ' · blackboard' : ''}</span>
             <span class="flex-1"></span>
             <button type="button" class="hover:text-[var(--accent)] cursor-pointer disabled:opacity-40" onclick={() => moveSlide(si, si - 1)} disabled={si === 0}>[up]</button>
             <button type="button" class="hover:text-[var(--accent)] cursor-pointer disabled:opacity-40" onclick={() => moveSlide(si, si + 1)} disabled={si === config.slides.length - 1}>[down]</button>
@@ -224,14 +197,13 @@
             <div class="space-y-1">
               <SlideView markdown={slide.markdown} />
               {#if tall[slide.id]}
-                <p class="text-[var(--warn)]">// too tall for one page: students will scroll. split it with a line of --- to keep it on screen.</p>
+                <p class="text-[var(--warn)]">// too tall for one page: it won't fit when you write on it. split it with a line of ---.</p>
               {:else}
-                <p class={label}>// what students see. a line of --- starts a new slide.</p>
+                <p class={label}>// {slide && !slide.markdown.trim() ? 'blank: a blackboard to write on in class. type to make it a slide.' : 'what students see, and what you write over in class.'} a line of --- starts a new page.</p>
               {/if}
             </div>
           </div>
         </div>
       </div>
     {/if}
-  {/if}
 </div>

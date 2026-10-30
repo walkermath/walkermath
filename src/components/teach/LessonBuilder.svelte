@@ -7,7 +7,6 @@
   import { api, ApiError } from '../../lib/api.ts';
   import {
     ACTIVITY_CATEGORIES,
-    NOTES_MODES,
     PROMPT_CATEGORIES,
     LIMITS,
     MODULE_TYPES,
@@ -17,7 +16,6 @@
     newModule,
     promptCategory,
     type ActivityCategory,
-    type NotesMode,
     type Link,
     type PromptCategory,
     type LessonModule,
@@ -56,12 +54,11 @@
   /** 'lesson' (the main tile) or a module id. */
   let selected = $state<string>('lesson');
   /** The "+" tile's menu: closed, the module types, or one type's second step (its kinds). */
-  let adding = $state<null | 'type' | 'prompt' | 'notes' | 'activity'>(null);
+  let adding = $state<null | 'type' | 'prompt' | 'activity'>(null);
 
   /** Types whose "+" menu has a second step, and what it asks. */
   const SUBMENU: Partial<Record<ModuleType, { ask: string; items: readonly { id: string; label: string }[] }>> = {
     prompt: { ask: 'what are the questions for?', items: PROMPT_CATEGORIES },
-    notes: { ask: 'how will you give the notes?', items: NOTES_MODES },
     activity: { ask: 'what kind of activity?', items: ACTIVITY_CATEGORIES }
   };
   const submenu = $derived(adding && adding !== 'type' ? SUBMENU[adding] : undefined);
@@ -152,7 +149,7 @@
   /* ---------- tiles ---------- */
 
   /** New modules go before a locked final module (the exit ticket), so it stays last. */
-  function addModule(type: ModuleType, category?: ActivityCategory | PromptCategory | NotesMode) {
+  function addModule(type: ModuleType, category?: ActivityCategory | PromptCategory) {
     if (!lesson) return;
     const m = newModule(type, category);
     lesson.modules.splice(insertIndex(lesson.modules), 0, m);
@@ -239,9 +236,9 @@
       : m.type === 'prompt' && (m.config as any).category !== 'other'
         ? promptCategory((m.config as any).category).label
         : m.type === 'notes'
-          ? (m.config as any).mode === 'prewritten'
-            ? `Notes · ${(m.config as any).slides.length} slide${(m.config as any).slides.length === 1 ? '' : 's'}`
-            : 'Notes · blackboard'
+          ? (m.config as any).slides.length === 1 && !(m.config as any).slides[0].markdown.trim()
+            ? 'Notes · blackboard'
+            : `Notes · ${(m.config as any).slides.length} pages`
           : MODULE_TYPES[m.type].label;
 
   const tile = 'rounded-md border-2 bg-[var(--bg-surface)] transition-colors';
@@ -463,7 +460,7 @@
                   <button
                     type="button"
                     class="flex justify-between w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer"
-                    onclick={() => (SUBMENU[t] ? (adding = t as 'prompt' | 'notes' | 'activity') : addModule(t))}
+                    onclick={() => (SUBMENU[t] ? (adding = t as 'prompt' | 'activity') : addModule(t))}
                   >
                     <span><span class="font-mono {label} mr-1">{TYPE_MARK[t]}</span>{MODULE_TYPES[t].label}</span>
                     {#if SUBMENU[t]}<span class={label}>&gt;</span>{/if}
