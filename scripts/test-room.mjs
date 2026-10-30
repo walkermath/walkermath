@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-const { startRoom, apply, timeUp, moduleLeftMs, nextAlarm, parseCommand, moduleStarts } = await import('../src/lib/lesson/room.ts');
+const { startRoom, apply, timeUp, moduleLeftMs, nextAlarm, parseCommand, moduleStarts, finishesAt, upgradeState } = await import('../src/lib/lesson/room.ts');
 
 const M = (title, plannedSec, pacing = 'flex', extra = {}) => ({
   id: title, type: 'activity', title, plannedSec, pacing, minSec: null, onTimeUp: 'auto', collects: false, config: {}, ...extra
@@ -40,9 +40,11 @@ test("the spec's worked example: notes run one minute long", () => {
   let s = startRoom('run', ms, T0 + min(48), T0);
   s = apply(s, ms, { type: 'next' }, T0 + min(6)); // bellwork on time
   assert.equal(s.index, 1);
+  s = apply(s, ms, { type: 'adjust', seconds: 60 }, T0 + min(15)); // +1 min on the notes
   s = apply(s, ms, { type: 'next' }, T0 + min(17)); // notes took 11
   assert.deepEqual(s.plan, [360, 660, 345, 405, 870, 240]);
-  assert.equal(s.version, 3);
+  assert.deepEqual(s.took.slice(0, 2), [360, 660]);
+  assert.equal(s.version, 4);
 });
 
 test('auto modules move on at time up; hold modules and the last module wait', () => {
@@ -115,6 +117,75 @@ test('[next] on the last module stops it and waits for [end]', () => {
   assert.equal(s.holding, false, '+1 min reopens a waiting module');
 });
 
+test('leaving a module part-way keeps its time; coming back resumes it', () => {
+  const ms = lesson();
+  let s = startRoom('run', ms, T0 + min(48), T0);
+  s = apply(s, ms, { type: 'next' }, T0 + min(2)); // bellwork left with 4:00 to go
+  assert.equal(s.done[0], false);
+  assert.equal(s.spent[0], 120);
+  s = apply(s, ms, { type: 'back' }, T0 + min(5));
+  assert.equal(s.index, 0);
+  assert.equal(s.holding, false);
+  assert.equal(moduleLeftMs(s, T0 + min(5)), min(4), 'picks up where it left off (locked keeps its time)');
+  assert.equal(nextAlarm(s), T0 + min(9));
+});
+
+test('a module whose time ran out stays at 0:00 and waits when you come back', () => {
+  const ms = lesson();
+  let s = startRoom('run', ms, T0 + min(48), T0);
+  s = timeUp(s, ms, T0 + min(6)); // bellwork runs out, moves on by itself
+  assert.equal(s.index, 1);
+  assert.equal(s.done[0], true);
+  s = apply(s, ms, { type: 'back' }, T0 + min(8));
+  assert.equal(s.index, 0);
+  assert.equal(s.holding, true, 'waits instead of moving on again');
+  assert.equal(moduleLeftMs(s, T0 + min(9)), 0);
+  assert.equal(nextAlarm(s), null);
+  assert.equal(timeUp(s, ms, T0 + min(9)), s);
+  // Moving forward again: the notes resume with the time they had left, re-fitted to the bell.
+  s = apply(s, ms, { type: 'next' }, T0 + min(9));
+  assert.equal(s.index, 1);
+  assert.equal(s.holding, false);
+  assert.equal(s.spent[1], 120);
+  assert.ok(moduleLeftMs(s, T0 + min(9)) > 0);
+  assert.equal(finishesAt(s, T0 + min(9)), T0 + min(48), 'the flex modules absorb the detour');
+  // +1 min on a finished module gives it a minute from now.
+  s = apply(s, ms, { type: 'jump', index: 0 }, T0 + min(10));
+  s = apply(s, ms, { type: 'adjust', seconds: 60 }, T0 + min(11));
+  assert.equal(s.holding, false);
+  assert.equal(s.done[0], false);
+  assert.equal(moduleLeftMs(s, T0 + min(11)), min(1));
+});
+
+test('skipping ahead and back: finished modules take no time in the schedule', () => {
+  const ms = lesson();
+  let s = startRoom('run', ms, T0 + min(48), T0);
+  s = timeUp(s, ms, T0 + min(6));
+  s = apply(s, ms, { type: 'jump', index: 3 }, T0 + min(7));
+  s = timeUp(s, ms, T0 + min(7) + s.plan[3] * 1000);
+  assert.equal(s.done[3], true);
+  s = apply(s, ms, { type: 'jump', index: 1 }, T0 + min(20));
+  const starts = moduleStarts(s, T0 + min(20));
+  assert.equal(starts[0], null);
+  assert.equal(starts[3], null, 'done: not in the schedule');
+  assert.equal(starts[2], T0 + min(20) + s.plan[1] * 1000 - s.spent[1] * 1000);
+});
+
+test('pages are remembered per module; old rooms are upgraded', () => {
+  const ms = lesson();
+  let s = startRoom('run', ms, T0 + min(48), T0);
+  s = apply(s, ms, { type: 'next' }, T0 + min(6));
+  s = apply(s, ms, { type: 'page', page: 3 }, T0 + min(7));
+  s = apply(s, ms, { type: 'next' }, T0 + min(8));
+  s = apply(s, ms, { type: 'back' }, T0 + min(9));
+  assert.equal(s.page, 3);
+  const old = { ...s, index: 2 };
+  delete old.spent; delete old.took; delete old.done; delete old.pages;
+  const up = upgradeState(old);
+  assert.deepEqual(up.done, [true, true, false, false, false, false]);
+  assert.equal(apply(old, ms, { type: 'next' }, T0 + min(10)).index, 3);
+});
+
 test('commands from the network are checked', () => {
   assert.deepEqual(parseCommand({ type: 'next', extra: 1 }), { type: 'next' });
   assert.equal(parseCommand({ type: 'adjust', seconds: '60' })?.seconds, 60);
@@ -129,6 +200,7 @@ test('module start times line up for the schedule list', () => {
   let s = startRoom('run', ms, T0 + min(48), T0);
   s = apply(s, ms, { type: 'next' }, T0 + min(6));
   const starts = moduleStarts(s, T0 + min(7));
+  assert.equal(starts[0], null);
   assert.equal(starts[1], T0 + min(6));
   assert.equal(starts[2], T0 + min(16));
   assert.equal(starts[5], T0 + min(44));

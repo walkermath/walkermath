@@ -3,14 +3,18 @@
 // (live-worker/) stores the state and calls apply() for every teacher command and every alarm;
 // the control panel and the student view use the clock helpers to draw countdowns.
 //
-// The room stores timestamps, never a ticking counter: the current module started at
-// `moduleStartedAt` and is planned to last `plan[index]` seconds. Devices compute the time left
-// themselves from `serverNow`, so nothing is broadcast once a second.
+// The room stores timestamps, never a ticking counter. Every module has its own clock: it is
+// given `plan[i]` seconds and has used `spent[i]` of them. The current module's clock has been
+// running since `moduleStartedAt`; devices compute the time left themselves from `serverNow`, so
+// nothing is broadcast once a second.
 //
-// The bell doesn't move (`endsAt`), so every change re-plans the modules still to come with
+// Leaving a module part-way keeps its time left for when you come back. A module whose time ran
+// out (`done`) stays at 0:00: coming back to it waits for the teacher instead of moving on again.
+//
+// The bell doesn't move (`endsAt`), so every change re-plans the unfinished modules with
 // replan(): overruns and early finishes are absorbed by the flex modules.
 
-import { replan, type Pacing } from './pacing.ts';
+import { floorOf, replan, type Pacing } from './pacing.ts';
 import { STEP_SEC } from './time.ts';
 
 /** A module as the room knows it: timing plus the student-safe config (no answer keys, no notes). */
@@ -33,8 +37,17 @@ export interface RoomState {
   status: 'live' | 'ended';
   /** The current module. */
   index: number;
-  /** Seconds per module: what done modules actually took, what the rest are planned to take now. */
+  /** Seconds each module is given (re-planned for flex modules that haven't finished). */
   plan: number[];
+  /** Seconds of its clock each module has used (never more than its plan), not counting the current stretch. */
+  spent: number[];
+  /** Seconds each module was actually on screen, for records (time spent holding at 0:00 included). */
+  took: number[];
+  /** The module's time ran out: its clock stays at 0:00. */
+  done: boolean[];
+  /** The Notes page each module was left on. */
+  pages: number[];
+  /** When the current module's clock last started (or, while holding, when it started holding). */
   moduleStartedAt: number;
   /** Set while paused; the clock is frozen at this moment. */
   pausedAt: number | null;
@@ -66,29 +79,68 @@ const step = (s: number) => Math.max(STEP_SEC, Math.round(s / STEP_SEC) * STEP_S
 
 /* ---------------- the clock ---------------- */
 
-/** When the current module is due to end (epoch ms), counting any pause. */
-export function moduleEndsAt(s: RoomState): number {
-  return s.moduleStartedAt + (s.plan[s.index] ?? 0) * 1000;
+/** Rooms started before per-module clocks existed: fill in the new fields. */
+export function upgradeState(s: RoomState): RoomState {
+  if (Array.isArray(s.spent) && Array.isArray(s.took) && Array.isArray(s.done) && Array.isArray(s.pages)) return s;
+  const n = s.plan.length;
+  return {
+    ...s,
+    spent: Array.from({ length: n }, (_, i) => (i < s.index ? s.plan[i] : 0)),
+    took: Array.from({ length: n }, (_, i) => (i < s.index ? s.plan[i] : 0)),
+    done: Array.from({ length: n }, (_, i) => i < s.index),
+    pages: Array.from({ length: n }, () => 0)
+  };
 }
 
-/** Milliseconds left in the current module at `now` (negative once it has run over). */
+/** Seconds of module `i`'s clock still to run, for a module that isn't the current one. */
+export const leftSec = (s: RoomState, i: number) => (s.done[i] ? 0 : Math.max(0, (s.plan[i] ?? 0) - (s.spent[i] ?? 0)));
+
+/** When the current module's clock reaches 0:00 (epoch ms), not counting a pause. */
+export function moduleEndsAt(s: RoomState): number {
+  if (s.holding) return s.moduleStartedAt;
+  return s.moduleStartedAt + ((s.plan[s.index] ?? 0) - (s.spent[s.index] ?? 0)) * 1000;
+}
+
+/** Milliseconds left in the current module at `now` (0 while it waits at 0:00). */
 export function moduleLeftMs(s: RoomState, now: number): number {
+  if (s.holding) return 0;
   return moduleEndsAt(s) - (s.pausedAt ?? now);
 }
+
+/** How long the current module has waited at 0:00 for the teacher. */
+export const holdingMs = (s: RoomState, now: number) => (s.holding ? Math.max(0, now - s.moduleStartedAt) : 0);
 
 /** Milliseconds until the bell at `now`. */
 export const lessonLeftMs = (s: RoomState, now: number) => s.endsAt - now;
 
-/** Planned start time of every module (epoch ms), from where the lesson stands now. */
-export function moduleStarts(s: RoomState, now: number): number[] {
-  const starts: number[] = [];
-  let t = s.startedAt;
-  for (let i = 0; i < s.plan.length; i++) {
-    if (i === s.index) t = s.moduleStartedAt + (s.pausedAt ? now - s.pausedAt : 0);
-    starts.push(t);
-    t += s.plan[i] * 1000;
+/** When the current module's clock will reach 0:00, counting a pause still going on. */
+function currentEnd(s: RoomState, now: number): number {
+  if (s.holding) return now;
+  return moduleEndsAt(s) + (s.pausedAt ? now - s.pausedAt : 0);
+}
+
+/**
+ * When each module is due to start from where the lesson stands now (epoch ms). The current
+ * module shows when its clock started; finished modules and ones before the current one are null.
+ */
+export function moduleStarts(s: RoomState, now: number): (number | null)[] {
+  const starts: (number | null)[] = s.plan.map(() => null);
+  if (s.status !== 'live') return starts;
+  starts[s.index] = s.holding ? null : currentEnd(s, now) - ((s.plan[s.index] ?? 0) * 1000);
+  let t = currentEnd(s, now);
+  for (let i = s.index + 1; i < s.plan.length; i++) {
+    if (s.done[i]) continue;
+    starts[i] = t;
+    t += leftSec(s, i) * 1000;
   }
   return starts;
+}
+
+/** When the lesson is due to finish: the current module, then every unfinished one after it. */
+export function finishesAt(s: RoomState, now: number): number {
+  let t = currentEnd(s, now);
+  for (let i = s.index + 1; i < s.plan.length; i++) t += leftSec(s, i) * 1000;
+  return t;
 }
 
 /** When the room should next wake itself (the current module's end), or null. */
@@ -99,37 +151,74 @@ export function nextAlarm(s: RoomState): number | null {
 
 /* ---------------- re-planning ---------------- */
 
-/** Re-fits modules after the current one into the time between its end and the bell. */
-function replanRest(s: RoomState, modules: RoomModule[], now: number): RoomState {
-  const from = s.index + 1;
-  if (from >= modules.length) return { ...s, overSec: Math.max(0, sec(moduleEndsAt(s) - s.endsAt)), spareSec: 0 };
-  const pausedFor = s.pausedAt ? now - s.pausedAt : 0;
-  const budget = sec(s.endsAt - (moduleEndsAt(s) + pausedFor));
-  const r = replan(modules, from, budget);
-  return { ...s, plan: [...s.plan.slice(0, from), ...r.seconds], overSec: r.overSec, spareSec: r.spareSec };
+/**
+ * Re-fits the unfinished modules from `from` on (except `skip`) into `budgetSec`. A module that
+ * was left part-way keeps what it has used; only the time it has left is re-planned.
+ */
+function fit(s: RoomState, modules: RoomModule[], from: number, budgetSec: number, skip = -1): RoomState {
+  const todo: number[] = [];
+  for (let j = Math.max(0, from); j < modules.length; j++) if (j !== skip && !s.done[j]) todo.push(j);
+  if (!todo.length) return { ...s, overSec: Math.max(0, -budgetSec), spareSec: 0 };
+  const parts = todo.map((j) => {
+    const m = modules[j];
+    const used = s.spent[j] ?? 0;
+    return {
+      plannedSec: Math.max(STEP_SEC, m.plannedSec - used),
+      pacing: m.pacing,
+      minSec: Math.max(STEP_SEC, floorOf(m) - used)
+    };
+  });
+  const r = replan(parts, 0, budgetSec);
+  const plan = [...s.plan];
+  todo.forEach((j, k) => (plan[j] = (s.spent[j] ?? 0) + r.seconds[k]));
+  return { ...s, plan, overSec: r.overSec, spareSec: r.spareSec };
 }
 
-/** Starts module `index` now, with the rest of the lesson (it included) re-fitted to the bell. */
+/** Re-fits every unfinished module after the current one into the time between its end and the bell. */
+function replanRest(s: RoomState, modules: RoomModule[], now: number): RoomState {
+  return fit(s, modules, s.index + 1, sec(s.endsAt - currentEnd(s, now)));
+}
+
+/** Makes module `index` current now, with every unfinished module after it re-fitted to the bell. */
 function enter(s: RoomState, modules: RoomModule[], index: number, now: number): RoomState {
-  const r = replan(modules, index, sec(s.endsAt - now));
-  return {
+  const base: RoomState = {
     ...s,
     index,
-    plan: [...s.plan.slice(0, index), ...r.seconds],
     moduleStartedAt: now,
     pausedAt: null,
-    holding: false,
-    page: 0,
-    overSec: r.overSec,
-    spareSec: r.spareSec
+    // A module whose time already ran out stays at 0:00 and waits.
+    holding: !!s.done[index],
+    page: s.pages[index] ?? 0
   };
+  if (base.holding) return replanRest(base, modules, now);
+  return fit(base, modules, index, sec(s.endsAt - now));
 }
 
-/** Records how long the current module really took (whole seconds), before moving away from it. */
+/** Stops the current module's clock, keeping the time it used (and the page it was on). */
 function close(s: RoomState, now: number): RoomState {
-  const plan = [...s.plan];
-  plan[s.index] = Math.max(0, sec((s.pausedAt ?? now) - s.moduleStartedAt));
-  return { ...s, plan };
+  const i = s.index;
+  const ran = sec((s.pausedAt ?? now) - s.moduleStartedAt);
+  const spent = [...s.spent];
+  const took = [...s.took];
+  const done = [...s.done];
+  const pages = [...s.pages];
+  took[i] = (took[i] ?? 0) + ran;
+  pages[i] = s.page;
+  if (!s.holding) {
+    spent[i] = Math.min(s.plan[i] ?? 0, (spent[i] ?? 0) + ran);
+    if (moduleLeftMs(s, now) <= 500) done[i] = true;
+  }
+  return { ...s, spent, took, done, pages, pausedAt: null };
+}
+
+/** The current module's time is up: its clock stops at 0:00 and it waits for the teacher. */
+function hold(s: RoomState, now: number): RoomState {
+  const c = close(s, now);
+  const spent = [...c.spent];
+  const done = [...c.done];
+  spent[s.index] = s.plan[s.index] ?? 0;
+  done[s.index] = true;
+  return { ...c, spent, done, holding: true, moduleStartedAt: now };
 }
 
 /* ---------------- start and apply ---------------- */
@@ -141,6 +230,10 @@ export function startRoom(runId: string, modules: RoomModule[], endsAt: number, 
     status: 'live',
     index: 0,
     plan: modules.map((m) => m.plannedSec),
+    spent: modules.map(() => 0),
+    took: modules.map(() => 0),
+    done: modules.map(() => false),
+    pages: modules.map(() => 0),
     moduleStartedAt: now,
     pausedAt: null,
     holding: false,
@@ -183,14 +276,15 @@ export function parseCommand(v: any): Command | null {
  */
 export function apply(s: RoomState, modules: RoomModule[], cmd: Command, now: number): RoomState {
   if (s.status === 'ended') return s;
+  s = upgradeState(s);
   const last = modules.length - 1;
   let next: RoomState = s;
 
   switch (cmd.type) {
     case 'next':
       if (s.index >= last) {
-        // The last module: there's nothing to move to, so just stop its clock and wait for [end].
-        next = s.holding ? s : { ...close(s, now), holding: true, pausedAt: null };
+        // The last module: there's nothing to move to, so its clock stops and it waits for [end].
+        if (!s.holding) next = hold(s, now);
       } else {
         next = enter(close(s, now), modules, s.index + 1, now);
       }
@@ -202,13 +296,24 @@ export function apply(s: RoomState, modules: RoomModule[], cmd: Command, now: nu
       if (cmd.index >= 0 && cmd.index <= last && cmd.index !== s.index) next = enter(close(s, now), modules, cmd.index, now);
       break;
     case 'adjust': {
-      // More (or less) time on the current module; never below what has already passed + 15 s.
-      const elapsed = sec((s.pausedAt ?? now) - s.moduleStartedAt);
+      const i = s.index;
       const plan = [...s.plan];
-      const wanted = step(plan[s.index] + cmd.seconds);
-      plan[s.index] = Math.max(wanted, Math.ceil((elapsed + STEP_SEC) / STEP_SEC) * STEP_SEC);
-      if (plan[s.index] === s.plan[s.index] && !s.holding) break;
-      next = replanRest({ ...s, plan, holding: false }, modules, now);
+      if (s.holding) {
+        // Waiting at 0:00: +1 min gives it a minute from now; taking time away does nothing.
+        if (cmd.seconds <= 0) break;
+        const c = close(s, now);
+        const done = [...c.done];
+        done[i] = false;
+        plan[i] = (c.spent[i] ?? 0) + step(cmd.seconds);
+        next = replanRest({ ...c, plan, done, holding: false, moduleStartedAt: now }, modules, now);
+        break;
+      }
+      // More (or less) time on the current module; never below what has already passed + 15 s.
+      const used = (s.spent[i] ?? 0) + sec((s.pausedAt ?? now) - s.moduleStartedAt);
+      const wanted = step(plan[i] + cmd.seconds);
+      plan[i] = Math.max(wanted, Math.ceil((used + STEP_SEC) / STEP_SEC) * STEP_SEC);
+      if (plan[i] === s.plan[i]) break;
+      next = replanRest({ ...s, plan }, modules, now);
       break;
     }
     case 'pause':
@@ -232,11 +337,16 @@ export function apply(s: RoomState, modules: RoomModule[], cmd: Command, now: nu
 
 /**
  * The alarm: the current module's time is up. Modules set to 'auto' move on; 'hold' modules (and
- * the last module) stop and wait for the teacher. Early or stale alarms change nothing.
+ * the last module) stop at 0:00 and wait for the teacher. Early or stale alarms change nothing.
  */
 export function timeUp(s: RoomState, modules: RoomModule[], now: number): RoomState {
-  if (s.status !== 'live' || s.pausedAt !== null || s.holding || moduleLeftMs(s, now) > 500) return s;
+  if (s.status !== 'live' || s.pausedAt !== null || s.holding) return s;
+  s = upgradeState(s);
+  if (moduleLeftMs(s, now) > 500) return s;
+  const held = hold(s, now);
   const m = modules[s.index];
-  if (s.index < modules.length - 1 && m?.onTimeUp !== 'hold') return apply(s, modules, { type: 'next' }, now);
-  return { ...s, holding: true, version: s.version + 1 };
+  if (s.index < modules.length - 1 && m?.onTimeUp !== 'hold') {
+    return { ...enter(held, modules, s.index + 1, now), version: s.version + 1 };
+  }
+  return { ...held, version: s.version + 1 };
 }

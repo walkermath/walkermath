@@ -19,6 +19,7 @@ import {
   parseCommand,
   startRoom,
   timeUp,
+  upgradeState,
   type RoomModule,
   type RoomState
 } from '../../src/lib/lesson/room.ts';
@@ -27,11 +28,16 @@ export interface Env {}
 
 /** Hard cap on sockets per room; a class is ~35, so this only stops abuse. */
 const MAX_SOCKETS = 200;
+/** A student socket that hasn't pinged for this long (lid closed, wifi gone) counts as left. */
+const STALE_MS = 70_000;
+/** A student in slow mode (polling every 3 s) counts as here while their last poll is this recent. */
+const POLL_HERE_MS = 12_000;
 /** Client messages are small JSON; anything bigger is refused. */
 const MAX_MESSAGE_CHARS = 4096;
 
 type Role = 'teacher' | 'student' | 'test';
-type Who = { role: Role; who: string; name: string };
+type Who = { role: Role; who: string; name: string; at?: number };
+type RosterRow = { aliasId: string; alias: string; devices: number; here: boolean };
 type Link = { label: string; url: string };
 /** What every device gets once: the title, the lesson's Resources links and the student-safe modules. */
 type Lesson = { title: string; resources: Link[]; modules: RoomModule[] };
@@ -55,6 +61,10 @@ export class LessonRoom extends DurableObject<Env> {
   /** In-memory copies; dropped when the room hibernates, then read back from storage. */
   private state: RoomState | null = null;
   private lesson: Lesson | null = null;
+  /** Every student seen in this lesson (alias id -> alias), so the roster can show who left. */
+  private seen: Map<string, string> | null = null;
+  /** Students in slow mode: alias id -> last poll (in memory; polling keeps the room awake). */
+  private polled = new Map<string, { alias: string; at: number }>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -65,7 +75,10 @@ export class LessonRoom extends DurableObject<Env> {
   /* ---------------- storage ---------------- */
 
   private async load(): Promise<{ state: RoomState; lesson: Lesson } | null> {
-    if (!this.state) this.state = (await this.ctx.storage.get<RoomState>('state')) ?? null;
+    if (!this.state) {
+      const stored = await this.ctx.storage.get<RoomState>('state');
+      this.state = stored ? upgradeState(stored) : null;
+    }
     if (this.state && !this.lesson) {
       // Modules are stored one per key: a long Notes module can be tens of KB on its own.
       const meta = await this.ctx.storage.get<{ title: string; resources?: Link[]; count: number }>('meta');
@@ -94,21 +107,68 @@ export class LessonRoom extends DurableObject<Env> {
     return JSON.stringify({ type: 'lesson', lesson });
   }
 
-  /** Who is connected, for the teacher: one row per alias, with its device count. */
-  private roster() {
-    const byAlias = new Map<string, { aliasId: string; alias: string; devices: number }>();
-    for (const ws of this.ctx.getWebSockets('student')) {
-      const a = ws.deserializeAttachment() as Who | null;
-      if (!a?.who) continue;
-      const row = byAlias.get(a.who) ?? { aliasId: a.who, alias: a.name, devices: 0 };
-      row.devices++;
-      byAlias.set(a.who, row);
-    }
-    return [...byAlias.values()].sort((x, y) => x.alias.localeCompare(y.alias));
+  private async loadSeen(): Promise<Map<string, string>> {
+    if (!this.seen) this.seen = new Map(Object.entries((await this.ctx.storage.get<Record<string, string>>('seen')) ?? {}));
+    return this.seen;
   }
 
-  private rosterMsg() {
-    return JSON.stringify({ type: 'roster', students: this.roster() });
+  /** Remembers a student the first time they turn up, so they stay on the roster (greyed) after leaving. */
+  private async markSeen(aliasId: string, alias: string) {
+    const seen = await this.loadSeen();
+    if (!aliasId || seen.get(aliasId) === alias) return;
+    seen.set(aliasId, alias);
+    await this.ctx.storage.put('seen', Object.fromEntries(seen));
+  }
+
+  /** A student socket that is still there: open and pinging. */
+  private alive(ws: WebSocket, now: number): boolean {
+    if (ws.readyState !== 1) return false; // 1 = open
+    const a = ws.deserializeAttachment() as Who | null;
+    const pinged = this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? 0;
+    return now - Math.max(pinged, a?.at ?? 0) < STALE_MS;
+  }
+
+  /**
+   * Who is here, for the teacher: one row per alias with its device count. Students who were here
+   * earlier in the lesson and have gone are listed with here: false. `closing` is a socket that is
+   * closing right now (the runtime still lists it while its close handler runs).
+   */
+  private async roster(closing?: WebSocket): Promise<RosterRow[]> {
+    const now = Date.now();
+    const rows = new Map<string, RosterRow>();
+    for (const [aliasId, alias] of await this.loadSeen()) rows.set(aliasId, { aliasId, alias, devices: 0, here: false });
+    for (const ws of this.ctx.getWebSockets('student')) {
+      if (ws === closing) continue;
+      const a = ws.deserializeAttachment() as Who | null;
+      if (!a?.who) continue;
+      if (!this.alive(ws, now)) {
+        try {
+          ws.close(1001, 'Gone quiet'); // the device will reconnect if it is still there
+        } catch {
+          // already closed
+        }
+        continue;
+      }
+      const row = rows.get(a.who) ?? { aliasId: a.who, alias: a.name, devices: 0, here: false };
+      row.devices++;
+      row.here = true;
+      rows.set(a.who, row);
+    }
+    for (const [aliasId, p] of this.polled) {
+      if (now - p.at > POLL_HERE_MS) {
+        this.polled.delete(aliasId);
+        continue;
+      }
+      const row = rows.get(aliasId) ?? { aliasId, alias: p.alias, devices: 0, here: false };
+      row.devices = Math.max(row.devices, 1);
+      row.here = true;
+      rows.set(aliasId, row);
+    }
+    return [...rows.values()].sort((x, y) => Number(y.here) - Number(x.here) || x.alias.localeCompare(y.alias));
+  }
+
+  private async rosterMsg(closing?: WebSocket) {
+    return JSON.stringify({ type: 'roster', students: await this.roster(closing) });
   }
 
   private send(ws: WebSocket, msg: string) {
@@ -155,11 +215,14 @@ export class LessonRoom extends DurableObject<Env> {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.ctx.acceptWebSocket(server, [who.role]);
-      server.serializeAttachment(who);
+      server.serializeAttachment({ ...who, at: Date.now() } satisfies Who);
       this.send(server, this.lessonMsg(loaded.lesson));
       this.send(server, this.stateMsg(loaded.state));
-      if (who.role === 'teacher') this.send(server, this.rosterMsg());
-      else this.broadcast(this.rosterMsg(), 'teacher');
+      if (who.role === 'teacher') this.send(server, await this.rosterMsg());
+      else {
+        await this.markSeen(who.who, who.name);
+        this.broadcast(await this.rosterMsg(), 'teacher');
+      }
       return new Response(null, { status: 101, webSocket: client });
     }
 
@@ -183,11 +246,20 @@ export class LessonRoom extends DurableObject<Env> {
     if (request.method === 'GET' && url.pathname === '/state') {
       const loaded = await this.load();
       if (!loaded) return json({ error: 'Not started' }, 409);
+      if (who.role === 'student' && who.who) {
+        // Slow mode: a student who polls is here. Tell the teacher when one turns up.
+        const fresh = !this.polled.has(who.who);
+        this.polled.set(who.who, { alias: who.name, at: Date.now() });
+        if (fresh) {
+          await this.markSeen(who.who, who.name);
+          this.broadcast(await this.rosterMsg(), 'teacher');
+        }
+      }
       return json({
         state: loaded.state,
         serverNow: Date.now(),
         ...(url.searchParams.get('full') === '1' ? { lesson: loaded.lesson } : {}),
-        ...(who.role === 'teacher' ? { students: this.roster() } : {})
+        ...(who.role === 'teacher' ? { students: await this.roster() } : {})
       });
     }
 
@@ -228,6 +300,11 @@ export class LessonRoom extends DurableObject<Env> {
       await this.run(data.cmd);
       return;
     }
+    // The control panel asks every few seconds, so students who went quiet or stopped polling grey out.
+    if (data?.type === 'roster' && a?.role === 'teacher') {
+      this.send(ws, await this.rosterMsg());
+      return;
+    }
     // A device that reconnected (or missed something) asks for the latest state.
     if (data?.type === 'sync') {
       const loaded = await this.load();
@@ -246,7 +323,7 @@ export class LessonRoom extends DurableObject<Env> {
       // already closed
     }
     const a = ws.deserializeAttachment() as Who | null;
-    if (a?.role === 'student') this.broadcast(this.rosterMsg(), 'teacher');
+    if (a?.role === 'student') this.broadcast(await this.rosterMsg(ws), 'teacher');
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
@@ -255,6 +332,8 @@ export class LessonRoom extends DurableObject<Env> {
     } catch {
       // already closed
     }
+    const a = ws.deserializeAttachment() as Who | null;
+    if (a?.role === 'student') this.broadcast(await this.rosterMsg(ws), 'teacher');
   }
 
   /* ---------------- the clock ---------------- */

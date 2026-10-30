@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
   import { clock12, mmss } from '../../lib/lesson/time.ts';
-  import { btnMain, heading, label, niceDate, panel, todayIso } from './ui.ts';
+  import { btn, btnMain, heading, label, niceDate, panel, todayIso } from './ui.ts';
 
   type Summary = {
     id: string;
@@ -16,6 +16,7 @@
     moduleCount: number;
     plannedSec: number;
     nextRunAt: number | null;
+    archivePrompt: boolean;
   };
   type Run = {
     id: string;
@@ -34,6 +35,8 @@
   let loaded = $state(false);
   let error = $state('');
   let busy = $state(false);
+  /** The lesson whose "archive?" prompt is open. */
+  let prompting = $state<string | null>(null);
 
   const active = $derived(lessons.filter((l) => !l.archived));
   const archived = $derived(lessons.filter((l) => l.archived));
@@ -61,6 +64,29 @@
     } catch (e) {
       error = (e as Error).message;
       busy = false;
+    }
+  }
+
+  async function archive(l: Summary) {
+    error = '';
+    try {
+      await api(`/api/teach/lessons/${l.id}`, { method: 'PATCH', body: { archived: true } });
+      l.archived = true;
+      l.archivePrompt = false;
+      prompting = null;
+    } catch (e) {
+      error = (e as Error).message;
+    }
+  }
+
+  async function dismiss(l: Summary) {
+    error = '';
+    try {
+      await api(`/api/teach/lessons/${l.id}`, { method: 'PATCH', body: { dismissArchivePrompt: true } });
+      l.archivePrompt = false;
+      prompting = null;
+    } catch (e) {
+      error = (e as Error).message;
     }
   }
 
@@ -112,12 +138,24 @@
 
     <ul class="grid gap-3 sm:grid-cols-2">
       {#each active as l (l.id)}
-        <li>
+        <li class="relative">
+          {#if l.archivePrompt}
+            <!-- Outside the link (a button can't sit inside one), laid over the card's corner. -->
+            <button
+              type="button"
+              class="absolute top-4 left-4 z-10 font-bold text-sm leading-tight text-[var(--warn)] hover:underline cursor-pointer"
+              title="Every delivery of this lesson is over"
+              aria-expanded={prompting === l.id}
+              onclick={() => (prompting = prompting === l.id ? null : l.id)}
+            >/!\</button>
+          {/if}
           <a
             href="/teach/lesson?id={l.id}"
-            class="block p-4 rounded-md border border-[var(--line)] bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-colors"
+            class="block p-4 rounded-md border bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-colors {prompting === l.id
+              ? 'border-[var(--warn)] rounded-b-none'
+              : 'border-[var(--line)]'}"
           >
-            <div class="text-sm font-bold">{l.title}</div>
+            <div class="text-sm font-bold {l.archivePrompt ? 'pl-8' : ''}">{l.title}</div>
             {#if l.topic}<div>{l.topic}</div>{/if}
             <div class={label}>
               {l.moduleCount} module{l.moduleCount === 1 ? '' : 's'} · {mmss(l.plannedSec)} of {mmss(l.durationSec)} planned
@@ -128,6 +166,15 @@
                 : `edited ${edited(l.updatedAt)}`}
             </div>
           </a>
+          {#if prompting === l.id}
+            <div class="p-3 space-y-2 rounded-b-md border border-t-0 border-[var(--warn)] bg-[var(--bg-surface)]">
+              <p>// every scheduled delivery of this lesson is over. archive it? (you can restore it any time.)</p>
+              <div class="flex gap-2">
+                <button type="button" class={btnMain} onclick={() => archive(l)}>[archive]</button>
+                <button type="button" class={btn} onclick={() => dismiss(l)}>[dismiss]</button>
+              </div>
+            </div>
+          {/if}
         </li>
       {/each}
     </ul>

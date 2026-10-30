@@ -6,7 +6,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
   import { MODULE_TYPES, type LessonModule } from '../../lib/lesson/modules.ts';
-  import { lessonLeftMs, moduleEndsAt, moduleLeftMs, moduleStarts, type Command, type RoomState } from '../../lib/lesson/room.ts';
+  import { finishesAt, holdingMs, leftSec, lessonLeftMs, moduleEndsAt, moduleLeftMs, moduleStarts, type Command, type RoomState } from '../../lib/lesson/room.ts';
   import { mmss } from '../../lib/lesson/time.ts';
   import {
     clockAt,
@@ -123,7 +123,9 @@
   const isLast = $derived(!!lesson && !!rs && rs.index === lesson.modules.length - 1);
   const modLeft = $derived(rs ? moduleLeftMs(rs, now) : 0);
   const starts = $derived(rs ? moduleStarts(rs, now) : []);
-  const plannedEnd = $derived(rs && lesson ? (starts[lesson.modules.length - 1] ?? 0) + (rs.plan.at(-1) ?? 0) * 1000 : 0);
+  const plannedEnd = $derived(rs ? finishesAt(rs, now) : 0);
+  const here = $derived(students.filter((s) => s.here));
+  const gone = $derived(students.filter((s) => !s.here));
   const pageCount = $derived(current?.type === 'notes' ? (current.config.slides ?? []).length : 0);
 
   // Keyboard: right / left arrow = next / back (ignored while typing anywhere).
@@ -206,7 +208,7 @@
                       : rs.holding
                         ? isLast
                           ? "last module: [end lesson] when you're done"
-                          : "time's up: waiting for you"
+                          : `time's up: waiting for you (${countdown(holdingMs(rs, now))})`
                         : `ends ${clockAt(moduleEndsAt(rs))}${current.onTimeUp === 'hold' ? ', then waits' : ', then moves on'}`}
                   </div>
                 </div>
@@ -268,21 +270,34 @@
             <div class={heading}>// the lesson</div>
             <ol class="space-y-1">
               {#each lesson.modules as m, i (m.id)}
-                <li class="flex items-center gap-2 px-2 py-1 rounded {i === rs.index ? 'border border-[var(--accent)]' : ''} {i < rs.index ? label : ''}">
-                  <span class="w-14 tabular-nums {label}">{clockAt(starts[i])}</span>
+                {@const done = rs.done?.[i]}
+                {@const left = leftSec(rs, i)}
+                {@const partly = !done && i !== rs.index && (rs.spent?.[i] ?? 0) > 0}
+                <li class="flex items-center gap-2 px-2 py-1 rounded {i === rs.index ? 'border border-[var(--accent)]' : ''} {done && i !== rs.index ? label : ''}">
+                  <span class="w-14 tabular-nums {label}">{starts[i] != null ? clockAt(starts[i]!) : ''}</span>
+                  <span class="w-3 text-center" aria-hidden="true">{done ? '✓' : partly ? '‖' : ''}</span>
                   <span class="flex-1 truncate">{m.title}</span>
-                  <span class="tabular-nums {i > rs.index && rs.plan[i] !== m.plannedSec ? 'text-[var(--accent)]' : ''}" title={i > rs.index ? `planned ${mmss(m.plannedSec)}` : ''}>
-                    {mmss(rs.plan[i])}
-                  </span>
+                  {#if done}
+                    <span class="tabular-nums {label}" title="time used">{mmss(rs.took?.[i] ?? rs.plan[i])}</span>
+                  {:else if partly}
+                    <span class="tabular-nums" title="paused part-way: {mmss(rs.spent[i])} used of {mmss(rs.plan[i])}">{mmss(left)} left</span>
+                  {:else}
+                    <span class="tabular-nums {i > rs.index && rs.plan[i] !== m.plannedSec ? 'text-[var(--accent)]' : ''}" title={i !== rs.index ? `planned ${mmss(m.plannedSec)}` : ''}>
+                      {mmss(rs.plan[i])}
+                    </span>
+                  {/if}
                   {#if m.pacing === 'locked'}<span class={label} title="Locked: keeps its time">L</span>{/if}
-                  {#if i > rs.index}
-                    <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => confirm(`Jump to "${m.title}" now?`) && send({ type: 'jump', index: i })} title="Jump here">[go]</button>
+                  {#if i !== rs.index}
+                    <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => confirm(`Go to "${m.title}" now?`) && send({ type: 'jump', index: i })} title="Go here">[go]</button>
+                  {:else}
+                    <span class="w-[2.6em]"></span>
                   {/if}
                 </li>
               {/each}
             </ol>
             <div class="pt-2 border-t border-[var(--line)] space-y-1">
               <div class={label}>finishes {clockAt(plannedEnd)} · bell {clockAt(rs.endsAt)}</div>
+              <div class={label}>// ✓ time ran out (stays at 0:00) · ‖ left part-way (keeps its time)</div>
               {#if rs.overSec > 0}
                 <div class="text-[var(--warn)]">// {mmss(rs.overSec)} over: skip a module ([go]) or shorten one.</div>
               {:else if rs.spareSec > 0}
@@ -292,14 +307,17 @@
           </section>
 
           <section class="{panel} space-y-2">
-            <div class={heading}>// here now ({students.length})</div>
+            <div class={heading}>// here now ({here.length}{gone.length ? ` · ${gone.length} left` : ''})</div>
             {#if students.length === 0}
               <p class={label}>no students connected yet. they join from /class.</p>
             {:else}
               <ul class="flex flex-wrap gap-1">
                 {#each students as s (s.aliasId)}
-                  <li class="px-1.5 py-0.5 rounded border border-[var(--line)]" title="{s.devices} device{s.devices === 1 ? '' : 's'}">
-                    <span class="text-[var(--ok)]">●</span> {s.alias}
+                  <li
+                    class="px-1.5 py-0.5 rounded border border-[var(--line)] {s.here ? '' : label}"
+                    title={s.here ? `${s.devices} device${s.devices === 1 ? '' : 's'}` : 'left the lesson (closed the page or lost connection)'}
+                  >
+                    <span class={s.here ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}>{s.here ? '●' : '○'}</span> {s.alias}
                   </li>
                 {/each}
               </ul>

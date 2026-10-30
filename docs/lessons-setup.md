@@ -74,8 +74,8 @@ every PIN is keyed with it.
 
 ## 3. Database tables
 
-Six migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
-`0001`-`0003` are safe to run twice; `0004`-`0006` are not (SQLite can't add a column twice: "duplicate column
+Seven migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
+`0001`-`0003` are safe to run twice; `0004`-`0007` are not (SQLite can't add a column twice: "duplicate column
 name" just means it's already applied).
 
 ```sh
@@ -87,6 +87,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0003_l
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0004_lesson_topic.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0005_lesson_extras.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0006_lesson_scores.sql
+npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0007_archive_prompt.sql
 
 # production (once each, when you're ready to deploy): the same commands with --remote
 ```
@@ -100,6 +101,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0006_l
 | `0004_lesson_topic.sql` | a topic for each lesson |
 | `0005_lesson_extras.sql` | standards and the Resources links on each lesson |
 | `0006_lesson_scores.sql` | Coliseum games in lessons: kept scores, each class's leaderboard switch (off), students' leaderboard names |
+| `0007_archive_prompt.sql` | remembers when you dismissed a lesson's "archive?" prompt |
 
 ## 4. Try it locally
 
@@ -169,11 +171,17 @@ Live lessons (the Phase 4a gate; both terminals running):
    lesson re-plans; changed times turn blue), **[pause]** / **[resume]**, and **[go]** on a later
    module. The student screen follows within a moment. Shift + arrow keys = next / back; on a Notes
    module the arrow keys turn pages, and students can flip back through pages and return to live.
-4. Let a module's time run out: it moves on by itself (or waits, if set to "hold"). The last module
+   Leave a module part-way and come back: its clock picks up where it stopped (‖ in the list).
+4. Let a module's time run out: it moves on by itself (or waits, if set to "hold"). Go back to it:
+   it stays at 0:00 and waits (✓ in the list); **[+1 min]** gives it a minute. The last module
    always waits for **[end lesson]**.
-5. Close the student window and reopen /class/live: it reconnects and catches up. Stop terminal 1
-   for a few seconds: both screens show "reconnecting" and recover when it's back.
+5. Close the student window: within a few seconds the alias turns grey with a red ○ under "here
+   now" (a Chromebook that just sleeps takes up to about a minute). Reopen /class/live: it reconnects,
+   turns green and catches up. Stop terminal 1 for a few seconds: both screens show "reconnecting"
+   and recover when it's back.
 6. **[end lesson]**: students see "the lesson is over"; the delivery can't be started again.
+7. Once every delivery of a lesson is over, its tile on [lessons] gets a **/!\\**: click it to
+   archive the lesson or dismiss the prompt (it comes back after the next delivery finishes).
 
 Answering questions (and auto-collecting at time-up) is Phase 4b; the blackboard is 4c.
 

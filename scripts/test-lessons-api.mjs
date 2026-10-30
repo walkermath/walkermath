@@ -538,6 +538,8 @@ console.log('lessons');
   assert.equal(summary.moduleCount, 6);
   assert.equal(summary.topic, 'Two-step equations');
   assert.equal(summary.nextRunAt, run1.scheduledStart);
+  assert.equal(summary.archivePrompt, false, 'deliveries still to come');
+  assert.equal(list.lessons.find((l) => l.id === copy.id).archivePrompt, false, 'never scheduled: no prompt');
   ok('teach home lists upcoming deliveries and lesson summaries');
 
   const moved = await body(await call(runOne, 'PATCH', L(`/api/teach/lessons/${lesson.id}/runs/${run1.id}`, { method: 'PATCH', body: { classId: cls.id, date: tomorrow, startTime: '09:55', endTime: '10:44' } }), { lessonId: lesson.id, runId: run1.id }, teachMw));
@@ -546,7 +548,14 @@ console.log('lessons');
   assert.equal(left.runs.length, 1);
   ok('a delivery can be moved and removed');
 
-  await env.DB.prepare("UPDATE lesson_runs SET status = 'ended' WHERE lesson_id = ?1").bind(lesson.id).run();
+  await env.DB.prepare("UPDATE lesson_runs SET status = 'ended', ended_at = ?2 WHERE lesson_id = ?1").bind(lesson.id, Date.now() - 1000).run();
+  const promptOf = async () => (await body(await call(lessonsIdx, 'GET', L('/api/teach/lessons'), {}, teachMw))).lessons.find((l) => l.id === lesson.id).archivePrompt;
+  assert.equal(await promptOf(), true, 'every delivery over: offer to archive');
+  assert.equal((await call(lessonOne, 'PATCH', L(`/api/teach/lessons/${lesson.id}`, { method: 'PATCH', body: { dismissArchivePrompt: true } }), { lessonId: lesson.id }, teachMw)).status, 200);
+  assert.equal(await promptOf(), false, 'dismissed');
+  await env.DB.prepare('UPDATE lessons SET archive_prompt_dismissed_at = ?2 WHERE id = ?1').bind(lesson.id, Date.now() - 5000).run();
+  assert.equal(await promptOf(), true, 'a delivery that finished after the dismissal brings it back');
+  ok('the archive prompt shows once every delivery is over, and [dismiss] hides it until the next one finishes');
   assert.equal((await call(runOne, 'DELETE', L(`/api/teach/lessons/${lesson.id}/runs/${r2.run.id}`, { method: 'DELETE' }), { lessonId: lesson.id, runId: r2.run.id }, teachMw)).status, 400);
   assert.equal((await call(lessonOne, 'DELETE', L(`/api/teach/lessons/${lesson.id}`, { method: 'DELETE' }), { lessonId: lesson.id }, teachMw)).status, 400);
   const arch = await body(await call(lessonOne, 'PATCH', L(`/api/teach/lessons/${lesson.id}`, { method: 'PATCH', body: { archived: true } }), { lessonId: lesson.id }, teachMw));

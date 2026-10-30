@@ -31,6 +31,8 @@ export interface LessonSummary {
   moduleCount: number;
   plannedSec: number;
   nextRunAt: number | null;
+  /** Every delivery is over (and you haven't dismissed the prompt since the last one): offer to archive. */
+  archivePrompt: boolean;
 }
 
 export interface Lesson extends LessonFields {
@@ -111,7 +113,12 @@ export async function listLessons(db: any, teacherId: string, now = Date.now()):
               (SELECT COUNT(*) FROM lesson_modules m WHERE m.lesson_id = l.id) AS module_count,
               (SELECT COALESCE(SUM(planned_sec), 0) FROM lesson_modules m WHERE m.lesson_id = l.id) AS planned_sec,
               (SELECT MIN(scheduled_start) FROM lesson_runs r
-                WHERE r.lesson_id = l.id AND r.status != 'ended' AND r.scheduled_end > ?2) AS next_run_at
+                WHERE r.lesson_id = l.id AND r.status != 'ended' AND r.scheduled_end > ?2) AS next_run_at,
+              (SELECT COUNT(*) FROM lesson_runs r WHERE r.lesson_id = l.id) AS run_count,
+              (SELECT COUNT(*) FROM lesson_runs r
+                WHERE r.lesson_id = l.id AND (r.status = 'live' OR (r.status = 'scheduled' AND r.scheduled_end > ?2))) AS open_runs,
+              (SELECT MAX(COALESCE(r.ended_at, r.scheduled_end)) FROM lesson_runs r WHERE r.lesson_id = l.id) AS last_done_at,
+              l.archive_prompt_dismissed_at
          FROM lessons l WHERE l.teacher_id = ?1
         ORDER BY l.archived, l.updated_at DESC`
     )
@@ -126,7 +133,12 @@ export async function listLessons(db: any, teacherId: string, now = Date.now()):
     updatedAt: r.updated_at,
     moduleCount: Number(r.module_count),
     plannedSec: Number(r.planned_sec),
-    nextRunAt: r.next_run_at ?? null
+    nextRunAt: r.next_run_at ?? null,
+    archivePrompt:
+      !r.archived &&
+      Number(r.run_count) > 0 &&
+      Number(r.open_runs) === 0 &&
+      (r.archive_prompt_dismissed_at == null || r.archive_prompt_dismissed_at < Number(r.last_done_at))
   }));
 }
 
@@ -249,6 +261,11 @@ export async function saveLesson(
     ...moduleInserts(db, lesson.id, modules)
   ]);
   return now;
+}
+
+/** [dismiss] on the archive prompt: hidden until another delivery of this lesson finishes. */
+export async function dismissArchivePrompt(db: any, lessonId: string, now = Date.now()) {
+  await db.prepare('UPDATE lessons SET archive_prompt_dismissed_at = ?2 WHERE id = ?1').bind(lessonId, now).run();
 }
 
 export async function setLessonArchived(db: any, lessonId: string, archived: boolean) {

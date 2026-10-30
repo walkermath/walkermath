@@ -15,7 +15,8 @@ import type { RoomModule, RoomState, Command } from './room.ts';
 
 export type Link = { label: string; url: string };
 export type LiveLesson = { title: string; resources: Link[]; modules: RoomModule[] };
-export type RosterRow = { aliasId: string; alias: string; devices: number };
+/** `here: false` = was in this lesson earlier and has left (closed the tab, lost wifi). */
+export type RosterRow = { aliasId: string; alias: string; devices: number; here: boolean };
 export type Transport = 'connecting' | 'socket' | 'polling' | 'offline';
 
 export interface LiveHandlers {
@@ -36,6 +37,8 @@ export interface LiveConnection {
 
 const POLL_MS = 3000;
 const PING_MS = 25_000;
+/** The control panel refreshes who's here this often (students who go quiet send nothing). */
+const ROSTER_MS = 10_000;
 
 export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
   const base = `/api/live/${encodeURIComponent(runId)}`;
@@ -47,6 +50,7 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
   let polling = false;
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
   let pingTimer: ReturnType<typeof setInterval> | null = null;
+  let rosterTimer: ReturnType<typeof setInterval> | null = null;
   let lastVersion = 0;
 
   const clock = (serverNow: unknown) => {
@@ -116,6 +120,7 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
       delay = 500;
       transport('socket');
       pingTimer = setInterval(() => ws?.readyState === WebSocket.OPEN && ws.send('ping'), PING_MS);
+      if (h.onRoster) rosterTimer = setInterval(() => ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify({ type: 'roster' })), ROSTER_MS);
     };
     ws.onmessage = (e) => {
       if (e.data === 'pong') return;
@@ -131,7 +136,8 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
     };
     ws.onclose = () => {
       if (pingTimer) clearInterval(pingTimer);
-      pingTimer = null;
+      if (rosterTimer) clearInterval(rosterTimer);
+      pingTimer = rosterTimer = null;
       ws = null;
       if (closed) return;
       if (!opened) failures++;
@@ -155,6 +161,7 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
     closed = true;
     if (pollTimer) clearTimeout(pollTimer);
     if (pingTimer) clearInterval(pingTimer);
+    if (rosterTimer) clearInterval(rosterTimer);
     try {
       ws?.close(1000, 'done');
     } catch {

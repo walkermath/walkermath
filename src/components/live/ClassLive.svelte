@@ -84,9 +84,9 @@
               <li
                 class="flex items-center gap-2 px-2 py-1.5 rounded {i === rs.index
                   ? 'border-2 border-dashed border-[var(--accent)]'
-                  : 'border-2 border-transparent'} {i < rs.index ? label : ''}"
+                  : 'border-2 border-transparent'} {rs.done?.[i] && i !== rs.index ? label : ''}"
               >
-                <span class="w-4 text-center" aria-hidden="true">{i < rs.index ? '✓' : i === rs.index ? '>' : ''}</span>
+                <span class="w-4 text-center" aria-hidden="true">{i === rs.index ? '>' : rs.done?.[i] ? '✓' : ''}</span>
                 <span class="flex-1 truncate {i === rs.index ? 'font-bold' : ''}">{m.title}</span>
                 {#if i === rs.index}
                   <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
