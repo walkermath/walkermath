@@ -71,6 +71,12 @@
     if (c?.bellEnd) draft.endTime = c.bellEnd;
   }
 
+  /** True when a delivery's times differ from its class's usual bell times (assembly, early release...). */
+  const isSpecial = (r: { classId: string; startTime: string; endTime: string }) => {
+    const c = classes.find((x) => x.id === r.classId);
+    return !!c && !!c.bellStart && !!c.bellEnd && (c.bellStart !== r.startTime || c.bellEnd !== r.endTime);
+  };
+
   const windowSec = (d: { startTime: string; endTime: string }) =>
     d.startTime && d.endTime ? (clockMinutes(d.endTime) - clockMinutes(d.startTime)) * 60 : 0;
 
@@ -156,6 +162,14 @@
         <button type="submit" class={btnMain} disabled={busy}>[save]</button>
         <button type="button" class={btn} onclick={() => (editing = null)}>[cancel]</button>
       </div>
+      {#if isSpecial(draft)}
+        {@const c = classes.find((x) => x.id === draft.classId)}
+        <p class="sm:col-span-5 {label}">
+          // usual bell for this class: {c?.bellStart && clock12(c.bellStart)} - {c?.bellEnd && clock12(c.bellEnd)}.
+          this day only: the class's own times don't change.
+          <button type="button" class="underline hover:text-[var(--accent)] cursor-pointer" onclick={() => pickClass(draft.classId)}>[reset to usual]</button>
+        </p>
+      {/if}
       {#if windowSec(draft) > 0 && windowSec(draft) < durationSec}
         <p class="sm:col-span-5 text-[var(--warn)]">
           // {mmss(windowSec(draft))} between start and bell, but the lesson is {mmss(durationSec)}: the flex modules will be squeezed.
@@ -178,6 +192,9 @@
             <span class="font-bold text-sm w-40">{r.period} · {r.className}</span>
             <span class="w-28">{niceDate(r.date)}</span>
             <span class={label}>{clock12(r.startTime)} - {clock12(r.endTime)}</span>
+            {#if isSpecial(r)}
+              <span class="text-[var(--accent)]" title="Different from this class's usual bell times">special schedule</span>
+            {/if}
             {#if windowSec(r) < durationSec}
               <span class="text-[var(--warn)]" title="Shorter than the lesson's planned duration">short window</span>
             {/if}
