@@ -1,7 +1,7 @@
 <!-- src/components/class/ClassJoin.svelte -->
 <!-- /class: students join with the class code, then their alias + PIN card (once per device). -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
   import { PIN_LENGTH } from '../../lib/classroom.ts';
 
@@ -17,6 +17,30 @@
   let pin = $state('');
   let error = $state('');
   let busy = $state(false);
+
+  /* Live lessons for this class: checked every few seconds while signed in, so the join button
+     appears when the teacher starts. */
+  let live = $state<{ id: string; lessonTitle: string }[]>([]);
+  let liveTimer: ReturnType<typeof setInterval> | null = null;
+  async function checkLive() {
+    if (!student) return;
+    try {
+      live = (await api<{ runs: { id: string; lessonTitle: string }[] }>('/api/class/live')).runs;
+    } catch {
+      // try again on the next tick
+    }
+  }
+  $effect(() => {
+    if (student && !liveTimer) {
+      checkLive();
+      liveTimer = setInterval(checkLive, 5000);
+    } else if (!student && liveTimer) {
+      clearInterval(liveTimer);
+      liveTimer = null;
+      live = [];
+    }
+  });
+  onDestroy(() => liveTimer && clearInterval(liveTimer));
 
   onMount(async () => {
     try {
@@ -99,7 +123,15 @@
         <div class="text-2xl font-black break-all">{student.alias}</div>
         <div class="text-sm text-[var(--text-muted)]">{student.period} · {student.className}</div>
       </div>
-      <p class="text-sm">No live lesson right now. When your teacher starts one, it will show up here.</p>
+      {#if live.length}
+        <div class="space-y-2">
+          {#each live as r (r.id)}
+            <a href="/class/live?run={r.id}" class="{btnMain} block text-center">[join live lesson: {r.lessonTitle}]</a>
+          {/each}
+        </div>
+      {:else}
+        <p class="text-sm">No live lesson right now. When your teacher starts one, it will show up here.</p>
+      {/if}
     </section>
     <p class="text-xs text-[var(--text-muted)]">
       not you?

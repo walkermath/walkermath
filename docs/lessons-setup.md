@@ -103,12 +103,21 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0006_l
 
 ## 4. Try it locally
 
+Two terminals from Phase 4 on: the live room (a separate Worker) and the site.
+
 ```sh
+# terminal 1: the live room (leave it running)
+cd live-worker
+npm install        # first time only
+npx wrangler dev
+
+# terminal 2: the site
 npm run build
 npx wrangler pages dev dist
 ```
 
-(The live Worker isn't needed yet; run it too if you also want `/live-test`.)
+`wrangler pages dev` finds the room Worker from terminal 1 by name (`walkermath-live`). Without it,
+everything works except live lessons, which say "the live room is not available".
 
 Teachers and classes:
 
@@ -149,8 +158,28 @@ The slide renderer needs packages added to `package.json` (`unified`, `remark-*`
 including the new `rehype-sanitize`): run `npm install` once and commit the updated
 `package-lock.json`, or the Cloudflare build will fail.
 
+Live lessons (the Phase 4a gate; both terminals running):
+
+1. Schedule a delivery for **today** (lesson tile > when), with the bell a few minutes from now. On
+   [lessons], "coming up" shows **[start]**: it opens the control panel. Click **[start lesson
+   now]**: the lesson is fitted to the time left before the bell.
+2. In a private window, sign in as a student at /class: a **[join live lesson]** button appears
+   within a few seconds. Join. The control panel's "here now" lists the alias.
+3. On the control panel try **[next]**, **[<- back]**, **[+1 min]** / **[-1 min]** (the rest of the
+   lesson re-plans; changed times turn blue), **[pause]** / **[resume]**, and **[go]** on a later
+   module. The student screen follows within a moment. Shift + arrow keys = next / back; on a Notes
+   module the arrow keys turn pages, and students can flip back through pages and return to live.
+4. Let a module's time run out: it moves on by itself (or waits, if set to "hold"). The last module
+   always waits for **[end lesson]**.
+5. Close the student window and reopen /class/live: it reconnects and catches up. Stop terminal 1
+   for a few seconds: both screens show "reconnecting" and recover when it's back.
+6. **[end lesson]**: students see "the lesson is over"; the delivery can't be started again.
+
+Answering questions (and auto-collecting at time-up) is Phase 4b; the blackboard is 4c.
+
 Tests (no install needed): `npm run test:lessons` (API, against a stand-in database),
-`npm run test:pacing` (the pacing engine) and `npm run test:slides` (cutting notes into slides).
+`npm run test:pacing` (the pacing engine), `npm run test:slides` (cutting notes into slides) and
+`npm run test:room` (the live room's clock and commands).
 
 ## What's stored
 

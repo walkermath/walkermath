@@ -96,6 +96,44 @@ const upcoming = await load('functions/api/teach/runs.js');
 const boardNameR = await load('functions/api/class/board-name.js');
 const scoreR = await load('functions/api/class/score.js');
 const publicBoard = await load('functions/api/leaderboard.js');
+const startR = await load('functions/api/teach/runs/[runId]/start.js');
+const endR = await load('functions/api/teach/runs/[runId]/end.js');
+const liveR = await load('functions/api/live/[runId].js');
+const classLive = await load('functions/api/class/live.js');
+
+/* ---------- a stand-in for the LessonRoom Durable Object (same state machine, no sockets) ---------- */
+const room = await load('src/lib/lesson/room.ts');
+const rooms = new Map();
+const roomCalls = [];
+env.LESSON_ROOM = {
+  idFromName: (name) => name,
+  get: (id) => ({
+    async fetch(url, init = {}) {
+      const u = new URL(url);
+      const h = new Headers(init.headers);
+      roomCalls.push({ id, path: u.pathname, role: h.get('X-Role'), who: h.get('X-Who'), name: h.get('X-Name'), upgrade: h.get('Upgrade') });
+      let r = rooms.get(id);
+      if (h.get('Upgrade')) return new Response('socket', { status: 200 });
+      if (u.pathname === '/init') {
+        if (!r) {
+          const b = JSON.parse(init.body);
+          r = { lesson: { title: b.title, resources: b.resources, modules: b.modules }, state: room.startRoom(b.runId, b.modules, b.endsAt, Date.now()) };
+          rooms.set(id, r);
+        }
+        return Response.json({ state: r.state, serverNow: Date.now() });
+      }
+      if (!r) return Response.json({ error: 'Not started' }, { status: 409 });
+      if (u.pathname === '/state') return Response.json({ state: r.state, ...(u.searchParams.get('full') ? { lesson: r.lesson } : {}) });
+      if (u.pathname === '/cmd') {
+        if (h.get('X-Role') !== 'teacher') return Response.json({ error: 'Forbidden' }, { status: 403 });
+        const c = room.parseCommand(JSON.parse(init.body).cmd);
+        if (c) r.state = room.apply(r.state, r.lesson.modules, c, Date.now());
+        return Response.json({ state: r.state });
+      }
+      return new Response('Not found', { status: 404 });
+    }
+  })
+};
 const { isValidAlias } = await load('src/lib/pseudonym.ts');
 
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -519,6 +557,68 @@ console.log('lessons');
   assert.equal((await call(lessonOne, 'DELETE', L(`/api/teach/lessons/${copy.id}`, { method: 'DELETE' }), { lessonId: copy.id }, teachMw)).status, 200);
   assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM lesson_modules WHERE lesson_id = ?1').bind(copy.id).first()).n, 0);
   ok('deleting an untaught lesson removes its modules');
+}
+
+console.log('live lessons');
+{
+  const a = aliases[6];
+  const sc = cookieOf(await call(signin, 'POST', req('/api/class/signin', { method: 'POST', body: { passcode: cls.passcode, alias: a.alias, pin: a.pin } }), {}, classMw), '__Host-wm_student');
+  const S = (path, opts = {}) => req(path, { cookie: sc, ...opts });
+
+  // A lesson with an answer key and a private note, scheduled for tomorrow.
+  let l = (await body(await call(lessonsIdx, 'POST', T('/api/teach/lessons', { method: 'POST', body: { title: 'Live test' } }), {}, teachMw))).lesson;
+  l.modules[0].config.questions = [{ id: crypto.randomUUID(), kind: 'number', text: '2 + 2?', choices: [], answer: '4' }];
+  l.modules[0].teacherNotes = 'watch row 3';
+  l = (await body(await call(lessonOne, 'PUT', T(`/api/teach/lessons/${l.id}`, { method: 'PUT', body: { ...l, baseUpdatedAt: l.updatedAt } }), { lessonId: l.id }, teachMw))).lesson;
+  const day = new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 10);
+  const made = await call(runsIdx, 'POST', T(`/api/teach/lessons/${l.id}/runs`, { method: 'POST', body: { classId: cls.id, date: day, startTime: '13:00', endTime: '13:50' } }), { lessonId: l.id }, teachMw);
+  assert.equal(made.status, 201, JSON.stringify(await made.clone().json()));
+  const run = (await body(made)).runs.find((r) => r.date === day);
+
+  assert.equal((await call(liveR, 'GET', S(`/api/live/${run.id}`), { runId: run.id })).status, 404, 'students cannot see a run before it starts');
+  assert.equal((await call(liveR, 'GET', T(`/api/live/${run.id}`), { runId: run.id })).status, 409, 'the teacher is told it has not started');
+  const other = await signInTeacher('brett@example.com', 'g-2');
+  assert.equal((await call(startR, 'POST', req(`/api/teach/runs/${run.id}/start`, { method: 'POST', body: {}, cookie: other.session }), { runId: run.id }, teachMw)).status, 404);
+  const started = await call(startR, 'POST', T(`/api/teach/runs/${run.id}/start`, { method: 'POST', body: {} }), { runId: run.id }, teachMw);
+  assert.equal(started.status, 200);
+  assert.equal((await body(started)).state.index, 0);
+  const row = env.DB.sql.prepare('SELECT status, started_at, snapshot_json FROM lesson_runs WHERE id = ?').get(run.id);
+  assert.equal(row.status, 'live');
+  assert.ok(row.started_at);
+  assert.ok(JSON.parse(row.snapshot_json).modules.length === 2, 'the lesson is copied into the run');
+  assert.equal((await call(startR, 'POST', T(`/api/teach/runs/${run.id}/start`, { method: 'POST', body: {} }), { runId: run.id }, teachMw)).status, 200, 'reopening is fine');
+  ok('the teacher starts a delivery: it goes live, and the lesson is copied into the run');
+
+  const listed = (await body(await call(classLive, 'GET', S('/api/class/live'), {}, classMw))).runs;
+  assert.deepEqual(listed, [{ id: run.id, lessonTitle: 'Live test' }]);
+  const view = await body(await call(liveR, 'GET', S(`/api/live/${run.id}?full=1`), { runId: run.id }));
+  assert.equal(view.lesson.modules.length, 2);
+  const seen = JSON.stringify(view.lesson);
+  assert.ok(seen.includes('2 + 2?'));
+  assert.ok(!seen.includes('"4"') && !seen.includes('answer') && !seen.includes('watch row 3'), 'no answer keys or private notes in the room');
+  ok('students of the class see the live lesson, without answer keys or private notes');
+
+  assert.equal((await call(liveR, 'GET', req(`/api/live/${run.id}`), { runId: run.id })).status, 404, 'anonymous');
+  assert.equal((await call(liveR, 'GET', req(`/api/live/${run.id}`, { cookie: other.session }), { runId: run.id })).status, 404, 'another teacher');
+  assert.equal((await call(liveR, 'POST', S(`/api/live/${run.id}`, { method: 'POST', body: { cmd: { type: 'next' } } }), { runId: run.id })).status, 404, 'students cannot drive');
+  const evil = await call(liveR, 'GET', S(`/api/live/${run.id}`, { headers: { Upgrade: 'websocket', Origin: 'https://evil.example' } }), { runId: run.id });
+  assert.equal(evil.status, 403, 'no WebSocket from another site');
+  roomCalls.length = 0;
+  await call(liveR, 'GET', S(`/api/live/${run.id}`, { headers: { Upgrade: 'websocket', Origin: ORIGIN } }), { runId: run.id });
+  assert.deepEqual(roomCalls.map((c) => [c.role, c.who, c.name, c.upgrade]), [['student', env.DB.sql.prepare('SELECT id FROM student_aliases WHERE alias = ?').get(a.alias).id, a.alias, 'websocket']]);
+  ok("only the class's students and its teacher reach the room; the room is told who, never sent cookies");
+
+  const moved = await body(await call(liveR, 'POST', T(`/api/live/${run.id}`, { method: 'POST', body: { cmd: { type: 'next' } } }), { runId: run.id }));
+  assert.equal(moved.state.index, 1);
+  ok('the teacher drives the lesson through the room');
+
+  assert.equal((await call(endR, 'POST', T(`/api/teach/runs/${run.id}/end`, { method: 'POST', body: {} }), { runId: run.id }, teachMw)).status, 200);
+  assert.equal(env.DB.sql.prepare('SELECT status FROM lesson_runs WHERE id = ?').get(run.id).status, 'ended');
+  assert.equal(rooms.get(`run:${run.id}`).state.status, 'ended');
+  assert.deepEqual((await body(await call(classLive, 'GET', S('/api/class/live'), {}, classMw))).runs, []);
+  assert.equal((await call(liveR, 'GET', S(`/api/live/${run.id}`), { runId: run.id })).status, 404, 'students leave an ended lesson');
+  assert.equal((await call(startR, 'POST', T(`/api/teach/runs/${run.id}/start`, { method: 'POST', body: {} }), { runId: run.id }, teachMw)).status, 409);
+  ok('ending stops the room and the run; it cannot be restarted');
 }
 
 console.log('coliseum in lessons');

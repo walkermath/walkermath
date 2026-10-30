@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
   import { clock12, mmss } from '../../lib/lesson/time.ts';
-  import { btnMain, heading, label, niceDate, panel } from './ui.ts';
+  import { btnMain, heading, label, niceDate, panel, todayIso } from './ui.ts';
 
   type Summary = {
     id: string;
@@ -86,11 +86,17 @@
             <span class="w-36 shrink-0 {label}">{clock12(r.startTime)} - {clock12(r.endTime)}</span>
             <span class="w-40 shrink-0">{r.period} · {r.className}</span>
             <a href="/teach/lesson?id={r.lessonId}" class="font-bold text-sm hover:text-[var(--accent)]">{r.lessonTitle}</a>
-            {#if r.status === 'live'}<span class="text-[var(--ok)] font-bold">LIVE</span>{/if}
+            <span class="flex-1"></span>
+            {#if r.status === 'live'}
+              <a href="/teach/live?run={r.id}" class="{btnMain}">[LIVE: open control panel]</a>
+            {:else if r.date === todayIso()}
+              <a href="/teach/live?run={r.id}" class="{btnMain}">[start]</a>
+            {:else}
+              <a href="/teach/live?run={r.id}" class="hover:text-[var(--accent)] {label}">[start early]</a>
+            {/if}
           </li>
         {/each}
       </ul>
-      <p class={label}>// starting a lesson live comes in the next phase.</p>
     {/if}
   </section>
 

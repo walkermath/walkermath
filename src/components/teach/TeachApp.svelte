@@ -7,8 +7,9 @@
   import TeachHome from './TeachHome.svelte';
   import LessonBuilder from './LessonBuilder.svelte';
   import TeacherAdmin from './TeacherAdmin.svelte';
+  import TeachLive from '../live/TeachLive.svelte';
 
-  type View = 'home' | 'classes' | 'lesson' | 'teachers';
+  type View = 'home' | 'classes' | 'lesson' | 'live' | 'teachers';
   type Teacher = {
     email: string;
     displayName: string;
@@ -82,7 +83,7 @@
           {#each TABS.filter((t) => !t.admin || teacher?.isAdmin) as t}
             <a
               href={t.href}
-              class="hover:text-[var(--accent)] transition-colors {view === t.view || (view === 'lesson' && t.view === 'home')
+              class="hover:text-[var(--accent)] transition-colors {view === t.view || ((view === 'lesson' || view === 'live') && t.view === 'home')
                 ? 'text-[var(--accent)] font-bold'
                 : ''}">[{t.label}]</a
             >
@@ -120,6 +121,8 @@
       <ClassManager />
     {:else if view === 'lesson'}
       <LessonBuilder />
+    {:else if view === 'live'}
+      <TeachLive />
     {:else if view === 'teachers'}
       {#if teacher.isAdmin}
         <TeacherAdmin me={teacher.email} />

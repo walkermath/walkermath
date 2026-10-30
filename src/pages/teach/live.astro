@@ -1,0 +1,13 @@
+---
+// src/pages/teach/live.astro
+// The live control panel for one delivery (?run=). Static shell; the screen talks to the room.
+import Layout from '../../layouts/Layout.astro';
+import TeachApp from '../../components/teach/TeachApp.svelte';
+import '../../styles/global.css';
+---
+
+<Layout title="walkerMath\teach\live" wide>
+  <main class="py-12">
+    <TeachApp client:only="svelte" view="live" />
+  </main>
+</Layout>

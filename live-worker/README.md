@@ -34,7 +34,16 @@ npx wrangler pages dev dist
 `wrangler pages dev` reads the `LESSON_ROOM` binding from the root `wrangler.toml` and connects to
 the Worker started in terminal 1. Open http://localhost:8788/live-test.
 
-## Phase 1 (current)
+## What it does
 
-Right now the room only echoes messages for `/live-test`, the page that checks whether WebSockets
-get through the school network. It falls back to polling if they don't.
+Each delivery gets its own room (`run:<runId>`). The room stores the lesson's student-safe modules
+and its state, applies the teacher's commands (next, back, +/-1 min, pause, pages, end), and sets an
+alarm for the current module's end. The state machine is `src/lib/lesson/room.ts` in the site repo
+(tested by `npm run test:room`); this Worker imports it, so `wrangler dev` / `deploy` must run from
+inside the site repo.
+
+The room named `live-test` still answers `/live-test`, the page that checks whether WebSockets get
+through the school network.
+
+Redeploy this Worker (`npx wrangler deploy`) whenever `room.ts`, `pacing.ts` or `LessonRoom.ts`
+changes.
