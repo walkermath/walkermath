@@ -14,9 +14,10 @@
     bellStart: string | null;
     bellEnd: string | null;
     archived: boolean;
+    leaderboardPosting: boolean;
     activeAliases?: number;
   };
-  type Alias = { id: string; alias: string; retired: boolean; devices: number };
+  type Alias = { id: string; alias: string; retired: boolean; devices: number; boardName: string | null };
   type Card = { alias: string; pin: string };
 
   let classes = $state<Cls[]>([]);
@@ -110,6 +111,24 @@
       });
       current = c;
       syncEdit(c);
+      await loadClasses();
+    });
+
+  /** Public leaderboard posting for lesson games: off until chosen, confirmed when turned on. */
+  const setPosting = (on: boolean) =>
+    run(async () => {
+      if (!current) return;
+      if (
+        on &&
+        !confirm(
+          `Post ${current.period} ${current.name}'s Coliseum scores from lessons to the public leaderboard?\n\n` +
+            'Scores appear under a generated leaderboard name, never the lesson alias. You can turn this off any time, but scores already posted stay on the board.'
+        )
+      ) {
+        current.leaderboardPosting = false;
+        return;
+      }
+      current = (await api<{ class: Cls }>(`/api/teach/classes/${current.id}`, { method: 'PATCH', body: { leaderboardPosting: on } })).class;
       await loadClasses();
     });
 
@@ -337,6 +356,22 @@
           {/if}
           <button type="button" class={btnDanger} onclick={deleteClass} disabled={busy}>[delete]</button>
         </div>
+        <label class="flex items-start gap-2 cursor-pointer pt-2 border-t border-[var(--border-color)]">
+          <input
+            type="checkbox"
+            class="mt-0.5"
+            checked={current.leaderboardPosting}
+            disabled={busy}
+            onchange={(e) => setPosting((e.currentTarget as HTMLInputElement).checked)}
+          />
+          <span>
+            post Coliseum scores from lessons to the public leaderboard
+            <span class="block text-[var(--text-muted)]">
+              // off: scores are kept for you only. on: they also post under each student's generated leaderboard name
+              (never their lesson alias). test classes never post.
+            </span>
+          </span>
+        </label>
       </form>
 
       <!-- roster -->
@@ -372,6 +407,7 @@
                 <tr class="border-b border-[var(--border-color)]">
                   <th class="py-2 pr-3 font-normal">alias</th>
                   <th class="py-2 pr-3 font-normal">signed-in devices</th>
+                  <th class="py-2 pr-3 font-normal" title="Their public Coliseum name. Only you see this link.">leaderboard name</th>
                   <th class="py-2 font-normal"></th>
                 </tr>
               </thead>
@@ -380,6 +416,7 @@
                   <tr class="border-b border-[var(--border-color)] last:border-0">
                     <td class="py-2 pr-3 font-bold text-sm">{a.alias}</td>
                     <td class="py-2 pr-3">{a.devices}</td>
+                    <td class="py-2 pr-3 text-[var(--text-muted)]">{a.boardName ?? '-'}</td>
                     <td class="py-2 text-right whitespace-nowrap space-x-2">
                       <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => resetPin(a)} disabled={busy}>[new PIN]</button>
                       <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => setRetired(a, true)} disabled={busy}>[retire]</button>

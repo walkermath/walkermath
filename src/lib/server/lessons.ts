@@ -7,6 +7,7 @@ import {
   isActivityCategory,
   isPromptCategory,
   joinModule,
+  normalizeOrder,
   splitModule,
   upgradeNotesConfig,
   type LessonFields,
@@ -70,6 +71,7 @@ const toModule = (r: any): LessonModule => {
   if (r.type === 'notes') config = upgradeNotesConfig(config); // saved before slides existed
   // Activities saved before categories existed.
   if (r.type === 'activity' && !isActivityCategory(config.category)) config.category = 'other';
+  if (r.type === 'activity' && typeof config.coliseumId !== 'string') config.coliseumId = ''; // before Coliseum embeds
   if (r.type === 'prompt' && !isPromptCategory(config.category)) config.category = 'other';
   return {
     id: r.id,
@@ -148,7 +150,7 @@ export async function getLesson(db: any, teacherId: string, lessonId: unknown): 
     archived: !!row.archived,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    modules: results.map(toModule)
+    modules: normalizeOrder(results.map(toModule))
   };
 }
 

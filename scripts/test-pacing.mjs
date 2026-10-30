@@ -114,16 +114,31 @@ test('mm:ss helpers', () => {
   assert.equal(addToClock('09:51', 48 * 60), '10:39');
 });
 
-test('new modules go before a locked exit ticket, never ahead of the bellwork', async () => {
-  const { insertIndex, starterModules, newModule, activityCategory } = await import('../src/lib/lesson/modules.ts');
+test('bellwork stays first, exit ticket stays last; new modules go between', async () => {
+  const { insertIndex, canMove, normalizeOrder, starterModules, newModule, activityCategory } = await import('../src/lib/lesson/modules.ts');
   const lesson = starterModules();
   assert.deepEqual(lesson.map((m) => [m.title, m.plannedSec, m.pacing]), [['Bellwork', 300, 'locked'], ['Exit ticket', 240, 'locked']]);
   assert.equal(insertIndex(lesson), 1, 'between bellwork and exit ticket');
-  lesson.splice(1, 0, newModule('notes'));
-  assert.equal(insertIndex(lesson), 2, 'still before the exit ticket');
-  assert.equal(insertIndex([{ pacing: 'locked' }]), 1, 'a lone locked module: add after it');
+  lesson.splice(1, 0, newModule('notes'), newModule('activity', 'turn-talk'));
+  assert.equal(insertIndex(lesson), 3, 'still before the exit ticket');
   assert.equal(insertIndex([]), 0);
-  assert.equal(insertIndex([{ pacing: 'flex' }, { pacing: 'flex' }]), 2);
+  assert.equal(insertIndex([newModule('prompt', 'bellwork')]), 1);
+  assert.equal(insertIndex([newModule('prompt', 'exit-ticket')]), 0, 'a lone exit ticket: add before it');
+  assert.equal(insertIndex([newModule('notes'), newModule('prompt', 'check-in')]), 2, 'a check-in is not pinned');
+
+  assert.equal(canMove(lesson, 1, 2), true);
+  assert.equal(canMove(lesson, 2, 1), true);
+  assert.equal(canMove(lesson, 1, 0), false, 'nothing passes the bellwork');
+  assert.equal(canMove(lesson, 2, 3), false, 'nothing passes the exit ticket');
+  assert.equal(canMove(lesson, 0, 1), false, 'the bellwork never moves');
+  assert.equal(canMove(lesson, 3, 2), false, 'the exit ticket never moves');
+
+  const [bw, notes, act, exit] = lesson;
+  const extra = newModule('prompt', 'bellwork');
+  const fixed = normalizeOrder([notes, exit, act, extra, bw]);
+  assert.deepEqual(fixed.map((m) => m.id), [extra.id, notes.id, act.id, bw.id, exit.id], 'first bellwork found goes first');
+  assert.equal(bw.config.category, 'other', 'a second bellwork becomes a plain question set');
+
   const a = newModule('activity', 'coliseum');
   assert.equal(a.title, 'Coliseum practice');
   assert.equal(a.config.category, 'coliseum');

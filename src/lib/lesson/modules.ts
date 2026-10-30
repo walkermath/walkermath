@@ -65,11 +65,13 @@ export interface Question {
 /** What a question set is for. Picking one gives the module its starting title (and, for the two
  *  bookends, the usual locked length). */
 export const PROMPT_CATEGORIES = [
-  { id: 'bellwork', label: 'Bellwork', title: 'Bellwork', sec: 5 * 60, locked: true },
-  { id: 'check-in', label: 'Check-in', title: 'Check-in', sec: 3 * 60, locked: false },
-  { id: 'exit-ticket', label: 'Exit ticket', title: 'Exit ticket', sec: 4 * 60, locked: true },
-  { id: 'other', label: 'Other', title: 'Questions', sec: 5 * 60, locked: false }
+  { id: 'bellwork', label: 'Bellwork', title: 'Bellwork', sec: 5 * 60, locked: true, pin: 'first' },
+  { id: 'check-in', label: 'Check-in', title: 'Check-in', sec: 3 * 60, locked: false, pin: null },
+  { id: 'exit-ticket', label: 'Exit ticket', title: 'Exit ticket', sec: 4 * 60, locked: true, pin: 'last' },
+  { id: 'other', label: 'Other', title: 'Questions', sec: 5 * 60, locked: false, pin: null }
 ] as const;
+/** Categories a question set in the middle of a lesson can have (bellwork and exit ticket are pinned). */
+export const MIDDLE_PROMPT_CATEGORIES = PROMPT_CATEGORIES.filter((c) => c.pin === null);
 export type PromptCategory = (typeof PROMPT_CATEGORIES)[number]['id'];
 export const isPromptCategory = (v: unknown): v is PromptCategory => PROMPT_CATEGORIES.some((c) => c.id === v);
 export const promptCategory = (id: unknown) =>
@@ -120,7 +122,12 @@ export interface ActivityConfig {
   links: Link[];
   /** Students can tap "done". */
   doneTap: boolean;
+  /** Coliseum Practice only: the challenge shown in the module (an id from /coliseum), or ''. */
+  coliseumId: string;
 }
+
+/** A Coliseum challenge id (its file name under src/content/coliseum). */
+export const COLISEUM_ID = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 
 export interface IndependentConfig {
   instructions: string;
@@ -191,7 +198,7 @@ export const MODULE_TYPES: Record<ModuleType, ModuleTypeInfo> = {
     hint: 'instructions and links',
     defaultTitle: 'Learning activity',
     defaultSec: 7 * 60,
-    defaultConfig: (): ActivityConfig => ({ category: 'other', instructions: '', links: [], doneTap: true }),
+    defaultConfig: (): ActivityConfig => ({ category: 'other', instructions: '', links: [], doneTap: true, coliseumId: '' }),
     collects: () => false
   },
   independent: {
@@ -245,9 +252,55 @@ export function starterModules(): LessonModule[] {
  * Where a new module goes: just before the final module when that one is locked (the exit ticket
  * stays last), otherwise at the end. A lone locked module doesn't count: nothing goes before it.
  */
-export function insertIndex(modules: { pacing: Pacing }[]): number {
+/* ---------------- order: bellwork first, exit ticket last ---------------- */
+
+type Placed = { type: ModuleType; config: any };
+
+/** 'first' for a bellwork, 'last' for an exit ticket, null for everything else. */
+export function pinOf(m: Placed): 'first' | 'last' | null {
+  if (m.type !== 'prompt') return null;
+  return m.config?.category === 'bellwork' ? 'first' : m.config?.category === 'exit-ticket' ? 'last' : null;
+}
+
+/** Positions the unpinned modules may occupy: [lo, hi) (between a bellwork and an exit ticket). */
+export function freeRange(modules: Placed[]): { lo: number; hi: number } {
   const n = modules.length;
-  return n > 1 && modules[n - 1].pacing === 'locked' ? n - 1 : n;
+  const lo = n > 0 && pinOf(modules[0]) === 'first' ? 1 : 0;
+  const hi = n > lo && pinOf(modules[n - 1]) === 'last' ? n - 1 : n;
+  return { lo, hi };
+}
+
+/** Where a new module goes: after everything else, before the exit ticket. */
+export function insertIndex(modules: Placed[]): number {
+  return freeRange(modules).hi;
+}
+
+/** Whether the module at `from` may move to `to` (pinned modules never move; nothing passes them). */
+export function canMove(modules: Placed[], from: number, to: number): boolean {
+  if (from === to || pinOf(modules[from]) !== null) return false;
+  const { lo, hi } = freeRange(modules);
+  return to >= lo && to < hi;
+}
+
+/**
+ * Puts the first bellwork at the front and the first exit ticket at the end, keeping everything
+ * else in order. Any extra bellwork or exit ticket becomes a plain question set ('other').
+ * Used on every save and every load, so older lessons are fixed when they're opened.
+ */
+export function normalizeOrder<T extends Placed>(modules: T[]): T[] {
+  let first: T | null = null;
+  let last: T | null = null;
+  const middle: T[] = [];
+  for (const m of modules) {
+    const pin = pinOf(m);
+    if (pin === 'first' && !first) first = m;
+    else if (pin === 'last' && !last) last = m;
+    else {
+      if (pin) m.config.category = 'other';
+      middle.push(m);
+    }
+  }
+  return [...(first ? [first] : []), ...middle, ...(last ? [last] : [])];
 }
 
 export const newQuestion = (kind: QuestionKind = 'text'): Question => ({
@@ -379,7 +432,8 @@ function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | st
         category: isActivityCategory(c.category) ? c.category : 'other',
         instructions: cleanText(c.instructions, LIMITS.text),
         links,
-        doneTap: c.doneTap !== false
+        doneTap: c.doneTap !== false,
+        coliseumId: typeof c.coliseumId === 'string' && COLISEUM_ID.test(c.coliseumId) ? c.coliseumId : ''
       };
     }
     case 'independent': {
@@ -451,7 +505,7 @@ export function cleanModules(list: unknown): LessonModule[] | string {
     ids.add(clean.id);
     out.push(clean);
   }
-  return out;
+  return normalizeOrder(out);
 }
 
 /* ---------------- public / private split ---------------- */

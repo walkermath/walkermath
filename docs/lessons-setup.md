@@ -74,8 +74,8 @@ every PIN is keyed with it.
 
 ## 3. Database tables
 
-Five migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
-`0001`-`0003` are safe to run twice; `0004` and `0005` are not (SQLite can't add a column twice: "duplicate column
+Six migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
+`0001`-`0003` are safe to run twice; `0004`-`0006` are not (SQLite can't add a column twice: "duplicate column
 name" just means it's already applied).
 
 ```sh
@@ -85,8 +85,9 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0002_a
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0003_lessons.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0004_lesson_topic.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0005_lesson_extras.sql
+npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0006_lesson_scores.sql
 
-# production (once each, when you're ready to deploy): same four commands with --remote
+# production (once each, when you're ready to deploy): the same commands with --remote
 ```
 
 | File | Adds |
@@ -96,6 +97,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0005_l
 | `0003_lessons.sql` | lessons, their modules, scheduled deliveries (Phase 3) |
 | `0004_lesson_topic.sql` | a topic for each lesson |
 | `0005_lesson_extras.sql` | standards and the Resources links on each lesson |
+| `0006_lesson_scores.sql` | Coliseum games in lessons: kept scores, each class's leaderboard switch (off), students' leaderboard names |
 
 ## 4. Try it locally
 
@@ -133,6 +135,13 @@ Lesson builder (the Phase 3 gate):
    headings), and edit a slide: the preview beside it is what students will see. A line of `---`
    splits a slide when you click out of the box. A `!` on a thumbnail means the slide is taller than
    one page.
+
+7. Add a **Coliseum Practice** activity, pick a challenge and click [try it]. Bellwork stays first and
+   the exit ticket last: drag a tile toward either end and it won't pass them. Delete one and a dashed
+   `+ bellwork` / `+ exit ticket` slot brings it back.
+8. Under [classes], the roster has a "leaderboard name" column and the class settings have the
+   leaderboard switch (off). Lesson play itself arrives with Phase 4; until then a game opened from
+   [try it] while signed in as a student (/class) saves through the lesson path.
 
 The slide renderer needs packages added to `package.json` (`unified`, `remark-*`, `rehype-*`,
 including the new `rehype-sanitize`): run `npm install` once and commit the updated

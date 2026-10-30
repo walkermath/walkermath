@@ -14,6 +14,7 @@ const load = (p) => import(pathToFileURL(`${repo}/${p}`).href);
 function makeD1() {
   const sql = new DatabaseSync(':memory:');
   sql.exec('PRAGMA foreign_keys = ON;');
+  sql.exec(readFileSync(`${repo}/schema.sql`, 'utf8')); // the original leaderboard table
   for (const f of readdirSync(`${repo}/migrations`).filter((f) => f.endsWith('.sql')).sort()) {
     sql.exec(readFileSync(`${repo}/migrations/${f}`, 'utf8'));
   }
@@ -92,6 +93,9 @@ const lessonOne = await load('functions/api/teach/lessons/[lessonId]/index.js');
 const runsIdx = await load('functions/api/teach/lessons/[lessonId]/runs/index.js');
 const runOne = await load('functions/api/teach/lessons/[lessonId]/runs/[runId].js');
 const upcoming = await load('functions/api/teach/runs.js');
+const boardNameR = await load('functions/api/class/board-name.js');
+const scoreR = await load('functions/api/class/score.js');
+const publicBoard = await load('functions/api/leaderboard.js');
 const { isValidAlias } = await load('src/lib/pseudonym.ts');
 
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -517,6 +521,79 @@ console.log('lessons');
   ok('deleting an untaught lesson removes its modules');
 }
 
+console.log('coliseum in lessons');
+{
+  const a = aliases[5];
+  const sc = cookieOf(await call(signin, 'POST', req('/api/class/signin', { method: 'POST', body: { passcode: cls.passcode, alias: a.alias, pin: a.pin } }), {}, classMw), '__Host-wm_student');
+  assert.ok(sc);
+  const S = (path, opts = {}) => req(path, { cookie: sc, ...opts });
+  const game = { challenge_id: 'gcd-racer-60s', score: 17, duration_ms: 60000 };
+  const postScore = (extra = {}) => call(scoreR, 'POST', S('/api/class/score', { method: 'POST', body: { ...game, ...extra } }), {}, classMw);
+  const boardRows = () => env.DB.sql.prepare('SELECT * FROM leaderboard_entries').all();
+
+  assert.equal((await call(scoreR, 'POST', req('/api/class/score', { method: 'POST', body: game }), {}, classMw)).status, 401);
+  assert.equal((await postScore({ score: 'lots' })).status, 400);
+  assert.equal((await call(scoreR, 'POST', S('/api/class/score', { method: 'POST', body: game, origin: 'https://evil.example' }), {}, classMw)).status, 403);
+  ok('lesson scores need a signed-in student, a real score and this site as Origin');
+
+  assert.equal((await body(await call(classOne, 'GET', T(`/api/teach/classes/${cls.id}`), { classId: cls.id }, teachMw))).class.leaderboardPosting, false);
+  const off = await body(await call(boardNameR, 'GET', S('/api/class/board-name'), {}, classMw));
+  assert.deepEqual(off, { posting: false, name: null, fixed: false });
+  const kept = await postScore();
+  assert.equal(kept.status, 201);
+  assert.deepEqual(await body(kept), { kept: true, posted: false, name: null });
+  assert.equal(boardRows().length, 0);
+  ok('posting is off by default: the score is kept for the teacher only, no leaderboard name is made');
+
+  const on = await call(classOne, 'PATCH', T(`/api/teach/classes/${cls.id}`, { method: 'PATCH', body: { leaderboardPosting: true } }), { classId: cls.id }, teachMw);
+  assert.equal((await body(on)).class.leaderboardPosting, true);
+  const first = await body(await call(boardNameR, 'GET', S('/api/class/board-name'), {}, classMw));
+  assert.equal(first.posting, true);
+  assert.ok(isValidAlias(first.name), 'a generated name the public board accepts');
+  assert.notEqual(first.name.toLowerCase(), a.alias.toLowerCase());
+  assert.ok(!aliases.some((x) => x.alias.toLowerCase() === first.name.toLowerCase()), "nobody's lesson alias");
+  const again = await body(await call(boardNameR, 'GET', S('/api/class/board-name'), {}, classMw));
+  assert.equal(again.name, first.name, 'the name stays put');
+  const rolled = await body(await call(boardNameR, 'POST', S('/api/class/board-name', { method: 'POST', body: { reroll: true } }), {}, classMw));
+  assert.notEqual(rolled.name, first.name);
+  ok('turned on: the student gets a generated leaderboard name, separate from every lesson alias, and can reroll it');
+
+  const skipped = await body(await postScore({ post: false }));
+  assert.deepEqual(skipped, { kept: true, posted: false, name: null });
+  assert.equal(boardRows().length, 0);
+  const posted = await body(await postScore({ score: 21 }));
+  assert.deepEqual(posted, { kept: true, posted: true, name: rolled.name });
+  const rows = boardRows();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].display_name, rolled.name);
+  assert.equal(rows[0].class_period, 'P3');
+  assert.equal(rows[0].teacher, 'WALKER');
+  assert.equal(rows[0].score, 21);
+  assert.ok(!JSON.stringify(rows).includes(a.alias), 'the lesson alias never reaches the public board');
+  const locked = await call(boardNameR, 'POST', S('/api/class/board-name', { method: 'POST', body: { reroll: true } }), {}, classMw);
+  assert.equal(locked.status, 409);
+  ok('a posted score goes up under the leaderboard name (period and teacher from the session); then the name is fixed');
+
+  const roster = (await body(await call(classOne, 'GET', T(`/api/teach/classes/${cls.id}`), { classId: cls.id }, teachMw))).aliases;
+  assert.equal(roster.find((r) => r.alias === a.alias).boardName, rolled.name);
+  const mine = env.DB.sql.prepare('SELECT posted, score FROM lesson_scores WHERE alias_id = (SELECT id FROM student_aliases WHERE alias = ?) ORDER BY created_at').all(a.alias);
+  assert.deepEqual(mine.map((r) => [r.posted, r.score]), [[0, 17], [0, 17], [1, 21]]);
+  ok('the teacher sees each leaderboard name on the roster, and every lesson result (posted or not)');
+
+  // The public form still works through the shared code, and can't take over a lesson board name.
+  const pub = (name) => call(publicBoard, 'POST', req('/api/leaderboard', { method: 'POST', body: { ...game, display_name: name, class_period: 'P1', teacher: 'WALKER' } }));
+  assert.equal((await pub('VectorFoxK7M2')).status, 201);
+  assert.equal((await pub('not an alias')).status, 400);
+  assert.equal((await pub(rolled.name)).status, 400, "the public form can't post under a lesson board name");
+  assert.equal(boardRows().length, 2);
+  ok("the public form still posts device aliases (shared code), but can't use a lesson leaderboard name");
+
+  await call(classOne, 'PATCH', T(`/api/teach/classes/${cls.id}`, { method: 'PATCH', body: { leaderboardPosting: false } }), { classId: cls.id }, teachMw);
+  assert.deepEqual(await body(await postScore()), { kept: true, posted: false, name: null });
+  assert.equal(boardRows().length, 2);
+  ok('turning posting off stops new posts; scores are still kept for the teacher');
+}
+
 console.log('allowlist and clean-up');
 {
   // brett's sandbox class with one signed-in student
@@ -528,6 +605,12 @@ console.log('allowlist and clean-up');
   const sb = cookieOf(await call(signin, 'POST', req('/api/class/signin', { method: 'POST', body: { passcode: bc.passcode, alias: card.alias, pin: card.pin } }), {}, classMw), '__Host-wm_student');
   assert.equal((await body(await call(sme, 'GET', req('/api/class/me', { cookie: sb }), {}, classMw))).student.test, true);
   ok("a sandbox teacher's class shows TEST to students");
+
+  await call(classOne, 'PATCH', B(`/api/teach/classes/${bc.id}`, { method: 'PATCH', body: { leaderboardPosting: true } }), { classId: bc.id }, teachMw);
+  const sandboxScore = await body(await call(scoreR, 'POST', req('/api/class/score', { method: 'POST', cookie: sb, body: { challenge_id: 'gcd-racer-60s', score: 99, duration_ms: 60000 } }), {}, classMw));
+  assert.equal(sandboxScore.posted, false);
+  assert.equal(env.DB.sql.prepare('SELECT COUNT(*) n FROM leaderboard_entries WHERE score = 99').get().n, 0);
+  ok('a test class never posts to the public leaderboard, even with posting on');
 
   const removed = await call(adminR, 'DELETE', T('/api/teach/admin/teachers?email=brett@example.com', { method: 'DELETE' }), {}, teachMw);
   assert.equal(removed.status, 200);
@@ -561,7 +644,8 @@ console.log('allowlist and clean-up');
   const leaked = env.DB.sql.prepare(
     "SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name);
   const cols = leaked.flatMap((t) => env.DB.sql.prepare(`PRAGMA table_info(${t})`).all().map((c) => `${t}.${c.name}`));
-  assert.ok(!cols.some((c) => /name/.test(c) && /student/.test(c)));
+  // student_aliases.board_name is a generated leaderboard pseudonym, not a person's name.
+  assert.ok(!cols.some((c) => /name/.test(c) && /student/.test(c) && !c.startsWith('student_aliases.board_name')));
   assert.ok(!cols.some((c) => /\bip\b|user_agent|\.pin$/.test(c)));
   ok('no student name, PIN or IP column exists anywhere');
 }

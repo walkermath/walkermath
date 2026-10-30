@@ -7,12 +7,12 @@
   import { api, ApiError } from '../../lib/api.ts';
   import {
     ACTIVITY_CATEGORIES,
-    PROMPT_CATEGORIES,
     LIMITS,
     MODULE_TYPES,
-    MODULE_TYPE_LIST,
     activityCategory,
+    canMove,
     insertIndex,
+    pinOf,
     newModule,
     promptCategory,
     type ActivityCategory,
@@ -53,15 +53,19 @@
 
   /** 'lesson' (the main tile) or a module id. */
   let selected = $state<string>('lesson');
-  /** The "+" tile's menu: closed, the module types, or one type's second step (its kinds). */
-  let adding = $state<null | 'type' | 'prompt' | 'activity'>(null);
+  /** The "+" tile's menu: closed, the module types, or the activity kinds. */
+  let adding = $state<null | 'type' | 'activity'>(null);
 
-  /** Types whose "+" menu has a second step, and what it asks. */
-  const SUBMENU: Partial<Record<ModuleType, { ask: string; items: readonly { id: string; label: string }[] }>> = {
-    prompt: { ask: 'what are the questions for?', items: PROMPT_CATEGORIES },
-    activity: { ask: 'what kind of activity?', items: ACTIVITY_CATEGORIES }
-  };
-  const submenu = $derived(adding && adding !== 'type' ? SUBMENU[adding] : undefined);
+  /** What "+" offers. Bellwork and exit ticket aren't here: they have their own slots at the ends. */
+  const MENU_TYPES: ModuleType[] = ['notes', 'activity', 'independent'];
+  /** The activity step. "Questions" is a question set (a check-in) in the middle of the lesson. */
+  const ACTIVITY_MENU = [{ id: 'questions', label: 'Questions (check-in)' }, ...ACTIVITY_CATEGORIES];
+
+  const modCount = $derived(lesson ? lesson.modules.length : 0);
+  const hasBellwork = $derived(!!lesson && modCount > 0 && pinOf(lesson.modules[0]) === 'first');
+  const hasExit = $derived(!!lesson && modCount > 0 && pinOf(lesson.modules[modCount - 1]) === 'last');
+  /** Modules drawn before the "+" tile: all of them except a final exit ticket. */
+  const beforePlus = $derived(lesson ? lesson.modules.slice(0, hasExit ? modCount - 1 : modCount) : []);
   /** Which field hints ([ ? ]) are open. */
   let hint = $state<null | 'objective' | 'criteria'>(null);
   let dragFrom = $state<number | null>(null);
@@ -148,13 +152,22 @@
 
   /* ---------- tiles ---------- */
 
-  /** New modules go before a locked final module (the exit ticket), so it stays last. */
+  /** New modules go after everything else and before the exit ticket. */
   function addModule(type: ModuleType, category?: ActivityCategory | PromptCategory) {
-    if (!lesson) return;
+    if (!lesson || lesson.modules.length >= LIMITS.modules) return;
     const m = newModule(type, category);
     lesson.modules.splice(insertIndex(lesson.modules), 0, m);
     selected = m.id;
     adding = null;
+  }
+
+  /** The dashed end slots: a bellwork goes first, an exit ticket last. */
+  function addPinned(category: 'bellwork' | 'exit-ticket') {
+    if (!lesson || lesson.modules.length >= LIMITS.modules) return;
+    const m = newModule('prompt', category);
+    if (category === 'bellwork') lesson.modules.unshift(m);
+    else lesson.modules.push(m);
+    selected = m.id;
   }
 
   function removeModule(i: number) {
@@ -165,8 +178,9 @@
     if (selected === m.id) selected = lesson.modules[Math.min(i, lesson.modules.length - 1)]?.id ?? 'lesson';
   }
 
+  /** Bellwork and exit ticket stay at the ends; nothing can be moved past them. */
   function move(from: number, to: number) {
-    if (!lesson || to < 0 || to >= lesson.modules.length || from === to) return;
+    if (!lesson || !canMove(lesson.modules, from, to)) return;
     const [m] = lesson.modules.splice(from, 1);
     lesson.modules.splice(to, 0, m);
   }
@@ -393,13 +407,13 @@
             <div class="w-6 self-center text-center {label}" aria-hidden="true">-&gt;</div>
           </div>
 
-          {#each lesson.modules as m, i (m.id)}
+          {#snippet moduleTile(m: LessonModule, i: number)}
             <div role="listitem" class="flex items-stretch">
               <div
                 class="{tile} relative w-40 min-h-[6.5rem] {selected === m.id
                   ? 'border-[var(--accent)]'
                   : 'border-[var(--line)] hover:border-[var(--accent)]'} {dropAt === i && dragFrom !== i ? 'ring-2 ring-[var(--accent)]' : ''} {dragFrom === i ? 'opacity-50' : ''}"
-                draggable="true"
+                draggable={pinOf(m) === null}
                 role="group"
                 ondragstart={(e) => {
                   dragFrom = i;
@@ -407,13 +421,14 @@
                   if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
                 }}
                 ondragover={(e) => {
+                  if (dragFrom === null || !lesson || !canMove(lesson.modules, dragFrom, i)) return;
                   e.preventDefault();
                   dropAt = i;
                 }}
                 ondragleave={() => (dropAt = dropAt === i ? null : dropAt)}
                 ondrop={(e) => {
                   e.preventDefault();
-                  if (dragFrom !== null) move(dragFrom, i);
+                  if (dragFrom !== null) move(dragFrom, i);  // move() refuses anything past a pinned end
                   dragFrom = null;
                   dropAt = null;
                 }}
@@ -449,31 +464,52 @@
                   aria-label="Remove {m.title}">x</button
                 >
               </div>
-              <div class="w-6 self-center text-center {label}" aria-hidden="true">-&gt;</div>
+              {#if !(hasExit && i === modCount - 1)}<div class="w-6 self-center text-center {label}" aria-hidden="true">-&gt;</div>{/if}
             </div>
+          {/snippet}
+
+          {#snippet endSlot(category: 'bellwork' | 'exit-ticket', text: string)}
+            <div role="listitem" class="flex items-stretch">
+              <button
+                type="button"
+                class="{tile} w-28 min-h-[6.5rem] p-2 border-dashed border-[var(--line)] hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer {label}"
+                onclick={() => addPinned(category)}
+                disabled={modCount >= LIMITS.modules}>{text}</button
+              >
+              {#if category === 'bellwork'}<div class="w-6 self-center text-center {label}" aria-hidden="true">-&gt;</div>{/if}
+            </div>
+          {/snippet}
+
+          {#if !hasBellwork}{@render endSlot('bellwork', '+ bellwork')}{/if}
+          {#each beforePlus as m, i (m.id)}
+            {@render moduleTile(m, i)}
           {/each}
 
           <div role="listitem" class="flex items-stretch">
             {#if adding === 'type'}
               <div class="{tile} w-52 p-2 border-dashed border-[var(--accent)] space-y-1">
-                {#each MODULE_TYPE_LIST as t}
+                {#each MENU_TYPES as t}
                   <button
                     type="button"
                     class="flex justify-between w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer"
-                    onclick={() => (SUBMENU[t] ? (adding = t as 'prompt' | 'activity') : addModule(t))}
+                    onclick={() => (t === 'activity' ? (adding = 'activity') : addModule(t))}
                   >
                     <span><span class="font-mono {label} mr-1">{TYPE_MARK[t]}</span>{MODULE_TYPES[t].label}</span>
-                    {#if SUBMENU[t]}<span class={label}>&gt;</span>{/if}
+                    {#if t === 'activity'}<span class={label}>&gt;</span>{/if}
                   </button>
                 {/each}
                 <button type="button" class="block w-full text-left px-2 py-1 {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => (adding = null)}>cancel</button>
               </div>
-            {:else if submenu && adding && adding !== 'type'}
-              {@const type = adding}
+            {:else if adding === 'activity'}
               <div class="{tile} w-52 p-2 border-dashed border-[var(--accent)] space-y-1">
-                <div class="px-2 {label}">{submenu.ask}</div>
-                {#each submenu.items as c}
-                  <button type="button" class="block w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer" onclick={() => addModule(type, c.id as any)}>{c.label}</button>
+                <div class="px-2 {label}">what kind of activity?</div>
+                {#each ACTIVITY_MENU as c}
+                  <button
+                    type="button"
+                    class="block w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer"
+                    onclick={() => (c.id === 'questions' ? addModule('prompt', 'check-in') : addModule('activity', c.id as ActivityCategory))}
+                    >{c.label}</button
+                  >
                 {/each}
                 <button type="button" class="block w-full text-left px-2 py-1 {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => (adding = 'type')}>&lt;- back</button>
               </div>
@@ -485,7 +521,13 @@
                 aria-label="Add a module">+</button
               >
             {/if}
+            {#if hasExit || modCount < LIMITS.modules}<div class="w-6 self-center text-center {label}" aria-hidden="true">-&gt;</div>{/if}
           </div>
+          {#if hasExit && lesson}
+            {@render moduleTile(lesson.modules[modCount - 1], modCount - 1)}
+          {:else}
+            {@render endSlot('exit-ticket', '+ exit ticket')}
+          {/if}
         </div>
 
         <!-- timeline against the duration -->
@@ -571,7 +613,7 @@
     {#if selected === 'lesson' || selectedIndex < 0}
       <WhenPanel lessonId={lesson.id} durationSec={lesson.durationSec} archived={lesson.archived} bind:runs />
       {#if lesson.modules.length === 0}
-        <p class={label}>// add modules with the + tile: bellwork, notes, activities, independent work, an exit ticket.</p>
+        <p class={label}>// add a bellwork and exit ticket with the slots at each end, and everything else with the + tile.</p>
       {/if}
     {:else}
       {#key selected}
@@ -580,6 +622,8 @@
           {notes}
           index={selectedIndex}
           count={lesson.modules.length}
+          canLeft={canMove(lesson.modules, selectedIndex, selectedIndex - 1)}
+          canRight={canMove(lesson.modules, selectedIndex, selectedIndex + 1)}
           onmove={(to) => move(selectedIndex, to)}
           onremove={() => removeModule(selectedIndex)}
         />

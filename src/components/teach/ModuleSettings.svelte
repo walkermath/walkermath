@@ -4,7 +4,9 @@
   import { onMount } from 'svelte';
   import {
     ACTIVITY_CATEGORIES,
+    MIDDLE_PROMPT_CATEGORIES,
     PROMPT_CATEGORIES,
+    pinOf,
     LIMITS,
     MODULE_TYPES,
     activityCategory,
@@ -34,6 +36,8 @@
     notes = [],
     index,
     count,
+    canLeft = index > 0,
+    canRight = index < count - 1,
     onmove,
     onremove
   }: {
@@ -41,6 +45,9 @@
     notes?: Note[];
     index: number;
     count: number;
+    /** Whether the module can move left / right (bellwork and exit ticket stay at the ends). */
+    canLeft?: boolean;
+    canRight?: boolean;
     onmove: (to: number) => void;
     onremove: () => void;
   } = $props();
@@ -51,6 +58,30 @@
      themselves stay readable; [ ? ] opens them. The choice is remembered on this device (a convenience
      only: it works without storage). */
   let hintsOpen = $state(false);
+  /* Coliseum Practice: the challenges to pick from (built with the site, like the notes list). */
+  type Challenge = { id: string; title: string; description: string; topic: string };
+  let challenges = $state<Challenge[] | null>(null);
+  async function loadChallenges() {
+    if (challenges) return;
+    try {
+      const r = await fetch('/coliseum/index.json');
+      challenges = r.ok ? ((await r.json()).challenges ?? []) : [];
+    } catch {
+      challenges = [];
+    }
+  }
+  $effect(() => {
+    if (module.type === 'activity' && module.config.category === 'coliseum') loadChallenges();
+  });
+  const challengeGroups = $derived.by(() => {
+    const groups = new Map<string, Challenge[]>();
+    for (const c of challenges ?? []) {
+      if (!groups.has(c.topic)) groups.set(c.topic, []);
+      groups.get(c.topic)!.push(c);
+    }
+    return [...groups];
+  });
+
   onMount(() => {
     try {
       hintsOpen = localStorage.getItem('wm_module_hints') === 'open';
@@ -125,8 +156,8 @@
       <div class="{label} mt-1">{info.hint}</div>
     </div>
     <div class="flex flex-wrap gap-2">
-      <button type="button" class={btn} onclick={() => onmove(index - 1)} disabled={index === 0} title="Alt + left arrow on the tile">[&lt;- move]</button>
-      <button type="button" class={btn} onclick={() => onmove(index + 1)} disabled={index === count - 1} title="Alt + right arrow on the tile">[move -&gt;]</button>
+      <button type="button" class={btn} onclick={() => onmove(index - 1)} disabled={!canLeft} title="Alt + left arrow on the tile">[&lt;- move]</button>
+      <button type="button" class={btn} onclick={() => onmove(index + 1)} disabled={!canRight} title="Alt + right arrow on the tile">[move -&gt;]</button>
       <button type="button" class={btnDanger} onclick={onremove}>[remove]</button>
     </div>
   </div>
@@ -210,16 +241,20 @@
   <!-- content -->
   {#if module.type === 'prompt'}
     <div class="space-y-3">
-      <label class="flex items-center gap-2">
-        <span class={label}>category</span>
-        <select
-          class="{field} w-56 p-1"
-          value={module.config.category}
-          onchange={(e) => setPromptCategory((e.currentTarget as HTMLSelectElement).value as PromptCategory)}
-        >
-          {#each PROMPT_CATEGORIES as c}<option value={c.id}>{c.label}</option>{/each}
-        </select>
-      </label>
+      {#if pinOf(module)}
+        <p class={label}>// always {pinOf(module) === 'first' ? 'the first module of the lesson' : 'the last module of the lesson'}.</p>
+      {:else}
+        <label class="flex items-center gap-2">
+          <span class={label}>category</span>
+          <select
+            class="{field} w-56 p-1"
+            value={module.config.category}
+            onchange={(e) => setPromptCategory((e.currentTarget as HTMLSelectElement).value as PromptCategory)}
+          >
+            {#each MIDDLE_PROMPT_CATEGORIES as c}<option value={c.id}>{c.label}</option>{/each}
+          </select>
+        </label>
+      {/if}
       <div class={heading}>// questions ({module.config.questions.length})</div>
       {#if module.config.questions.length === 0}
         <p class={label}>no questions yet.</p>
@@ -299,6 +334,34 @@
             {#each ACTIVITY_CATEGORIES as c}<option value={c.id}>{c.label}</option>{/each}
           </select>
         </label>
+        {#if module.config.category === 'coliseum'}
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center gap-3">
+              <label class="flex items-center gap-2">
+                <span class={label}>challenge</span>
+                <select class="{field} w-auto sm:w-80 p-1" bind:value={module.config.coliseumId}>
+                  <option value="">pick a challenge...</option>
+                  {#each challengeGroups as [topic, list]}
+                    <optgroup label={topic}>
+                      {#each list as c}<option value={c.id}>{c.title}</option>{/each}
+                    </optgroup>
+                  {/each}
+                </select>
+              </label>
+              {#if module.config.coliseumId}
+                <a class="underline hover:text-[var(--accent)]" href="/embed/coliseum/{module.config.coliseumId}" target="_blank" rel="noopener">[try it]</a>
+              {/if}
+            </div>
+            {#if challenges && challenges.length === 0}
+              <p class={label}>// the challenge list didn't load (it's built with the site: run npm run build).</p>
+            {:else}
+              <p class={label}>
+                // students play it inside the lesson. scores are kept for you; they post to the public leaderboard only
+                if the class has posting on (under [classes]).
+              </p>
+            {/if}
+          </div>
+        {/if}
       {/if}
       <label class="block space-y-1">
         <span class={label}>instructions</span>

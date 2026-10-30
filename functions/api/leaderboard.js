@@ -10,80 +10,8 @@ import {
   raceWeight
 } from '../../src/lib/coliseumBoards.ts';
 import { isValidAlias } from '../../src/lib/pseudonym.ts';
+import { cleanGameScore, isLessonBoardName, isProfane, upsertLeaderboardEntry } from '../../src/lib/server/leaderboard.ts';
 import { isKnownTeacher } from '../../src/lib/teachers.ts';
-
-let cachedBlocklist = null;
-
-async function getBlocklist(secretList) {
-  if (secretList) {
-    return secretList.split(',').map(w => normalizeText(w)).filter(w => w.length > 0);
-  }
-  if (cachedBlocklist) return cachedBlocklist;
-
-  const languages = ['en', 'es', 'fr', 'de'];
-  let wordSet = new Set();
-  
-  for (const lang of languages) {
-    try {
-      const res = await fetch(`https://raw.githubusercontent.com/censor-text/profanity-list/main/list/${lang}.txt`);
-      if (res.ok) {
-        const text = await res.text();
-        text.split('\n').forEach(w => {
-          const cleaned = normalizeText(w);
-          if (cleaned.length > 0 && !w.trim().startsWith('#')) {
-            wordSet.add(cleaned);
-          }
-        });
-      }
-    } catch (e) {
-      // Fail silently for individual languages, fall back gracefully
-    }
-  }
-
-  if (wordSet.size === 0) {
-    ['BADWORDS'].forEach(w => wordSet.add(w));
-  }
-
-  cachedBlocklist = Array.from(wordSet);
-  return cachedBlocklist;
-}
-
-function normalizeText(text) {
-  if (!text) return '';
-  let upper = text.toUpperCase();
-
-  const leetMap = {
-    '0': 'O', '1': 'I', '!': 'I', '|': 'I',
-    '3': 'E', '4': 'A', '@': 'A', '5': 'S',
-    '$': 'S', '7': 'T', '8': 'B', '9': 'G'
-  };
-
-  upper = upper.split('').map(char => leetMap[char] || char).join('');
-  upper = upper.replace(/[^A-Z0-9]/g, '');
-  upper = upper.replace(/(.)\1{2,}/g, '$1');
-
-  return upper;
-}
-
-async function isProfane(text, secretList) {
-  if (!text) return false;
-  
-  // normalizeText() returns UPPERCASE and so do the blocklist entries, so compare in uppercase
-  // (this used to lowercase one side, which meant no blocklist word could ever match).
-  const normalized = normalizeText(text);
-  const qToGVariant = normalized.replace(/Q/g, 'G');
-
-  // Explicitly catch common custom spellings that bypass standard blocklists
-  const explicitVariations = ['NIQR', 'NIQQ', 'NIGQ', 'NIGR', 'NIGG', 'NIQG', 'NIQE', 'NIKKR', 'KKK', 'NIKKER', 'NICKER', 'NICR', 'NICCR','NICCCR', 'NIKR', 'NICKR', 'NIKCR', 'NIKCCR', 'NIKKCR', 'NIKCKR', 'NICKKR', 'NICCKR', 'NICKCR'];
-  
-  if (explicitVariations.some(term => normalized.includes(term) || qToGVariant.includes(term))) {
-    return true;
-  }
-
-  // Fallback to checking the standard blocklist
-  const list = await getBlocklist(secretList);
-  return list.some(word => word.length > 0 && (normalized.includes(word) || qToGVariant.includes(word)));
-} 
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
@@ -212,25 +140,10 @@ export async function onRequestGet(context) {
 export async function onRequestPost(context) {
   try {
     const body = await context.request.json();
-    const { display_name, class_period, teacher, score, duration_ms } = body;
-
-    let game = body.game;
-    let event = body.event;
-    if (!game && body.challenge_id) ({ game, event } = parseChallengeId(body.challenge_id));
-    game = String(game || '').trim().toLowerCase();
-
-    if (
-      !/^[a-z0-9-]{1,60}$/.test(game) ||
-      !isEventId(String(event)) ||
-      typeof score !== 'number' || !Number.isFinite(score) ||
-      typeof duration_ms !== 'number' || !Number.isFinite(duration_ms)
-    ) {
-      return json({ error: 'Invalid payload' }, 400);
-    }
-
-    const level = normalizeLevel(game, body.level);
-    const variant = normalizeVariant(game, body.variant);
-    const tags = normalizeTags(body.tags);
+    const { display_name, class_period, teacher } = body;
+    const entry = cleanGameScore(body);
+    if (typeof entry === 'string') return json({ error: entry }, 400);
+    const { game, event } = entry;
 
     // PRIVACY: students never type a name. display_name must be an alias produced by
     // src/lib/pseudonym.ts, and teacher must come from src/lib/teachers.ts, so free text cannot
@@ -256,67 +169,18 @@ export async function onRequestPost(context) {
       return json({ error: 'Alias not accepted.', code: 'alias_rejected' }, 400);
     }
 
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const schoolYear = month >= 6 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+    // Lesson leaderboard names (functions/api/class/score.js) are only posted through a student's
+    // class sign-in, so the public form can't add scores under one.
+    if (await isLessonBoardName(context.env.DB, cleanDisplay)) {
+      return json({ error: 'Alias not accepted.', code: 'alias_rejected' }, 400);
+    }
 
-    const insertSql = `
-      INSERT INTO leaderboard_entries
-        (game, event, level, variant, tags, display_name, class_period, teacher, school_year, score, duration_ms, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-      ON CONFLICT(game, event, level, variant, display_name)
-    `;
-
-    // Score events keep a player's best score in a stratum (fastest time breaks ties).
-    const scoreRankedUpsert = `
-      DO UPDATE SET
-        score = MAX(leaderboard_entries.score, excluded.score),
-        duration_ms = CASE
-          WHEN excluded.score > leaderboard_entries.score THEN excluded.duration_ms
-          WHEN excluded.score = leaderboard_entries.score THEN MIN(leaderboard_entries.duration_ms, excluded.duration_ms)
-          ELSE leaderboard_entries.duration_ms
-        END,
-        tags = CASE
-          WHEN excluded.score > leaderboard_entries.score THEN excluded.tags
-          ELSE leaderboard_entries.tags
-        END,
-        class_period = excluded.class_period,
-        teacher = excluded.teacher,
-        created_at = CASE
-          WHEN excluded.score > leaderboard_entries.score THEN datetime('now')
-          ELSE leaderboard_entries.created_at
-        END
-    `;
-
-    // Time events keep a player's fastest time in a stratum (higher score breaks ties).
-    const timeRankedUpsert = `
-      DO UPDATE SET
-        duration_ms = MIN(leaderboard_entries.duration_ms, excluded.duration_ms),
-        score = CASE
-          WHEN excluded.duration_ms < leaderboard_entries.duration_ms THEN excluded.score
-          WHEN excluded.duration_ms = leaderboard_entries.duration_ms THEN MAX(leaderboard_entries.score, excluded.score)
-          ELSE leaderboard_entries.score
-        END,
-        tags = CASE
-          WHEN excluded.duration_ms < leaderboard_entries.duration_ms THEN excluded.tags
-          ELSE leaderboard_entries.tags
-        END,
-        class_period = excluded.class_period,
-        teacher = excluded.teacher,
-        created_at = CASE
-          WHEN excluded.duration_ms < leaderboard_entries.duration_ms THEN datetime('now')
-          ELSE leaderboard_entries.created_at
-        END
-    `;
-
-    await context.env.DB.prepare(
-      insertSql + (EVENTS[event].rankBy === 'time' ? timeRankedUpsert : scoreRankedUpsert)
-    ).bind(
-      game, event, level, variant, tags,
-      cleanDisplay, cleanPeriod, cleanTeacher, schoolYear,
-      Math.round(score), Math.round(duration_ms)
-    ).run();
+    const schoolYear = await upsertLeaderboardEntry(context.env.DB, {
+      ...entry,
+      displayName: cleanDisplay,
+      period: cleanPeriod,
+      teacher: cleanTeacher
+    });
 
     return json({ success: true, schoolYear, game, event }, 201);
   } catch (err) {

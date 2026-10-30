@@ -16,6 +16,8 @@ export interface ClassRow {
   bellStart: string | null;
   bellEnd: string | null;
   archived: boolean;
+  /** Lesson game scores also go to the public leaderboard (off until the teacher turns it on). */
+  leaderboardPosting: boolean;
   createdAt: number;
   activeAliases?: number;
 }
@@ -28,6 +30,7 @@ export const toClass = (r: any): ClassRow => ({
   bellStart: r.bell_start ?? null,
   bellEnd: r.bell_end ?? null,
   archived: !!r.archived,
+  leaderboardPosting: !!r.leaderboard_posting,
   createdAt: r.created_at,
   ...(r.active_aliases !== undefined ? { activeAliases: Number(r.active_aliases) } : {})
 });
@@ -106,7 +109,7 @@ export async function createAliases(db: any, secret: string, classId: string, co
 export async function listAliases(db: any, classId: string) {
   const { results } = await db
     .prepare(
-      `SELECT a.id, a.alias, a.retired, a.created_at,
+      `SELECT a.id, a.alias, a.retired, a.created_at, a.board_name,
               (SELECT COUNT(*) FROM student_sessions s WHERE s.alias_id = a.id AND s.expires_at > ?2) AS devices
          FROM student_aliases a WHERE a.class_id = ?1
         ORDER BY a.retired, a.created_at, a.alias`
@@ -118,7 +121,9 @@ export async function listAliases(db: any, classId: string) {
     alias: r.alias,
     retired: !!r.retired,
     createdAt: r.created_at,
-    devices: Number(r.devices)
+    devices: Number(r.devices),
+    /** Their public leaderboard name, once they have one. Shown to the teacher only. */
+    boardName: r.board_name ?? null
   }));
 }
 
