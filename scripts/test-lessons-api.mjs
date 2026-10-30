@@ -99,6 +99,8 @@ const publicBoard = await load('functions/api/leaderboard.js');
 const startR = await load('functions/api/teach/runs/[runId]/start.js');
 const endR = await load('functions/api/teach/runs/[runId]/end.js');
 const liveR = await load('functions/api/live/[runId].js');
+const answersR = await load('functions/api/class/answers.js');
+const runAnswersR = await load('functions/api/teach/runs/[runId]/answers.js');
 const classLive = await load('functions/api/class/live.js');
 
 /* ---------- a stand-in for the LessonRoom Durable Object (same state machine, no sockets) ---------- */
@@ -124,6 +126,7 @@ env.LESSON_ROOM = {
       }
       if (!r) return Response.json({ error: 'Not started' }, { status: 409 });
       if (u.pathname === '/state') return Response.json({ state: r.state, ...(u.searchParams.get('full') ? { lesson: r.lesson } : {}) });
+      if (u.pathname === '/peek') return Response.json({ state: r.state });
       if (u.pathname === '/cmd') {
         if (h.get('X-Role') !== 'teacher') return Response.json({ error: 'Forbidden' }, { status: 403 });
         const c = room.parseCommand(JSON.parse(init.body).cmd);
@@ -575,6 +578,9 @@ console.log('live lessons');
   let l = (await body(await call(lessonsIdx, 'POST', T('/api/teach/lessons', { method: 'POST', body: { title: 'Live test' } }), {}, teachMw))).lesson;
   l.modules[0].config.questions = [{ id: crypto.randomUUID(), kind: 'number', text: '2 + 2?', choices: [], answer: '4' }];
   l.modules[0].teacherNotes = 'watch row 3';
+  // ...and a Coliseum game in the middle.
+  l.modules.splice(1, 0, { id: crypto.randomUUID(), type: 'activity', title: 'GCD race', plannedSec: 300, pacing: 'flex', minSec: null, onTimeUp: 'auto',
+    config: { category: 'coliseum', instructions: '', links: [], doneTap: false, coliseumId: 'gcd-racer-60s' } });
   l = (await body(await call(lessonOne, 'PUT', T(`/api/teach/lessons/${l.id}`, { method: 'PUT', body: { ...l, baseUpdatedAt: l.updatedAt } }), { lessonId: l.id }, teachMw))).lesson;
   const day = new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 10);
   const made = await call(runsIdx, 'POST', T(`/api/teach/lessons/${l.id}/runs`, { method: 'POST', body: { classId: cls.id, date: day, startTime: '13:00', endTime: '13:50' } }), { lessonId: l.id }, teachMw);
@@ -591,14 +597,14 @@ console.log('live lessons');
   const row = env.DB.sql.prepare('SELECT status, started_at, snapshot_json FROM lesson_runs WHERE id = ?').get(run.id);
   assert.equal(row.status, 'live');
   assert.ok(row.started_at);
-  assert.ok(JSON.parse(row.snapshot_json).modules.length === 2, 'the lesson is copied into the run');
+  assert.ok(JSON.parse(row.snapshot_json).modules.length === 3, 'the lesson is copied into the run');
   assert.equal((await call(startR, 'POST', T(`/api/teach/runs/${run.id}/start`, { method: 'POST', body: {} }), { runId: run.id }, teachMw)).status, 200, 'reopening is fine');
   ok('the teacher starts a delivery: it goes live, and the lesson is copied into the run');
 
   const listed = (await body(await call(classLive, 'GET', S('/api/class/live'), {}, classMw))).runs;
   assert.deepEqual(listed, [{ id: run.id, lessonTitle: 'Live test' }]);
   const view = await body(await call(liveR, 'GET', S(`/api/live/${run.id}?full=1`), { runId: run.id }));
-  assert.equal(view.lesson.modules.length, 2);
+  assert.equal(view.lesson.modules.length, 3);
   const seen = JSON.stringify(view.lesson);
   assert.ok(seen.includes('2 + 2?'));
   assert.ok(!seen.includes('"4"') && !seen.includes('answer') && !seen.includes('watch row 3'), 'no answer keys or private notes in the room');
@@ -614,13 +620,64 @@ console.log('live lessons');
   assert.deepEqual(roomCalls.map((c) => [c.role, c.who, c.name, c.upgrade]), [['student', env.DB.sql.prepare('SELECT id FROM student_aliases WHERE alias = ?').get(a.alias).id, a.alias, 'websocket']]);
   ok("only the class's students and its teacher reach the room; the room is told who, never sent cookies");
 
+  // Answering the bellwork while it runs.
+  const bell = l.modules[0];
+  const qid = bell.config.questions[0].id;
+  const A = (b) => call(answersR, 'POST', S('/api/class/answers', { method: 'POST', body: { runId: run.id, ...b } }), {}, classMw);
+  assert.deepEqual(await body(await call(answersR, 'GET', S(`/api/class/answers?run=${run.id}`), {}, classMw)), { answers: {} });
+  assert.equal((await A({ moduleId: bell.id, answers: { [qid]: '5' } })).status, 200, 'a draft');
+  const saved = await A({ moduleId: bell.id, answers: { [qid]: '4' } });
+  assert.equal(saved.status, 200);
+  assert.deepEqual((await body(saved)).answers, { [qid]: '4' });
+  const back = await body(await call(answersR, 'GET', S(`/api/class/answers?run=${run.id}`), {}, classMw));
+  assert.deepEqual(back.answers[bell.id].answers, { [qid]: '4' }, 'the latest replaces the draft');
+  assert.equal((await A({ moduleId: bell.id, answers: { nope: '1' } })).status, 400);
+  assert.equal((await A({ moduleId: 'not-a-module', answers: {} })).status, 404);
+  assert.equal((await A({ moduleId: l.modules[1].id, answers: { done: '1' } })).status, 400, 'a Coliseum module takes no typed answers');
+  assert.equal((await call(answersR, 'POST', req('/api/class/answers', { method: 'POST', body: { runId: run.id, moduleId: bell.id, answers: {} } }), {}, classMw)).status, 401);
+  assert.equal((await call(answersR, 'POST', S('/api/class/answers', { method: 'POST', body: { runId: run.id, moduleId: bell.id, answers: {} }, origin: 'https://evil.example' }), {}, classMw)).status, 403);
+  assert.equal(env.DB.sql.prepare('SELECT COUNT(*) n FROM submissions WHERE run_id = ?').get(run.id).n, 1, 'one row per student per module');
+  ok('students answer while a module runs; each save replaces the last; only real questions of this run are taken');
+
+  const marks = await body(await call(runAnswersR, 'GET', T(`/api/teach/runs/${run.id}/answers`), { runId: run.id }, teachMw));
+  assert.deepEqual(marks.modules.map((m) => [m.title, m.kind]), [['Bellwork', 'questions'], ['GCD race', 'coliseum']]);
+  assert.equal(marks.modules[0].questions[0].answer, '4', 'the teacher gets the key');
+  assert.equal(marks.rows.length, 1);
+  assert.equal(marks.rows[0].alias, a.alias);
+  assert.equal(marks.rows[0].correct[qid], true);
+  assert.equal((await call(runAnswersR, 'GET', req(`/api/teach/runs/${run.id}/answers`, { cookie: other.session }), { runId: run.id }, teachMw)).status, 404, 'not another teacher');
+  ok("the control panel sees who answered what, marked against the run's own key");
+
   const moved = await body(await call(liveR, 'POST', T(`/api/live/${run.id}`, { method: 'POST', body: { cmd: { type: 'next' } } }), { runId: run.id }));
   assert.equal(moved.state.index, 1);
   ok('the teacher drives the lesson through the room');
 
+  assert.equal((await A({ moduleId: bell.id, answers: { [qid]: '44' } })).status, 200, 'the last keystrokes land in the grace period');
+  rooms.get(`run:${run.id}`).state.closedAt[0] = Date.now() - 60_000; // ...and a minute later
+  const late = await A({ moduleId: bell.id, answers: { [qid]: '4' } });
+  assert.equal(late.status, 409);
+  assert.equal((await body(late)).closed, true);
+  assert.deepEqual((await body(await call(answersR, 'GET', S(`/api/class/answers?run=${run.id}`), {}, classMw))).answers[bell.id].answers, { [qid]: '44' });
+  ok('once the teacher moves on, the module closes: later changes are refused and the handed-in answer stays');
+
+  // A Coliseum game finished in the lesson is filed under this run and module.
+  const game = { challenge_id: 'gcd-racer-60s', score: 12, duration_ms: 60000, post: false };
+  await call(scoreR, 'POST', S('/api/class/score', { method: 'POST', body: { ...game, runId: run.id, moduleId: l.modules[1].id } }), {}, classMw);
+  await call(scoreR, 'POST', S('/api/class/score', { method: 'POST', body: { ...game, score: 15, runId: run.id, moduleId: l.modules[1].id } }), {}, classMw);
+  await call(scoreR, 'POST', S('/api/class/score', { method: 'POST', body: { ...game, runId: run.id, moduleId: bell.id } }), {}, classMw);
+  const tagged = env.DB.sql.prepare('SELECT run_id, module_id FROM lesson_scores WHERE alias_id = (SELECT id FROM student_aliases WHERE alias = ?) ORDER BY created_at').all(a.alias);
+  assert.deepEqual(tagged.map((r) => r.module_id), [l.modules[1].id, l.modules[1].id, null], 'not a Coliseum module: kept, but not filed under it');
+  const games = (await body(await call(runAnswersR, 'GET', T(`/api/teach/runs/${run.id}/answers`), { runId: run.id }, teachMw))).scores;
+  assert.deepEqual(games.map((r) => [r.alias, r.best, r.plays]), [[a.alias, 15, 2]]);
+  ok("Coliseum scores made in the lesson show on the control panel (best and games played)");
+
   assert.equal((await call(endR, 'POST', T(`/api/teach/runs/${run.id}/end`, { method: 'POST', body: {} }), { runId: run.id }, teachMw)).status, 200);
   assert.equal(env.DB.sql.prepare('SELECT status FROM lesson_runs WHERE id = ?').get(run.id).status, 'ended');
   assert.equal(rooms.get(`run:${run.id}`).state.status, 'ended');
+  const timing = JSON.parse(env.DB.sql.prepare('SELECT timing_json FROM lesson_runs WHERE id = ?').get(run.id).timing_json);
+  assert.equal(timing.plan.length, 3);
+  assert.equal(timing.took.length, 3, 'the final clock is kept for records');
+  assert.equal((await A({ moduleId: l.modules[2].id, answers: {} })).status, 404, 'no answers after the end');
   assert.deepEqual((await body(await call(classLive, 'GET', S('/api/class/live'), {}, classMw))).runs, []);
   assert.equal((await call(liveR, 'GET', S(`/api/live/${run.id}`), { runId: run.id })).status, 404, 'students leave an ended lesson');
   assert.equal((await call(startR, 'POST', T(`/api/teach/runs/${run.id}/start`, { method: 'POST', body: {} }), { runId: run.id }, teachMw)).status, 409);

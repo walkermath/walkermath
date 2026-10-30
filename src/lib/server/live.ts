@@ -127,14 +127,22 @@ export async function startRun(env: any, run: LiveRun, now = Date.now()): Promis
 }
 
 export async function endRun(env: any, run: LiveRun, now = Date.now()) {
+  let timing: string | null = null;
   if (env.LESSON_ROOM && run.status === 'live') {
-    await roomStub(env, run.id)
+    const res = await roomStub(env, run.id)
       .fetch('https://room.internal/cmd', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Role': 'teacher', 'X-Who': run.teacherId },
         body: JSON.stringify({ cmd: { type: 'end' } })
       })
       .catch(() => null); // the run ends in D1 even if the room can't be reached
+    // Keep the final clock (time each module was given, used and on screen) for records.
+    const st = res?.ok ? ((await res.json().catch(() => null)) as any)?.state : null;
+    if (st && Array.isArray(st.plan)) {
+      timing = JSON.stringify({ plan: st.plan, spent: st.spent ?? null, took: st.took ?? null, done: st.done ?? null, startedAt: st.startedAt, endedAt: st.endedAt });
+    }
   }
-  await env.DB.prepare("UPDATE lesson_runs SET status = 'ended', ended_at = ?2 WHERE id = ?1 AND status != 'ended'").bind(run.id, now).run();
+  await env.DB.prepare("UPDATE lesson_runs SET status = 'ended', ended_at = ?2, timing_json = COALESCE(?3, timing_json) WHERE id = ?1 AND status != 'ended'")
+    .bind(run.id, now, timing)
+    .run();
 }

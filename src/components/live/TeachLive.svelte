@@ -18,6 +18,7 @@
     type Transport
   } from '../../lib/lesson/liveClient.ts';
   import { btn, btnDanger, btnMain, heading, label, panel } from '../teach/ui.ts';
+  import AnswersPanel from './AnswersPanel.svelte';
   import LiveModule from './LiveModule.svelte';
 
   type Run = {
@@ -256,6 +257,8 @@
                 </ol>
               </section>
             {/if}
+
+            <AnswersPanel runId={run.id} modules={lesson.modules} {rs} {students} />
 
             <section class="{panel} space-y-2">
               <div class={heading}>// what students see</div>

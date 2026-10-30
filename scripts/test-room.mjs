@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-const { startRoom, apply, timeUp, moduleLeftMs, nextAlarm, parseCommand, moduleStarts, finishesAt, upgradeState } = await import('../src/lib/lesson/room.ts');
+const { startRoom, apply, timeUp, moduleLeftMs, nextAlarm, parseCommand, moduleStarts, finishesAt, upgradeState, answersOpen } = await import('../src/lib/lesson/room.ts');
 
 const M = (title, plannedSec, pacing = 'flex', extra = {}) => ({
   id: title, type: 'activity', title, plannedSec, pacing, minSec: null, onTimeUp: 'auto', collects: false, config: {}, ...extra
@@ -184,6 +184,31 @@ test('pages are remembered per module; old rooms are upgraded', () => {
   const up = upgradeState(old);
   assert.deepEqual(up.done, [true, true, false, false, false, false]);
   assert.equal(apply(old, ms, { type: 'next' }, T0 + min(10)).index, 3);
+});
+
+test('answers: open while the module runs (paused too), closed once it moves on or runs out, with a short grace', () => {
+  const ms = lesson();
+  let s = startRoom('run', ms, T0 + min(48), T0);
+  assert.equal(answersOpen(s, 0, T0 + min(1)), true);
+  assert.equal(answersOpen(s, 1, T0 + min(1)), false, 'not reached yet');
+  s = apply(s, ms, { type: 'pause' }, T0 + min(2));
+  assert.equal(answersOpen(s, 0, T0 + min(3)), true, 'a pause does not close it');
+  s = apply(s, ms, { type: 'resume' }, T0 + min(3));
+  s = apply(s, ms, { type: 'next' }, T0 + min(4)); // left with time to spare
+  assert.equal(answersOpen(s, 0, T0 + min(4) + 5000), true, 'the last keystrokes still land');
+  assert.equal(answersOpen(s, 0, T0 + min(4) + 9000), false, 'then it is closed');
+  s = apply(s, ms, { type: 'back' }, T0 + min(5));
+  assert.equal(answersOpen(s, 0, T0 + min(5) + 30_000), true, 'coming back with time left reopens it');
+  s = timeUp(s, ms, T0 + min(5) + moduleLeftMs(s, T0 + min(5)));
+  assert.equal(s.index, 1, 'ran out and moved on');
+  assert.equal(answersOpen(s, 0, T0 + min(9)), false);
+  s = apply(s, ms, { type: 'back' }, T0 + min(9));
+  assert.equal(s.holding, true);
+  assert.equal(answersOpen(s, 0, T0 + min(9) + 1000), false, 'a module that ran out stays closed when you come back');
+  s = apply(s, ms, { type: 'adjust', seconds: 60 }, T0 + min(10));
+  assert.equal(answersOpen(s, 0, T0 + min(10) + 1000), true, '+1 min reopens it');
+  s = apply(s, ms, { type: 'end' }, T0 + min(11));
+  assert.equal(answersOpen(s, 0, T0 + min(11)), false, 'nothing after the end');
 });
 
 test('commands from the network are checked', () => {

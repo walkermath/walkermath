@@ -1,13 +1,16 @@
 <!-- src/components/live/ClassLive.svelte -->
 <!-- /class/live?run=  The student's lesson view (sketch 1): a sidebar with the module list and -->
-<!-- both countdowns, Resources below it, and the current module beside it. Everything follows the -->
-<!-- room: the teacher moves the lesson, the clock runs from the room's timestamps. -->
+<!-- both countdowns, Resources below it, and the current module beside it. The room keeps the -->
+<!-- clock; students follow the teacher's module but can open any module the class has reached. -->
+<!-- Answers save as the student types (a pause, a choice picked, a field left), and once more the -->
+<!-- moment the module closes; the server refuses changes after that (a few seconds' grace). -->
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { MODULE_TYPES } from '../../lib/lesson/modules.ts';
   import { lessonLeftMs, moduleLeftMs, type RoomState } from '../../lib/lesson/room.ts';
+  import { answerSpec, isAnswered, type Answers } from '../../lib/lesson/answers.ts';
   import { clockAt, connectLive, countdown, type LiveConnection, type LiveLesson, type Transport } from '../../lib/lesson/liveClient.ts';
-  import LiveModule from './LiveModule.svelte';
+  import LiveModule, { type SaveState } from './LiveModule.svelte';
 
   let runId = $state('');
   let lesson = $state<LiveLesson | null>(null);
@@ -33,10 +36,117 @@
         (gone = status === 404 ? "This lesson isn't running for your class right now." : message)
     });
     timer = setInterval(() => (now = conn?.now() ?? Date.now()), 250);
+    loadMine();
+    addEventListener('beforeunload', warnUnsaved);
+    document.addEventListener('visibilitychange', flushIfHidden);
   });
   onDestroy(() => {
     conn?.close();
     if (timer) clearInterval(timer);
+    for (const t of timers.values()) clearTimeout(t);
+    if (typeof window !== 'undefined') {
+      removeEventListener('beforeunload', warnUnsaved);
+      document.removeEventListener('visibilitychange', flushIfHidden);
+    }
+  });
+
+  /* ---------------- answers ---------------- */
+
+  /** The student's answers, by module id (what's on screen; may be ahead of what's saved). */
+  let mine = $state<Record<string, Answers>>({});
+  let saves = $state<Record<string, SaveState>>({});
+  const dirty = new Set<string>(); // changed since the last save started
+  const inflight = new Set<string>();
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const TYPING_PAUSE_MS = 2000;
+  const RETRY_MS = 4000;
+
+  async function loadMine() {
+    try {
+      const res = await fetch(`/api/class/answers?run=${encodeURIComponent(runId)}`, { credentials: 'same-origin', cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const next = { ...mine };
+      for (const [id, v] of Object.entries<any>(data.answers ?? {})) if (!dirty.has(id) && !inflight.has(id)) next[id] = v.answers ?? {};
+      mine = next;
+    } catch {
+      // offline: what's on screen stays; saving retries
+    }
+  }
+
+  function edit(moduleId: string, answers: Answers, flush: boolean) {
+    mine[moduleId] = answers;
+    dirty.add(moduleId);
+    saves[moduleId] = 'pending';
+    schedule(moduleId, flush ? 0 : TYPING_PAUSE_MS);
+  }
+
+  function schedule(id: string, ms: number) {
+    clearTimeout(timers.get(id));
+    timers.set(id, setTimeout(() => save(id), ms));
+  }
+
+  async function save(id: string) {
+    timers.delete(id);
+    if (!dirty.has(id)) return;
+    if (inflight.has(id)) return schedule(id, 400); // one save at a time per module, in order
+    dirty.delete(id);
+    inflight.add(id);
+    saves[id] = 'saving';
+    try {
+      const res = await fetch('/api/class/answers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        keepalive: true, // finishes even if the page is closing
+        body: JSON.stringify({ runId, moduleId: id, answers: $state.snapshot(mine[id] ?? {}) })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        saves[id] = dirty.has(id) ? 'pending' : 'saved';
+      } else if (data.closed) {
+        // Too late: show what was actually handed in.
+        dirty.delete(id);
+        saves[id] = 'closed';
+        inflight.delete(id);
+        await loadMine();
+      } else if (res.status >= 500 || res.status === 429) {
+        dirty.add(id);
+        saves[id] = 'error';
+        schedule(id, RETRY_MS);
+      } else {
+        saves[id] = 'error'; // refused (too long, signed out...): keep it on screen, don't loop
+      }
+    } catch {
+      dirty.add(id);
+      saves[id] = 'error';
+      schedule(id, RETRY_MS);
+    } finally {
+      inflight.delete(id);
+    }
+  }
+
+  const flushAll = () => {
+    for (const id of [...dirty]) schedule(id, 0);
+  };
+  const flushIfHidden = () => document.visibilityState === 'hidden' && flushAll();
+  const warnUnsaved = (e: BeforeUnloadEvent) => {
+    if (dirty.size || inflight.size) {
+      flushAll();
+      e.preventDefault();
+    }
+  };
+
+  // The moment the teacher moves on (or time runs out), send whatever is still waiting. Coming back
+  // to a module that still has time reopens it.
+  let lastKey = '';
+  $effect(() => {
+    const key = rs ? `${rs.index}:${rs.holding}:${rs.status}` : '';
+    if (key === lastKey) return;
+    lastKey = key;
+    flushAll();
+    const liveId = rs && lesson?.modules[rs.index]?.id;
+    if (liveId && rs && !rs.holding && saves[liveId] === 'closed') saves[liveId] = '';
   });
 
   /* Students aren't dragged along: the teacher's module is highlighted ("live"), but a student can open
@@ -56,6 +166,29 @@
   $effect(() => {
     if (rs && viewing === rs.index) viewing = null;
   });
+  /** The student can change their answers to module i: it's the live module and its time hasn't run out. */
+  const editable = (i: number) => !!rs && rs.status === 'live' && i === rs.index && !rs.holding;
+
+  /** The module has been running and has closed (moved on from, or its time ran out). Skipped ones never ran. */
+  const closed = (i: number) =>
+    !!rs && (i === rs.index ? rs.holding : (rs.took?.[i] ?? 0) > 0 || !!rs.done?.[i]);
+
+  /** The sidebar mark: > live, ✓ handed in (or done), ✗ closed with nothing handed in. */
+  function mark(i: number): { sym: string; cls: string; title: string } {
+    if (!rs || !lesson) return { sym: '', cls: '', title: '' };
+    const m = lesson.modules[i];
+    const spec = answerSpec(m);
+    if (i === rs.index && !rs.holding) return { sym: '>', cls: '', title: 'Your class is here' };
+    if (spec) {
+      const handed = isAnswered(spec, mine[m.id]);
+      if (handed) return { sym: '✓', cls: 'text-[var(--ok)]', title: spec.kind === 'tap' ? 'You tapped done' : 'Handed in' };
+      if (spec.kind !== 'tap' && closed(i)) return { sym: '✗', cls: 'text-[var(--bad)]', title: 'Closed before you answered' };
+    }
+    if (i === rs.index) return { sym: '>', cls: '', title: 'Your class is here' };
+    if (closed(i)) return { sym: '✓', cls: '', title: 'Finished' };
+    return { sym: '', cls: '', title: '' };
+  }
+
   const modLeft = $derived(rs ? moduleLeftMs(rs, now) : 0);
   const lessonLeft = $derived(rs ? lessonLeftMs(rs, now) : 0);
   const today = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -97,6 +230,7 @@
         {#if showList}
           <ol class="px-3 pb-3 space-y-1 text-xs">
             {#each lesson.modules as m, i (m.id)}
+              {@const mk = mark(i)}
               <li>
                 <button
                   type="button"
@@ -110,7 +244,7 @@
                   title={reachable(i) ? (i === rs.index ? 'Your class is here' : 'Open this module') : 'Not reached yet'}
                   onclick={() => open(i)}
                 >
-                  <span class="w-4 text-center" aria-hidden="true">{i === rs.index ? '>' : rs.done?.[i] ? '✓' : ''}</span>
+                  <span class="w-4 text-center {mk.cls}" title={mk.title} aria-label={mk.title || undefined}>{mk.sym}</span>
                   <span class="flex-1 truncate {i === rs.index ? 'font-bold' : ''}">{m.title}</span>
                   {#if i === rs.index}
                     <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
@@ -120,9 +254,19 @@
             {/each}
           </ol>
         {:else if live}
-          <div class="px-3 pb-3 flex justify-between text-xs">
-            <span class="truncate font-bold">{live.title}</span>
-            <span class="tabular-nums font-bold">{countdown(Math.max(modLeft, 0))}</span>
+          <!-- collapsed: where the teacher is, lit up when the student is reading something else; click to go there -->
+          <div class="px-3 pb-3">
+            <button
+              type="button"
+              class="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs text-left cursor-pointer {onLive
+                ? 'border-2 border-dashed border-[var(--accent)]'
+                : 'border-2 border-solid border-[var(--accent)] bg-[var(--accent)]/10 font-bold'}"
+              title={onLive ? 'Your class is here' : 'Go to where your class is'}
+              onclick={() => open(rs.index)}
+            >
+              <span class="truncate">{onLive ? '>' : '↩'} {live.title}</span>
+              <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
+            </button>
           </div>
         {/if}
 
@@ -180,7 +324,17 @@
           {/if}
         {/if}
 
-        <LiveModule module={current} livePage={onLive ? rs.page : (rs.pages?.[shownIndex] ?? 0)} />
+        {#key current.id}
+          <LiveModule
+            module={current}
+            livePage={onLive ? rs.page : (rs.pages?.[shownIndex] ?? 0)}
+            {runId}
+            answers={mine[current.id] ?? {}}
+            editable={editable(shownIndex)}
+            saveState={saves[current.id] ?? ''}
+            onanswer={(a, flush) => current && edit(current.id, a, flush)}
+          />
+        {/key}
       </main>
     {/if}
   </div>

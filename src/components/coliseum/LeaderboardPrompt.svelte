@@ -64,6 +64,14 @@
     }
   }
 
+  /** Inside a live lesson the embed's URL names the run and module (?run=&module=), so the teacher sees the score there. */
+  function lessonTarget() {
+    const q = new URLSearchParams(location.search);
+    const runId = q.get('run');
+    const moduleId = q.get('module');
+    return runId && moduleId ? { runId, moduleId } : {};
+  }
+
   async function saveLessonScore(post = true) {
     errorMsg = '';
     isSubmitting = true;
@@ -71,7 +79,7 @@
       const res = await fetch('/api/class/score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challenge_id: challengeId, score, duration_ms: durationMs, level, variant, tags, post })
+        body: JSON.stringify({ challenge_id: challengeId, score, duration_ms: durationMs, level, variant, tags, post, ...lessonTarget() })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);

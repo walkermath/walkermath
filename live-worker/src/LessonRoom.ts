@@ -242,6 +242,13 @@ export class LessonRoom extends DurableObject<Env> {
       return json({ state, serverNow: Date.now() });
     }
 
+    // The Pages Functions read the state to check a student's answers (no roster side effects).
+    if (request.method === 'GET' && url.pathname === '/peek') {
+      const loaded = await this.load();
+      if (!loaded) return json({ error: 'Not started' }, 409);
+      return json({ state: loaded.state, serverNow: Date.now() });
+    }
+
     // Polling fallback, and the first load: the same room over plain HTTP.
     if (request.method === 'GET' && url.pathname === '/state') {
       const loaded = await this.load();

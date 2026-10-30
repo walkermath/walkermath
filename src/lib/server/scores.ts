@@ -82,7 +82,7 @@ export async function recordLessonScore(
   db: any,
   s: Student,
   score: GameScore,
-  opts: { profanityList?: string; now?: number; post?: boolean } = {}
+  opts: { profanityList?: string; now?: number; post?: boolean; target?: { runId: string; moduleId: string } | null } = {}
 ): Promise<{ kept: boolean; posted: boolean; name: string | null }> {
   const now = opts.now ?? Date.now();
   const { n } = await db
@@ -99,11 +99,12 @@ export async function recordLessonScore(
   }
   await db
     .prepare(
-      `INSERT INTO lesson_scores (id, alias_id, class_id, game, event, level, variant, score, duration_ms, posted, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`
+      `INSERT INTO lesson_scores (id, alias_id, class_id, game, event, level, variant, score, duration_ms, posted, created_at, run_id, module_id)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`
     )
     .bind(newId(), s.aliasId, s.classId, score.game, score.event, score.level, score.variant,
-      Math.round(score.score), Math.round(score.durationMs), posted ? 1 : 0, now)
+      Math.round(score.score), Math.round(score.durationMs), posted ? 1 : 0, now,
+      opts.target?.runId ?? null, opts.target?.moduleId ?? null)
     .run();
   return { kept: true, posted, name: posted ? status.name : null };
 }

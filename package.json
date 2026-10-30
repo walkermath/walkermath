@@ -13,7 +13,8 @@
     "test:lessons": "node --experimental-strip-types --no-warnings scripts/test-lessons-api.mjs",
     "test:pacing": "node --experimental-strip-types --no-warnings --test scripts/test-pacing.mjs",
     "test:slides": "node --experimental-strip-types --no-warnings --test scripts/test-slides.mjs",
-    "test:room": "node --experimental-strip-types --no-warnings --test scripts/test-room.mjs"
+    "test:room": "node --experimental-strip-types --no-warnings --test scripts/test-room.mjs",
+    "test:answers": "node --experimental-strip-types --no-warnings --test scripts/test-answers.mjs"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.1",

@@ -74,8 +74,8 @@ every PIN is keyed with it.
 
 ## 3. Database tables
 
-Six migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
-`0001`-`0003` are safe to run twice; `0004`-`0006` are not (SQLite can't add a column twice: "duplicate column
+Seven migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
+`0001`-`0003` are safe to run twice; `0004`-`0007` are not (SQLite can't add a column twice: "duplicate column
 name" just means it's already applied).
 
 ```sh
@@ -87,6 +87,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0003_l
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0004_lesson_topic.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0005_lesson_extras.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0006_lesson_scores.sql
+npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0007_submissions.sql
 
 # production (once each, when you're ready to deploy): the same commands with --remote
 ```
@@ -100,6 +101,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0006_l
 | `0004_lesson_topic.sql` | a topic for each lesson |
 | `0005_lesson_extras.sql` | standards and the Resources links on each lesson |
 | `0006_lesson_scores.sql` | Coliseum games in lessons: kept scores, each class's leaderboard switch (off), students' leaderboard names |
+| `0007_submissions.sql` | students' answers in live lessons; which delivery a game score belongs to; each delivery's final timing |
 
 ## 4. Try it locally
 
@@ -181,11 +183,29 @@ Live lessons (the Phase 4a gate; both terminals running):
 7. Once every delivery of a lesson is over, its tile on [lessons] gets a **/!\\**: click it to
    archive the lesson or dismiss the prompt (dismissing is remembered in this browser only; it comes back after the next delivery finishes).
 
-Answering questions (and auto-collecting at time-up) is Phase 4b; the blackboard is 4c.
+Answers (Phase 4b; run `0007_submissions.sql` first). Give the bellwork a couple of questions with
+keys (a number, a choice), then start a delivery as above:
+
+1. As the student, answer the bellwork. "// saving..." then "// saved" appears under the questions.
+   Refresh the page: the answers are still there.
+2. On the control panel, the **answers** box shows the student's answers within a few seconds, ✓ / ✗
+   against your key, and "1 of 1 in". The **show** menu picks another module (it follows the live
+   one by default); the box can be collapsed if the control panel is on the projector.
+3. **[next]**: the student's bellwork locks ("handed in. this one is closed.") and the sidebar shows
+   ✓ (or ✗ if they left it blank). The student can still open it from the list and read it, but not
+   change it. Go **[<- back]** while it has time left and it reopens; once its time has run out it
+   stays closed.
+4. An activity with "done" on, or independent work set to "done" / "short answer", shows **[I'm done]**
+   or an answer box; the answers box lists who's done / what they wrote.
+5. A Coliseum Practice module: finish a game as the student; the answers box shows the best score
+   and number of games.
+
+The blackboard is 4c.
 
 Tests (no install needed): `npm run test:lessons` (API, against a stand-in database),
-`npm run test:pacing` (the pacing engine), `npm run test:slides` (cutting notes into slides) and
-`npm run test:room` (the live room's clock and commands).
+`npm run test:pacing` (the pacing engine), `npm run test:slides` (cutting notes into slides),
+`npm run test:room` (the live room's clock and commands) and `npm run test:answers` (what students
+hand in, and marking against the key).
 
 ## What's stored
 

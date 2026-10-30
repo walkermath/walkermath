@@ -47,6 +47,9 @@ export interface RoomState {
   done: boolean[];
   /** The Notes page each module was left on. */
   pages: number[];
+  /** When each module's clock last stopped (null while it runs or if it never has): answers are
+   *  still taken for a few seconds after, so the last thing a student typed isn't lost. */
+  closedAt: (number | null)[];
   /** When the current module's clock last started (or, while holding, when it started holding). */
   moduleStartedAt: number;
   /** Set while paused; the clock is frozen at this moment. */
@@ -79,17 +82,35 @@ const step = (s: number) => Math.max(STEP_SEC, Math.round(s / STEP_SEC) * STEP_S
 
 /* ---------------- the clock ---------------- */
 
-/** Rooms started before per-module clocks existed: fill in the new fields. */
+/** Rooms started by an older version: fill in the fields they lack, keeping what they have. */
 export function upgradeState(s: RoomState): RoomState {
-  if (Array.isArray(s.spent) && Array.isArray(s.took) && Array.isArray(s.done) && Array.isArray(s.pages)) return s;
   const n = s.plan.length;
+  const old: Partial<RoomState> = s;
+  if (old.spent && old.took && old.done && old.pages && old.closedAt) return s;
+  const before = (i: number) => i < s.index;
   return {
     ...s,
-    spent: Array.from({ length: n }, (_, i) => (i < s.index ? s.plan[i] : 0)),
-    took: Array.from({ length: n }, (_, i) => (i < s.index ? s.plan[i] : 0)),
-    done: Array.from({ length: n }, (_, i) => i < s.index),
-    pages: Array.from({ length: n }, () => 0)
+    spent: old.spent ?? Array.from({ length: n }, (_, i) => (before(i) ? s.plan[i] : 0)),
+    took: old.took ?? Array.from({ length: n }, (_, i) => (before(i) ? s.plan[i] : 0)),
+    done: old.done ?? Array.from({ length: n }, (_, i) => before(i)),
+    pages: old.pages ?? Array.from({ length: n }, () => 0),
+    closedAt: old.closedAt ?? Array.from({ length: n }, () => null)
   };
+}
+
+/** How long after a module's clock stops its answers are still taken. */
+export const ANSWER_GRACE_MS = 8000;
+
+/**
+ * Can students change their answers to module `i` at `now`? While it is the current module and its
+ * time hasn't run out (a pause doesn't close it), plus a short grace after it closes so the last
+ * few keystrokes land. Coming back to a module with time left reopens it.
+ */
+export function answersOpen(s: RoomState, i: number, now: number): boolean {
+  if (s.status !== 'live') return false;
+  if (i === s.index && !s.holding) return true;
+  const c = s.closedAt?.[i];
+  return c != null && now - c <= ANSWER_GRACE_MS;
 }
 
 /** Seconds of module `i`'s clock still to run, for a module that isn't the current one. */
@@ -183,6 +204,8 @@ function replanRest(s: RoomState, modules: RoomModule[], now: number): RoomState
 function enter(s: RoomState, modules: RoomModule[], index: number, now: number): RoomState {
   const base: RoomState = {
     ...s,
+    // Coming back to a module that still has time reopens its answers; one at 0:00 stays closed.
+    closedAt: s.closedAt.map((c, i) => (i === index && !s.done[index] ? null : c)),
     index,
     moduleStartedAt: now,
     pausedAt: null,
@@ -202,13 +225,16 @@ function close(s: RoomState, now: number): RoomState {
   const took = [...s.took];
   const done = [...s.done];
   const pages = [...s.pages];
+  const closedAt = [...s.closedAt];
   took[i] = (took[i] ?? 0) + ran;
   pages[i] = s.page;
   if (!s.holding) {
+    // (A module waiting at 0:00 closed when its time ran out.)
     spent[i] = Math.min(s.plan[i] ?? 0, (spent[i] ?? 0) + ran);
     if (moduleLeftMs(s, now) <= 500) done[i] = true;
+    closedAt[i] = now;
   }
-  return { ...s, spent, took, done, pages, pausedAt: null };
+  return { ...s, spent, took, done, pages, closedAt, pausedAt: null };
 }
 
 /** The current module's time is up: its clock stops at 0:00 and it waits for the teacher. */
@@ -234,6 +260,7 @@ export function startRoom(runId: string, modules: RoomModule[], endsAt: number, 
     took: modules.map(() => 0),
     done: modules.map(() => false),
     pages: modules.map(() => 0),
+    closedAt: modules.map(() => null),
     moduleStartedAt: now,
     pausedAt: null,
     holding: false,
@@ -303,9 +330,11 @@ export function apply(s: RoomState, modules: RoomModule[], cmd: Command, now: nu
         if (cmd.seconds <= 0) break;
         const c = close(s, now);
         const done = [...c.done];
+        const closedAt = [...c.closedAt];
         done[i] = false;
+        closedAt[i] = null; // reopened
         plan[i] = (c.spent[i] ?? 0) + step(cmd.seconds);
-        next = replanRest({ ...c, plan, done, holding: false, moduleStartedAt: now }, modules, now);
+        next = replanRest({ ...c, plan, done, closedAt, holding: false, moduleStartedAt: now }, modules, now);
         break;
       }
       // More (or less) time on the current module; never below what has already passed + 15 s.
