@@ -1,0 +1,19 @@
+{
+  "name": "walkermath-live",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "workerd": true
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.0.0",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.0.0"
+  }
+}

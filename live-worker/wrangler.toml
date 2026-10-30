@@ -1,0 +1,23 @@
+# live-worker/wrangler.toml
+# Separate Worker that hosts the LessonRoom Durable Object.
+# Cloudflare does not allow a Durable Object inside a Pages project, so the Pages site binds to
+# this Worker by name (see the [[durable_objects.bindings]] block in the root wrangler.toml).
+#
+# This Worker has NO public route: workers_dev and preview URLs are off and no routes are set.
+# The only way in is through the Pages Functions, which check who is connecting first.
+
+name = "walkermath-live"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+workers_dev = false
+preview_urls = false
+
+[[durable_objects.bindings]]
+name = "LESSON_ROOM"
+class_name = "LessonRoom"
+
+# SQLite-backed class (the only kind the Workers Free plan allows, and Cloudflare's recommendation).
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LessonRoom"]

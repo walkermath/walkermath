@@ -6,3 +6,12 @@ compatibility_date = "2026-10-01"
 binding = "DB"
 database_name = "walkermath-leaderboards"
 database_id = "1922dc41-cbeb-4f1e-960f-83a43ada72a4"
+# Live lesson rooms. The LessonRoom class lives in the separate walkermath-live Worker
+# (live-worker/), because a Durable Object cannot be deployed inside a Pages project.
+# Deploy that Worker first: cd live-worker && npm install && npx wrangler deploy
+[[durable_objects.bindings]]
+name = "LESSON_ROOM"
+class_name = "LessonRoom"
+script_name = "walkermath-live"
+
+

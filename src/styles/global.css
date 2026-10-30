@@ -7,6 +7,7 @@
     --text-primary: #18181b;
     --text-muted: #64748b;
     --border-color: #e2e8f0;
+    --line: #8494aa; /* stronger edge for boxes you need to find and click (builder tiles, fields, panels) */
     --accent: #4338ca;
 
     /* game surfaces: light-theme values (dark-theme values below match the original black overlays) */
@@ -27,6 +28,7 @@
     --text-primary: #f4f4f5;
     --text-muted: #a1a1aa;
     --border-color: #27272a;
+    --line: #5b5b66;
     --accent: #f59e0b;
 
     --well: rgb(0 0 0 / 0.2);
@@ -51,4 +53,34 @@
   margin-top: 1.5rem !important;
   margin-bottom: 1.5rem !important;
   }
+}
+/* Pre-written slides (SlideView.svelte): Tailwind's reset flattens headings and lists, so slides set
+   their own type, sized for a projector. In the components layer so a note's own utility classes
+   (the tape diagrams' my-6, text-sm...) still win. */
+@layer components {
+  /* .slide-text: the same type rules at the page's own size (instructions, questions). */
+  .slide {
+    font-size: 22px;
+    line-height: 1.45;
+    font-family: "Courier New", Courier, monospace;
+    color: var(--text-primary);
+  }
+  :is(.slide, .slide-text) > * + * { margin-top: 0.6em; }
+  :is(.slide, .slide-text) h1 { font-size: 1.8em; font-weight: 700; line-height: 1.15; }
+  :is(.slide, .slide-text) h2 { font-size: 1.45em; font-weight: 700; }
+  :is(.slide, .slide-text) h3 { font-size: 1.2em; font-weight: 700; }
+  :is(.slide, .slide-text) h4, :is(.slide, .slide-text) h5, :is(.slide, .slide-text) h6 { font-weight: 700; }
+  :is(.slide, .slide-text) ul { list-style: disc; padding-left: 1.4em; }
+  :is(.slide, .slide-text) ol { list-style: decimal; padding-left: 1.6em; }
+  :is(.slide, .slide-text) li + li, :is(.slide, .slide-text) li > * + * { margin-top: 0.25em; }
+  :is(.slide, .slide-text) blockquote { border-left: 4px solid var(--line); padding-left: 0.8em; color: var(--text-muted); }
+  :is(.slide, .slide-text) a { color: var(--accent); text-decoration: underline; }
+  :is(.slide, .slide-text) code { background: rgb(127 127 127 / 0.15); padding: 0 0.25em; border-radius: 3px; }
+  :is(.slide, .slide-text) pre { background: rgb(127 127 127 / 0.15); padding: 0.6em 0.8em; border-radius: 4px; overflow-x: auto; }
+  :is(.slide, .slide-text) pre code { background: none; padding: 0; }
+  :is(.slide, .slide-text) table { border-collapse: collapse; }
+  :is(.slide, .slide-text) th, :is(.slide, .slide-text) td { border: 1px solid var(--line); padding: 0.2em 0.6em; }
+  :is(.slide, .slide-text) hr { border-color: var(--line); }
+  :is(.slide, .slide-text) img { max-width: 100%; max-height: 400px; }
+  :is(.slide, .slide-text) .katex-display { margin: 0.6em 0 !important; }
 }

@@ -1,0 +1,13 @@
+---
+// src/pages/class/live.astro
+// A student's live lesson (?run=). Static shell; the screen talks to the room.
+import Layout from '../../layouts/Layout.astro';
+import ClassLive from '../../components/live/ClassLive.svelte';
+import '../../styles/global.css';
+---
+
+<Layout title="walkerMath\class\live" wide>
+  <main class="py-8">
+    <ClassLive client:only="svelte" />
+  </main>
+</Layout>

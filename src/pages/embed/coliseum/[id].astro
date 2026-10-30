@@ -1,0 +1,45 @@
+---
+// src/pages/embed/coliseum/[id].astro
+// A Coliseum challenge with no site chrome, for a lesson's Coliseum Practice activity (Phase 4)
+// and the builder's [try it]. On this path the game's end screen saves the score through the
+// student's class sign-in instead of asking for a period and teacher (LeaderboardPrompt.svelte).
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import 'katex/dist/katex.min.css';
+import '../../../styles/global.css';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('coliseum', ({ data }) => data.isActive);
+  return entries.map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+}
+
+interface Props {
+  entry: CollectionEntry<'coliseum'>;
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="robots" content="noindex" />
+    <title>{entry.data.title}</title>
+    <script is:inline>
+      // Match the site theme (set by the floating nav on other pages) before first paint.
+      try {
+        const t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        if (t !== 'light') document.documentElement.classList.add('dark');
+      } catch {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
+  </head>
+  <body class="p-4 sm:p-6 font-mono">
+    <main class="max-w-3xl mx-auto space-y-4">
+      <Content />
+    </main>
+  </body>
+</html>

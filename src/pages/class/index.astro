@@ -1,0 +1,13 @@
+---
+// src/pages/class/index.astro
+// Student area: join a class with the class code and an alias + PIN card.
+import Layout from '../../layouts/Layout.astro';
+import ClassJoin from '../../components/class/ClassJoin.svelte';
+import '../../styles/global.css';
+---
+
+<Layout title="walkerMath\class">
+  <main class="py-12">
+    <ClassJoin client:only="svelte" />
+  </main>
+</Layout>
