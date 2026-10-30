@@ -13,6 +13,9 @@ import { STEP_SEC } from './time.ts';
 export const LIMITS = {
   lessonTitle: 100,
   topic: 100,
+  standards: 200,
+  resources: 10,
+  notes: 2000,
   objective: 500,
   successCriteria: 1000,
   minLessonSec: 5 * 60,
@@ -55,7 +58,21 @@ export interface Question {
   answer: string;
 }
 
+/** What a question set is for. Picking one gives the module its starting title (and, for the two
+ *  bookends, the usual locked length). */
+export const PROMPT_CATEGORIES = [
+  { id: 'bellwork', label: 'Bellwork', title: 'Bellwork', sec: 5 * 60, locked: true },
+  { id: 'check-in', label: 'Check-in', title: 'Check-in', sec: 3 * 60, locked: false },
+  { id: 'exit-ticket', label: 'Exit ticket', title: 'Exit ticket', sec: 4 * 60, locked: true },
+  { id: 'other', label: 'Other', title: 'Questions', sec: 5 * 60, locked: false }
+] as const;
+export type PromptCategory = (typeof PROMPT_CATEGORIES)[number]['id'];
+export const isPromptCategory = (v: unknown): v is PromptCategory => PROMPT_CATEGORIES.some((c) => c.id === v);
+export const promptCategory = (id: unknown) =>
+  PROMPT_CATEGORIES.find((c) => c.id === id) ?? PROMPT_CATEGORIES[PROMPT_CATEGORIES.length - 1];
+
 export interface PromptConfig {
+  category: PromptCategory;
   questions: Question[];
 }
 
@@ -110,6 +127,8 @@ export interface LessonModule {
   minSec: number | null;
   onTimeUp: OnTimeUp;
   config: ModuleConfig;
+  /** Teacher-only reminders for this module. Stored privately; never sent to students. */
+  teacherNotes: string;
 }
 
 export interface LessonFields {
@@ -118,6 +137,10 @@ export interface LessonFields {
   topic: string;
   objective: string;
   successCriteria: string;
+  /** Optional standards, e.g. "A.5A, A.5B". */
+  standards: string;
+  /** Links students can open from the lesson's "Resources" panel. */
+  resources: Link[];
   durationSec: number;
 }
 
@@ -138,7 +161,7 @@ export const MODULE_TYPES: Record<ModuleType, ModuleTypeInfo> = {
     hint: 'questions: bellwork, check-in, exit ticket',
     defaultTitle: 'Questions',
     defaultSec: 5 * 60,
-    defaultConfig: (): PromptConfig => ({ questions: [] }),
+    defaultConfig: (): PromptConfig => ({ category: 'other', questions: [] }),
     collects: () => true
   },
   notes: {
@@ -172,7 +195,7 @@ export const isModuleType = (v: unknown): v is ModuleType => typeof v === 'strin
 
 const newUuid = () => crypto.randomUUID();
 
-export function newModule(type: ModuleType, category?: ActivityCategory): LessonModule {
+export function newModule(type: ModuleType, category?: ActivityCategory | PromptCategory): LessonModule {
   const t = MODULE_TYPES[type];
   const m: LessonModule = {
     id: newUuid(),
@@ -182,26 +205,26 @@ export function newModule(type: ModuleType, category?: ActivityCategory): Lesson
     pacing: 'flex',
     minSec: null,
     onTimeUp: 'auto',
-    config: t.defaultConfig()
+    config: t.defaultConfig(),
+    teacherNotes: ''
   };
-  if (type === 'activity' && category) {
+  if (type === 'activity' && category && isActivityCategory(category)) {
     (m.config as ActivityConfig).category = category;
     m.title = activityCategory(category).title;
+  }
+  if (type === 'prompt' && category && isPromptCategory(category)) {
+    const c = promptCategory(category);
+    (m.config as PromptConfig).category = c.id;
+    m.title = c.title;
+    m.plannedSec = c.sec;
+    m.pacing = c.locked ? 'locked' : 'flex';
   }
   return m;
 }
 
 /** Every new lesson starts with a locked 5-minute Bellwork and a locked 4-minute Exit ticket. */
 export function starterModules(): LessonModule[] {
-  const bellwork = newModule('prompt');
-  bellwork.title = 'Bellwork';
-  bellwork.plannedSec = 5 * 60;
-  bellwork.pacing = 'locked';
-  const exit = newModule('prompt');
-  exit.title = 'Exit ticket';
-  exit.plannedSec = 4 * 60;
-  exit.pacing = 'locked';
-  return [bellwork, exit];
+  return [newModule('prompt', 'bellwork'), newModule('prompt', 'exit-ticket')];
 }
 
 /**
@@ -295,7 +318,7 @@ function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | st
         }
         questions.push({ id: isUuid(q?.id) ? q.id : newUuid(), kind, text, choices, answer });
       }
-      return { questions };
+      return { category: isPromptCategory(c.category) ? c.category : 'other', questions };
     }
     case 'notes': {
       const source = c.source === 'markdown' ? 'markdown' : 'note';
@@ -348,7 +371,8 @@ export function cleanModule(m: any, index: number): LessonModule | string {
   const onTimeUp: OnTimeUp = m.onTimeUp === 'hold' ? 'hold' : 'auto';
   const config = cleanConfig(m.type, m.config, `${where} (${title})`);
   if (typeof config === 'string') return config;
-  return { id: m.id, type: m.type, title, plannedSec, pacing, minSec: pacing === 'flex' ? minSec : null, onTimeUp, config };
+  const teacherNotes = cleanText(m.teacherNotes, LIMITS.notes);
+  return { id: m.id, type: m.type, title, plannedSec, pacing, minSec: pacing === 'flex' ? minSec : null, onTimeUp, config, teacherNotes };
 }
 
 export function cleanLessonFields(b: any): LessonFields | string {
@@ -358,11 +382,17 @@ export function cleanLessonFields(b: any): LessonFields | string {
   if (!Number.isInteger(durationSec) || durationSec % 60 !== 0 || durationSec < LIMITS.minLessonSec || durationSec > LIMITS.maxLessonSec) {
     return 'Duration must be whole minutes, between 5 and 240.';
   }
+  const rawResources = Array.isArray(b?.resources) ? b.resources : [];
+  if (rawResources.length > LIMITS.resources) return `At most ${LIMITS.resources} resources per lesson.`;
+  const resources = cleanLinks(rawResources);
+  if (typeof resources === 'string') return resources.replace('per module', 'per lesson');
   return {
     title,
     topic: cleanLine(b?.topic, LIMITS.topic),
     objective: cleanText(b?.objective, LIMITS.objective),
     successCriteria: cleanText(b?.successCriteria, LIMITS.successCriteria),
+    standards: cleanLine(b?.standards, LIMITS.standards),
+    resources,
     durationSec
   };
 }
@@ -386,23 +416,28 @@ export function cleanModules(list: unknown): LessonModule[] | string {
 
 export interface StoredModule {
   config: ModuleConfig;
-  /** Answer keys by question id. Never sent to students. */
-  private: { answers?: Record<string, string> };
+  /** Answer keys by question id, and the teacher's notes. Never sent to students. */
+  private: { answers?: Record<string, string>; notes?: string };
 }
 
 export function splitModule(m: LessonModule): StoredModule {
-  if (m.type !== 'prompt') return { config: m.config, private: {} };
+  const priv: StoredModule['private'] = {};
+  if (m.teacherNotes) priv.notes = m.teacherNotes;
+  if (m.type !== 'prompt') return { config: m.config, private: priv };
   const answers: Record<string, string> = {};
   const questions = (m.config as PromptConfig).questions.map((q) => {
     if (q.answer) answers[q.id] = q.answer;
     return { ...q, answer: '' };
   });
-  return { config: { questions }, private: Object.keys(answers).length ? { answers } : {} };
+  if (Object.keys(answers).length) priv.answers = answers;
+  return { config: { category: (m.config as PromptConfig).category, questions }, private: priv };
 }
 
+/** Puts the private answer keys back into a prompt's config (notes are read separately). */
 export function joinModule(config: ModuleConfig, priv: StoredModule['private'], type: ModuleType): ModuleConfig {
   if (type !== 'prompt' || !priv?.answers) return config;
   return {
+    ...(config as PromptConfig),
     questions: (config as PromptConfig).questions.map((q) => ({ ...q, answer: priv.answers?.[q.id] ?? '' }))
   };
 }
@@ -412,7 +447,7 @@ export function publicModule(m: LessonModule) {
   const { config } = splitModule(m);
   const strip = (c: ModuleConfig) =>
     m.type === 'prompt'
-      ? { questions: (c as PromptConfig).questions.map(({ answer: _a, ...q }) => q) }
+      ? { category: (c as PromptConfig).category, questions: (c as PromptConfig).questions.map(({ answer: _a, ...q }) => q) }
       : c;
   return { id: m.id, type: m.type, title: m.title, collects: MODULE_TYPES[m.type].collects(m.config), config: strip(config) };
 }

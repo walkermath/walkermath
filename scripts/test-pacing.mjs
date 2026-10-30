@@ -128,4 +128,9 @@ test('new modules go before a locked exit ticket, never ahead of the bellwork', 
   assert.equal(a.title, 'Coliseum practice');
   assert.equal(a.config.category, 'coliseum');
   assert.equal(activityCategory('nope').id, 'other');
+  const p = newModule('prompt', 'check-in');
+  assert.deepEqual([p.title, p.plannedSec, p.pacing, p.config.category], ['Check-in', 180, 'flex', 'check-in']);
+  assert.equal(starterModules()[0].config.category, 'bellwork');
+  assert.equal(starterModules()[1].config.category, 'exit-ticket');
+  assert.equal(newModule('prompt').config.category, 'other');
 });

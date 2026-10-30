@@ -375,8 +375,8 @@ console.log('lessons');
 
   const q1 = uuid();
   const spec = [
-    { id: uuid(), type: 'prompt', title: 'Bellwork', plannedSec: 360, pacing: 'flex', minSec: null, onTimeUp: 'auto',
-      config: { questions: [{ id: q1, kind: 'number', text: 'Solve 2x + 3 = 11', choices: [], answer: '4' },
+    { id: uuid(), type: 'prompt', title: 'Bellwork', plannedSec: 360, pacing: 'flex', minSec: null, onTimeUp: 'auto', teacherNotes: 'Walk the room; watch for sign errors.',
+      config: { category: 'bellwork', questions: [{ id: q1, kind: 'number', text: 'Solve 2x + 3 = 11', choices: [], answer: '4' },
                             { id: uuid(), kind: 'choice', text: 'Which is linear?', choices: ['y = x^2', 'y = 3x', ''], answer: '1' }] } },
     { id: uuid(), type: 'notes', title: 'Notes', plannedSec: 600, pacing: 'flex', minSec: 480, onTimeUp: 'auto',
       config: { source: 'note', noteId: 'equations', markdown: '', revealSections: true } },
@@ -392,7 +392,8 @@ console.log('lessons');
   const save = (extra = {}) =>
     call(lessonOne, 'PUT', L(`/api/teach/lessons/${lesson.id}`, { method: 'PUT', body: {
       baseUpdatedAt: lesson.updatedAt, title: 'Solving linear equations', topic: '  Two-step   equations ', objective: 'Solve two-step equations.',
-      successCriteria: 'I can isolate x.', durationSec: 2880, modules: spec, ...extra } }), { lessonId: lesson.id }, teachMw);
+      successCriteria: 'I can isolate x.', standards: '  A.5A,   A.5B ', resources: [{ label: 'Desmos', url: 'https://desmos.com/calculator' }, { label: '', url: '' }],
+      durationSec: 2880, modules: spec, ...extra } }), { lessonId: lesson.id }, teachMw);
 
   for (const [bad, why] of [
     [{ durationSec: 2890 }, 'duration not whole minutes'],
@@ -401,6 +402,8 @@ console.log('lessons');
     [{ modules: [{ ...spec[2], config: { links: [{ url: 'javascript:alert(1)' }] } }] }, 'bad link'],
     [{ modules: [{ ...spec[0], config: { questions: [{ kind: 'text', text: '' }] } }] }, 'empty question'],
     [{ modules: [spec[0], spec[0]] }, 'duplicate module id'],
+    [{ resources: [{ label: 'x', url: 'javascript:alert(1)' }] }, 'bad resource link'],
+    [{ resources: Array.from({ length: 11 }, () => ({ label: 'a', url: 'https://a.example' })) }, 'too many resources'],
     [{ modules: [{ ...spec[1], minSec: 900 }] }, 'floor above plan']
   ]) {
     assert.equal((await save(bad)).status, 400, why);
@@ -419,6 +422,11 @@ console.log('lessons');
   assert.equal(lesson.modules[2].config.links[0].label, 'walkermath.com');
   assert.equal(lesson.modules[5].minSec, null); // locked modules have no floor
   assert.equal(lesson.topic, 'Two-step equations');
+  assert.equal(lesson.standards, 'A.5A, A.5B');
+  assert.deepEqual(lesson.resources, [{ label: 'Desmos', url: 'https://desmos.com/calculator' }]);
+  assert.equal(lesson.modules[0].teacherNotes, 'Walk the room; watch for sign errors.');
+  assert.equal(lesson.modules[0].config.category, 'bellwork');
+  assert.equal(lesson.modules[5].config.category, 'other'); // no category given
   assert.equal(lesson.modules[2].config.category, 'turn-talk');
   assert.equal(lesson.modules[3].config.category, 'other'); // unknown category falls back
   ok("the spec's 48-minute lesson saves, in order, with cleaned-up fields (topic, activity categories)");
@@ -428,6 +436,8 @@ console.log('lessons');
   assert.equal(JSON.parse(raw.private_json).answers[q1], '4');
   const pub = JSON.stringify(publicModule(lesson.modules[0]));
   assert.ok(!pub.includes('answer'));
+  assert.ok(!pub.includes('sign errors') && !JSON.stringify(raw.config_json).includes('sign errors'));
+  assert.equal(JSON.parse(raw.private_json).notes, 'Walk the room; watch for sign errors.');
   ok('answer keys are stored apart and never in the student-facing shape');
 
   const stale = await call(lessonOne, 'PUT', L(`/api/teach/lessons/${lesson.id}`, { method: 'PUT', body: {

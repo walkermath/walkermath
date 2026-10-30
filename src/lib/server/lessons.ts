@@ -5,6 +5,7 @@
 import { isBellTime } from '../classroom.ts';
 import {
   isActivityCategory,
+  isPromptCategory,
   joinModule,
   splitModule,
   type LessonFields,
@@ -63,9 +64,11 @@ const parse = (s: unknown, fallback: any) => {
 };
 
 const toModule = (r: any): LessonModule => {
-  const config: any = joinModule(parse(r.config_json, {}), parse(r.private_json, {}), r.type);
+  const priv = parse(r.private_json, {});
+  const config: any = joinModule(parse(r.config_json, {}), priv, r.type);
   // Activities saved before categories existed.
   if (r.type === 'activity' && !isActivityCategory(config.category)) config.category = 'other';
+  if (r.type === 'prompt' && !isPromptCategory(config.category)) config.category = 'other';
   return {
     id: r.id,
     type: r.type as ModuleType,
@@ -74,7 +77,8 @@ const toModule = (r: any): LessonModule => {
     pacing: r.pacing === 'locked' ? 'locked' : 'flex',
     minSec: r.min_sec ?? null,
     onTimeUp: r.on_time_up === 'hold' ? 'hold' : 'auto',
-    config
+    config,
+    teacherNotes: typeof priv?.notes === 'string' ? priv.notes : ''
   };
 };
 
@@ -136,6 +140,8 @@ export async function getLesson(db: any, teacherId: string, lessonId: unknown): 
     topic: row.topic ?? '',
     objective: row.objective,
     successCriteria: row.success_criteria,
+    standards: row.standards ?? '',
+    resources: parse(row.resources_json, []),
     durationSec: row.duration_sec,
     archived: !!row.archived,
     createdAt: row.created_at,
@@ -175,10 +181,21 @@ export async function createLesson(db: any, teacherId: string, fields: LessonFie
   await db.batch([
     db
       .prepare(
-        `INSERT INTO lessons (id, teacher_id, title, topic, objective, success_criteria, duration_sec, archived, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?8)`
+        `INSERT INTO lessons (id, teacher_id, title, topic, objective, success_criteria, standards, resources_json, duration_sec, archived, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10, ?10)`
       )
-      .bind(id, teacherId, fields.title, fields.topic, fields.objective, fields.successCriteria, fields.durationSec, now),
+      .bind(
+        id,
+        teacherId,
+        fields.title,
+        fields.topic,
+        fields.objective,
+        fields.successCriteria,
+        fields.standards,
+        JSON.stringify(fields.resources),
+        fields.durationSec,
+        now
+      ),
     ...moduleInserts(db, id, modules)
   ]);
   return id;
@@ -210,10 +227,20 @@ export async function saveLesson(
   await db.batch([
     db
       .prepare(
-        `UPDATE lessons SET title = ?2, topic = ?3, objective = ?4, success_criteria = ?5, duration_sec = ?6, updated_at = ?7
+        `UPDATE lessons SET title = ?2, topic = ?3, objective = ?4, success_criteria = ?5, standards = ?6, resources_json = ?7, duration_sec = ?8, updated_at = ?9
           WHERE id = ?1`
       )
-      .bind(lesson.id, fields.title, fields.topic, fields.objective, fields.successCriteria, fields.durationSec, now),
+      .bind(
+        lesson.id,
+        fields.title,
+        fields.topic,
+        fields.objective,
+        fields.successCriteria,
+        fields.standards,
+        JSON.stringify(fields.resources),
+        fields.durationSec,
+        now
+      ),
     db.prepare('DELETE FROM lesson_modules WHERE lesson_id = ?1').bind(lesson.id),
     ...moduleInserts(db, lesson.id, modules)
   ]);

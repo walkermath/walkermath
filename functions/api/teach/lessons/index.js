@@ -38,7 +38,7 @@ export async function onRequestPost({ request, env, data }) {
     id = await createLesson(
       env.DB,
       teacherId,
-      { title, topic: '', objective: '', successCriteria: '', durationSec: DEFAULT_LESSON_SEC },
+      { title, topic: '', objective: '', successCriteria: '', standards: '', resources: [], durationSec: DEFAULT_LESSON_SEC },
       starterModules()
     );
   }

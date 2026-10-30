@@ -7,13 +7,17 @@
   import { api, ApiError } from '../../lib/api.ts';
   import {
     ACTIVITY_CATEGORIES,
+    PROMPT_CATEGORIES,
     LIMITS,
     MODULE_TYPES,
     MODULE_TYPE_LIST,
     activityCategory,
     insertIndex,
     newModule,
+    promptCategory,
     type ActivityCategory,
+    type Link,
+    type PromptCategory,
     type LessonModule,
     type ModuleType
   } from '../../lib/lesson/modules.ts';
@@ -29,6 +33,8 @@
     topic: string;
     objective: string;
     successCriteria: string;
+    standards: string;
+    resources: Link[];
     durationSec: number;
     archived: boolean;
     updatedAt: number;
@@ -48,7 +54,7 @@
   /** 'lesson' (the main tile) or a module id. */
   let selected = $state<string>('lesson');
   /** The "+" tile's menu: closed, the module types, or the activity categories. */
-  let adding = $state<null | 'type' | 'activity'>(null);
+  let adding = $state<null | 'type' | 'activity' | 'prompt'>(null);
   /** Which field hints ([ ? ]) are open. */
   let hint = $state<null | 'objective' | 'criteria'>(null);
   let dragFrom = $state<number | null>(null);
@@ -59,7 +65,7 @@
   let previewMin = $state(2);
 
   const editable = (l: Lesson) =>
-    JSON.stringify({ t: l.title, p: l.topic, o: l.objective, s: l.successCriteria, d: l.durationSec, m: l.modules });
+    JSON.stringify({ t: l.title, p: l.topic, o: l.objective, s: l.successCriteria, st: l.standards, r: l.resources, d: l.durationSec, m: l.modules });
   const dirty = $derived(lesson ? editable(lesson) !== savedJson : false);
   const planned = $derived(lesson ? totalSec(lesson.modules) : 0);
   const hasFlex = $derived(lesson ? lesson.modules.some((m) => m.pacing === 'flex') : false);
@@ -118,6 +124,8 @@
           topic: lesson.topic,
           objective: lesson.objective,
           successCriteria: lesson.successCriteria,
+          standards: lesson.standards,
+          resources: lesson.resources,
           durationSec: lesson.durationSec,
           modules: lesson.modules
         }
@@ -134,7 +142,7 @@
   /* ---------- tiles ---------- */
 
   /** New modules go before a locked final module (the exit ticket), so it stays last. */
-  function addModule(type: ModuleType, category?: ActivityCategory) {
+  function addModule(type: ModuleType, category?: ActivityCategory | PromptCategory) {
     if (!lesson) return;
     const m = newModule(type, category);
     lesson.modules.splice(insertIndex(lesson.modules), 0, m);
@@ -218,7 +226,9 @@
   const tileKind = (m: LessonModule) =>
     m.type === 'activity' && (m.config as any).category !== 'other'
       ? activityCategory((m.config as any).category).label
-      : MODULE_TYPES[m.type].label;
+      : m.type === 'prompt' && (m.config as any).category !== 'other'
+        ? promptCategory((m.config as any).category).label
+        : MODULE_TYPES[m.type].label;
 
   const tile = 'rounded-md border-2 bg-[var(--bg-surface)] transition-colors';
 </script>
@@ -288,6 +298,11 @@
           <input class={field} bind:value={lesson.topic} maxlength={LIMITS.topic} placeholder="e.g. Solving two-step equations" />
         </label>
 
+        <label class="block space-y-1">
+          <span class={label}>standards (optional)</span>
+          <input class={field} bind:value={lesson.standards} maxlength={LIMITS.standards} placeholder="e.g. A.5A, A.5B" />
+        </label>
+
         <div class="space-y-1">
           <div class="flex items-center gap-2">
             <label for="f-objective" class={label}>learning objective</label>
@@ -329,6 +344,20 @@
             maxlength={LIMITS.successCriteria}
             placeholder={'I can ...\nI can ...'}
           ></textarea>
+        </div>
+
+        <div class="space-y-1">
+          <span class={label}>resources / extra (links students can open any time)</span>
+          {#each lesson.resources as link, li}
+            <div class="flex gap-2 items-center">
+              <input class="{field} p-1 w-40" bind:value={link.label} maxlength={LIMITS.linkLabel} placeholder="label" />
+              <input class="{field} p-1" bind:value={link.url} maxlength={LIMITS.url} placeholder="https://..." type="url" />
+              <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => lesson?.resources.splice(li, 1)} aria-label="Remove resource">[x]</button>
+            </div>
+          {/each}
+          {#if lesson.resources.length < LIMITS.resources}
+            <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => lesson?.resources.push({ label: '', url: '' })}>[+ resource]</button>
+          {/if}
         </div>
       </div>
     </section>
@@ -420,10 +449,10 @@
                   <button
                     type="button"
                     class="flex justify-between w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer"
-                    onclick={() => (t === 'activity' ? (adding = 'activity') : addModule(t))}
+                    onclick={() => (t === 'activity' ? (adding = 'activity') : t === 'prompt' ? (adding = 'prompt') : addModule(t))}
                   >
                     <span><span class="font-mono {label} mr-1">{TYPE_MARK[t]}</span>{MODULE_TYPES[t].label}</span>
-                    {#if t === 'activity'}<span class={label}>&gt;</span>{/if}
+                    {#if t === 'activity' || t === 'prompt'}<span class={label}>&gt;</span>{/if}
                   </button>
                 {/each}
                 <button type="button" class="block w-full text-left px-2 py-1 {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => (adding = null)}>cancel</button>
@@ -433,6 +462,14 @@
                 <div class="px-2 {label}">what kind of activity?</div>
                 {#each ACTIVITY_CATEGORIES as c}
                   <button type="button" class="block w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer" onclick={() => addModule('activity', c.id)}>{c.label}</button>
+                {/each}
+                <button type="button" class="block w-full text-left px-2 py-1 {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => (adding = 'type')}>&lt;- back</button>
+              </div>
+            {:else if adding === 'prompt'}
+              <div class="{tile} w-52 p-2 border-dashed border-[var(--accent)] space-y-1">
+                <div class="px-2 {label}">what are the questions for?</div>
+                {#each PROMPT_CATEGORIES as c}
+                  <button type="button" class="block w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer" onclick={() => addModule('prompt', c.id)}>{c.label}</button>
                 {/each}
                 <button type="button" class="block w-full text-left px-2 py-1 {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => (adding = 'type')}>&lt;- back</button>
               </div>

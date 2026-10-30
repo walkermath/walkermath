@@ -4,11 +4,14 @@
   import { onMount } from 'svelte';
   import {
     ACTIVITY_CATEGORIES,
+    PROMPT_CATEGORIES,
     LIMITS,
     MODULE_TYPES,
     activityCategory,
+    promptCategory,
     newQuestion,
     type ActivityCategory,
+    type PromptCategory,
     type LessonModule,
     type Link,
     type Question,
@@ -43,12 +46,13 @@
 
   const info = $derived(MODULE_TYPES[module.type]);
 
-  /* The explanations under flex / locked / move on / hold only need reading once. [ ? ] folds them away,
-     and the choice is remembered on this device (a convenience only: it works without storage). */
-  let hintsOpen = $state(true);
+  /* The explanations under flex / locked / move on / hold are folded away by default so the options
+     themselves stay readable; [ ? ] opens them. The choice is remembered on this device (a convenience
+     only: it works without storage). */
+  let hintsOpen = $state(false);
   onMount(() => {
     try {
-      hintsOpen = localStorage.getItem('wm_module_hints') !== 'closed';
+      hintsOpen = localStorage.getItem('wm_module_hints') === 'open';
     } catch {
       // storage blocked: keep the default
     }
@@ -67,6 +71,13 @@
   function setCategory(id: ActivityCategory) {
     module.config.category = id;
     if (!module.title.trim() || STOCK_TITLES.has(module.title)) module.title = activityCategory(id).title;
+  }
+
+  /** Same for question sets: the category renames the module only while it has a stock title. */
+  const STOCK_PROMPT_TITLES = new Set([...PROMPT_CATEGORIES.map((c) => c.title as string)]);
+  function setPromptCategory(id: PromptCategory) {
+    module.config.category = id;
+    if (!module.title.trim() || STOCK_PROMPT_TITLES.has(module.title)) module.title = promptCategory(id).title;
   }
 
   function setPacing(p: 'flex' | 'locked') {
@@ -117,7 +128,7 @@
   <div class="flex flex-wrap justify-between items-start gap-3">
     <div>
       <div class={heading}>
-        // module {index + 1} · {info.label}{module.type === 'activity' ? ` · ${activityCategory(module.config.category).label}` : ''}
+        // module {index + 1} · {info.label}{module.type === 'activity' ? ` · ${activityCategory(module.config.category).label}` : module.type === 'prompt' && module.config.category !== 'other' ? ` · ${promptCategory(module.config.category).label}` : ''}
       </div>
       <div class="{label} mt-1">{info.hint}</div>
     </div>
@@ -207,6 +218,16 @@
   <!-- content -->
   {#if module.type === 'prompt'}
     <div class="space-y-3">
+      <label class="flex items-center gap-2">
+        <span class={label}>category</span>
+        <select
+          class="{field} w-56 p-1"
+          value={module.config.category}
+          onchange={(e) => setPromptCategory((e.currentTarget as HTMLSelectElement).value as PromptCategory)}
+        >
+          {#each PROMPT_CATEGORIES as c}<option value={c.id}>{c.label}</option>{/each}
+        </select>
+      </label>
       <div class={heading}>// questions ({module.config.questions.length})</div>
       {#if module.config.questions.length === 0}
         <p class={label}>no questions yet.</p>
@@ -358,4 +379,17 @@
       {/if}
     </div>
   {/if}
+
+  <hr class="border-[var(--line)]" />
+
+  <label class="block space-y-1">
+    <span class={label}>// your notes (private: students never see these)</span>
+    <textarea
+      class={field}
+      rows="3"
+      bind:value={module.teacherNotes}
+      maxlength={LIMITS.notes}
+      placeholder="Reminders for yourself: common mistakes, who to check on, what to say..."
+    ></textarea>
+  </label>
 </section>

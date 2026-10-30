@@ -74,8 +74,8 @@ every PIN is keyed with it.
 
 ## 3. Database tables
 
-Four migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
-`0001`-`0003` are safe to run twice; `0004` is not (SQLite can't add a column twice: "duplicate column
+Five migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
+`0001`-`0003` are safe to run twice; `0004` and `0005` are not (SQLite can't add a column twice: "duplicate column
 name" just means it's already applied).
 
 ```sh
@@ -84,6 +84,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0001_t
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0002_allowed_teachers.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0003_lessons.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0004_lesson_topic.sql
+npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0005_lesson_extras.sql
 
 # production (once each, when you're ready to deploy): same four commands with --remote
 ```
@@ -94,6 +95,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0004_l
 | `0002_allowed_teachers.sql` | the teacher list managed in [teachers] |
 | `0003_lessons.sql` | lessons, their modules, scheduled deliveries (Phase 3) |
 | `0004_lesson_topic.sql` | a topic for each lesson |
+| `0005_lesson_extras.sql` | standards and the Resources links on each lesson |
 
 ## 4. Try it locally
 
