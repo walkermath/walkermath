@@ -80,6 +80,7 @@ name" just means it's already applied).
 
 ```sh
 # local (the database wrangler pages dev uses)
+npx wrangler d1 execute walkermath-leaderboards --local --file schema.sql   # the leaderboard table (fresh local copy only; safe to re-run)
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0001_teachers_classes.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0002_allowed_teachers.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0003_lessons.sql
@@ -92,6 +93,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0006_l
 
 | File | Adds |
 | --- | --- |
+| `schema.sql` | `leaderboard_entries`, the original Coliseum leaderboard (already in production) |
 | `0001_teachers_classes.sql` | teachers, sessions, classes, aliases (Phase 2) |
 | `0002_allowed_teachers.sql` | the teacher list managed in [teachers] |
 | `0003_lessons.sql` | lessons, their modules, scheduled deliveries (Phase 3) |
