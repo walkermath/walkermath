@@ -3,13 +3,11 @@
 //   PUT { baseUpdatedAt, title, objective, successCriteria, durationSec, modules } -> { lesson }
 //        Saves the whole lesson. 409 if it was saved somewhere else since baseUpdatedAt.
 //   PATCH { archived }                        -> { lesson }
-//   PATCH { dismissArchivePrompt: true }      -> { ok }   (hides the "archive?" prompt on [lessons])
 //   DELETE                                    -> { ok }   (refused once a run has started: archive instead)
 
 import { fail, json, readJson } from '../../../../../src/lib/server/http.ts';
 import { cleanLessonFields, cleanModules } from '../../../../../src/lib/lesson/modules.ts';
 import {
-  dismissArchivePrompt,
   foreignModuleIds,
   getLesson,
   hasStartedRuns,
@@ -49,10 +47,6 @@ export async function onRequestPatch({ request, env, data, params }) {
   const lesson = await getLesson(env.DB, data.teacher.id, params.lessonId);
   if (!lesson) return fail('Not found.', 404);
   const body = await readJson(request);
-  if (body?.dismissArchivePrompt === true) {
-    await dismissArchivePrompt(env.DB, lesson.id);
-    return json({ ok: true });
-  }
   if (!body || typeof body.archived !== 'boolean') return fail('Invalid request.');
   await setLessonArchived(env.DB, lesson.id, body.archived);
   return json({ lesson: await getLesson(env.DB, data.teacher.id, lesson.id) });

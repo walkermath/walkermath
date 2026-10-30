@@ -17,6 +17,7 @@
     plannedSec: number;
     nextRunAt: number | null;
     archivePrompt: boolean;
+    lastDoneAt: number | null;
   };
   type Run = {
     id: string;
@@ -79,14 +80,24 @@
     }
   }
 
-  async function dismiss(l: Summary) {
-    error = '';
+  /* [dismiss] is remembered in this browser only: lesson id -> when its last delivery finished. It
+     comes back once a later delivery finishes. */
+  const DISMISS_KEY = 'wm_archive_dismissed';
+  let dismissed = $state<Record<string, number>>({});
+  try {
+    dismissed = JSON.parse(localStorage.getItem(DISMISS_KEY) ?? '{}') || {};
+  } catch {
+    // no storage (private window): the prompt just shows
+  }
+  const prompted = (l: Summary) => l.archivePrompt && (dismissed[l.id] ?? 0) < (l.lastDoneAt ?? 0);
+
+  function dismiss(l: Summary) {
+    dismissed = { ...dismissed, [l.id]: l.lastDoneAt ?? Date.now() };
+    prompting = null;
     try {
-      await api(`/api/teach/lessons/${l.id}`, { method: 'PATCH', body: { dismissArchivePrompt: true } });
-      l.archivePrompt = false;
-      prompting = null;
-    } catch (e) {
-      error = (e as Error).message;
+      localStorage.setItem(DISMISS_KEY, JSON.stringify(dismissed));
+    } catch {
+      // the prompt will come back next visit
     }
   }
 
@@ -139,7 +150,7 @@
     <ul class="grid gap-3 sm:grid-cols-2">
       {#each active as l (l.id)}
         <li class="relative">
-          {#if l.archivePrompt}
+          {#if prompted(l)}
             <!-- Outside the link (a button can't sit inside one), laid over the card's corner. -->
             <button
               type="button"
@@ -155,7 +166,7 @@
               ? 'border-[var(--warn)] rounded-b-none'
               : 'border-[var(--line)]'}"
           >
-            <div class="text-sm font-bold {l.archivePrompt ? 'pl-8' : ''}">{l.title}</div>
+            <div class="text-sm font-bold {prompted(l) ? 'pl-8' : ''}">{l.title}</div>
             {#if l.topic}<div>{l.topic}</div>{/if}
             <div class={label}>
               {l.moduleCount} module{l.moduleCount === 1 ? '' : 's'} · {mmss(l.plannedSec)} of {mmss(l.durationSec)} planned

@@ -74,8 +74,8 @@ every PIN is keyed with it.
 
 ## 3. Database tables
 
-Seven migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
-`0001`-`0003` are safe to run twice; `0004`-`0007` are not (SQLite can't add a column twice: "duplicate column
+Six migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
+`0001`-`0003` are safe to run twice; `0004`-`0006` are not (SQLite can't add a column twice: "duplicate column
 name" just means it's already applied).
 
 ```sh
@@ -87,7 +87,6 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0003_l
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0004_lesson_topic.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0005_lesson_extras.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0006_lesson_scores.sql
-npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0007_archive_prompt.sql
 
 # production (once each, when you're ready to deploy): the same commands with --remote
 ```
@@ -101,7 +100,6 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0007_a
 | `0004_lesson_topic.sql` | a topic for each lesson |
 | `0005_lesson_extras.sql` | standards and the Resources links on each lesson |
 | `0006_lesson_scores.sql` | Coliseum games in lessons: kept scores, each class's leaderboard switch (off), students' leaderboard names |
-| `0007_archive_prompt.sql` | remembers when you dismissed a lesson's "archive?" prompt |
 
 ## 4. Try it locally
 
@@ -181,7 +179,7 @@ Live lessons (the Phase 4a gate; both terminals running):
    and recover when it's back.
 6. **[end lesson]**: students see "the lesson is over"; the delivery can't be started again.
 7. Once every delivery of a lesson is over, its tile on [lessons] gets a **/!\\**: click it to
-   archive the lesson or dismiss the prompt (it comes back after the next delivery finishes).
+   archive the lesson or dismiss the prompt (dismissing is remembered in this browser only; it comes back after the next delivery finishes).
 
 Answering questions (and auto-collecting at time-up) is Phase 4b; the blackboard is 4c.
 
