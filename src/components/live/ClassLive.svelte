@@ -39,7 +39,23 @@
     if (timer) clearInterval(timer);
   });
 
-  const current = $derived(lesson && rs ? lesson.modules[rs.index] : null);
+  /* Students aren't dragged along: the teacher's module is highlighted ("live"), but a student can open
+     any module the class has reached and read it, then return with [go to live]. null = following. */
+  let viewing = $state<number | null>(null);
+  const live = $derived(lesson && rs ? lesson.modules[rs.index] : null);
+  const shownIndex = $derived(rs ? (viewing ?? rs.index) : 0);
+  const onLive = $derived(!!rs && shownIndex === rs.index);
+  const current = $derived(lesson ? lesson.modules[shownIndex] : null);
+  /** Modules the class has reached (including ones left or skipped past); later ones stay closed. */
+  const reachable = (i: number) => !!rs && (i <= rs.index || !!rs.done?.[i] || (rs.took?.[i] ?? 0) > 0);
+  const open = (i: number) => {
+    if (!rs || !reachable(i)) return;
+    viewing = i === rs.index ? null : i;
+  };
+  // When the teacher moves to the module a student is already reading, they're back on live.
+  $effect(() => {
+    if (rs && viewing === rs.index) viewing = null;
+  });
   const modLeft = $derived(rs ? moduleLeftMs(rs, now) : 0);
   const lessonLeft = $derived(rs ? lessonLeftMs(rs, now) : 0);
   const today = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -81,22 +97,31 @@
         {#if showList}
           <ol class="px-3 pb-3 space-y-1 text-xs">
             {#each lesson.modules as m, i (m.id)}
-              <li
-                class="flex items-center gap-2 px-2 py-1.5 rounded {i === rs.index
-                  ? 'border-2 border-dashed border-[var(--accent)]'
-                  : 'border-2 border-transparent'} {rs.done?.[i] && i !== rs.index ? label : ''}"
-              >
-                <span class="w-4 text-center" aria-hidden="true">{i === rs.index ? '>' : rs.done?.[i] ? '✓' : ''}</span>
-                <span class="flex-1 truncate {i === rs.index ? 'font-bold' : ''}">{m.title}</span>
-                {#if i === rs.index}
-                  <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
-                {/if}
+              <li>
+                <button
+                  type="button"
+                  class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left {i === rs.index
+                    ? 'border-2 border-dashed border-[var(--accent)]'
+                    : i === shownIndex
+                      ? 'border-2 border-solid border-[var(--line)] bg-[var(--bg-hover,transparent)]'
+                      : 'border-2 border-transparent'} {reachable(i) ? 'cursor-pointer hover:text-[var(--accent)]' : 'cursor-default opacity-60'} {rs.done?.[i] && i !== rs.index ? label : ''}"
+                  disabled={!reachable(i)}
+                  aria-current={i === shownIndex ? 'true' : undefined}
+                  title={reachable(i) ? (i === rs.index ? 'Your class is here' : 'Open this module') : 'Not reached yet'}
+                  onclick={() => open(i)}
+                >
+                  <span class="w-4 text-center" aria-hidden="true">{i === rs.index ? '>' : rs.done?.[i] ? '✓' : ''}</span>
+                  <span class="flex-1 truncate {i === rs.index ? 'font-bold' : ''}">{m.title}</span>
+                  {#if i === rs.index}
+                    <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
+                  {/if}
+                </button>
               </li>
             {/each}
           </ol>
-        {:else if current}
+        {:else if live}
           <div class="px-3 pb-3 flex justify-between text-xs">
-            <span class="truncate font-bold">{current.title}</span>
+            <span class="truncate font-bold">{live.title}</span>
             <span class="tabular-nums font-bold">{countdown(Math.max(modLeft, 0))}</span>
           </div>
         {/if}
@@ -125,24 +150,37 @@
       {/if}
     </aside>
 
-    <!-- the current module -->
+    <!-- the module being read (the teacher's, unless the student opened another) -->
     {#if current}
       <main class="space-y-4 min-w-0">
+        {#if !onLive && live}
+          <div class="flex flex-wrap items-center justify-between gap-2 p-3 rounded border border-[var(--accent)] text-sm">
+            <span>// your class is on <b>{live.title}</b>. you're reading something else.</span>
+            <button type="button" class="font-bold text-[var(--accent)] cursor-pointer" onclick={() => (viewing = null)}>[go to live]</button>
+          </div>
+        {/if}
+
         <header class="flex flex-wrap justify-between items-end gap-3 pb-3 border-b border-[var(--line)]">
           <div>
             <h1 class="text-xl font-bold">{current.title}</h1>
             <div class="text-xs {label}">// {MODULE_TYPES[current.type].hint}</div>
           </div>
-          <div class="text-2xl font-bold tabular-nums {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</div>
+          {#if onLive}
+            <div class="text-2xl font-bold tabular-nums {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</div>
+          {:else}
+            <div class="text-xs {label}">{rs.done?.[shownIndex] ? 'time ran out' : 'not live'}</div>
+          {/if}
         </header>
 
-        {#if rs.pausedAt}
-          <p class="p-3 rounded border border-[var(--warn)] text-[var(--warn)] text-sm">// paused by your teacher.</p>
-        {:else if rs.holding}
-          <p class="p-3 rounded border border-[var(--accent)] text-[var(--accent)] text-sm">// time's up. wait for your teacher.</p>
+        {#if onLive}
+          {#if rs.pausedAt}
+            <p class="p-3 rounded border border-[var(--warn)] text-[var(--warn)] text-sm">// paused by your teacher.</p>
+          {:else if rs.holding}
+            <p class="p-3 rounded border border-[var(--accent)] text-[var(--accent)] text-sm">// time's up. wait for your teacher.</p>
+          {/if}
         {/if}
 
-        <LiveModule module={current} livePage={rs.page} />
+        <LiveModule module={current} livePage={onLive ? rs.page : (rs.pages?.[shownIndex] ?? 0)} />
       </main>
     {/if}
   </div>
