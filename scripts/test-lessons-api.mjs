@@ -368,8 +368,10 @@ console.log('lessons');
   let lesson = (await body(made)).lesson;
   assert.equal(lesson.title, 'Untitled lesson');
   assert.equal(lesson.durationSec, 3000);
-  assert.deepEqual(lesson.modules, []);
-  ok('new blank lesson');
+  assert.equal(lesson.topic, '');
+  assert.deepEqual(lesson.modules.map((m) => [m.type, m.title, m.plannedSec, m.pacing, m.minSec]),
+    [['prompt', 'Bellwork', 300, 'locked', null], ['prompt', 'Exit ticket', 240, 'locked', null]]);
+  ok('a new lesson starts with a locked 5:00 Bellwork and a locked 4:00 Exit ticket');
 
   const q1 = uuid();
   const spec = [
@@ -379,9 +381,9 @@ console.log('lessons');
     { id: uuid(), type: 'notes', title: 'Notes', plannedSec: 600, pacing: 'flex', minSec: 480, onTimeUp: 'auto',
       config: { source: 'note', noteId: 'equations', markdown: '', revealSections: true } },
     { id: uuid(), type: 'activity', title: 'Learning activity 1', plannedSec: 360, pacing: 'flex', minSec: null, onTimeUp: 'auto',
-      config: { instructions: 'Card sort with your partner.', links: [{ label: '', url: 'https://walkermath.com/apps' }], doneTap: true } },
+      config: { category: 'turn-talk', instructions: 'Card sort with your partner.', links: [{ label: '', url: 'https://walkermath.com/apps' }], doneTap: true } },
     { id: uuid(), type: 'activity', title: 'Learning activity 2', plannedSec: 420, pacing: 'flex', minSec: null, onTimeUp: 'auto',
-      config: { instructions: 'Gallery walk.', links: [], doneTap: false } },
+      config: { category: 'not-a-category', instructions: 'Gallery walk.', links: [], doneTap: false } },
     { id: uuid(), type: 'independent', title: 'Independent work', plannedSec: 900, pacing: 'flex', minSec: null, onTimeUp: 'auto',
       config: { instructions: 'Practice set A, 1-12.', links: [], response: 'short' } },
     { id: uuid(), type: 'prompt', title: 'Exit ticket', plannedSec: 240, pacing: 'locked', minSec: 120, onTimeUp: 'hold',
@@ -389,7 +391,7 @@ console.log('lessons');
   ];
   const save = (extra = {}) =>
     call(lessonOne, 'PUT', L(`/api/teach/lessons/${lesson.id}`, { method: 'PUT', body: {
-      baseUpdatedAt: lesson.updatedAt, title: 'Solving linear equations', objective: 'Solve two-step equations.',
+      baseUpdatedAt: lesson.updatedAt, title: 'Solving linear equations', topic: '  Two-step   equations ', objective: 'Solve two-step equations.',
       successCriteria: 'I can isolate x.', durationSec: 2880, modules: spec, ...extra } }), { lessonId: lesson.id }, teachMw);
 
   for (const [bad, why] of [
@@ -416,7 +418,10 @@ console.log('lessons');
   assert.deepEqual(lesson.modules[0].config.questions[1].choices, ['y = x^2', 'y = 3x']);
   assert.equal(lesson.modules[2].config.links[0].label, 'walkermath.com');
   assert.equal(lesson.modules[5].minSec, null); // locked modules have no floor
-  ok("the spec's 48-minute lesson saves, in order, with cleaned-up fields");
+  assert.equal(lesson.topic, 'Two-step equations');
+  assert.equal(lesson.modules[2].config.category, 'turn-talk');
+  assert.equal(lesson.modules[3].config.category, 'other'); // unknown category falls back
+  ok("the spec's 48-minute lesson saves, in order, with cleaned-up fields (topic, activity categories)");
 
   const raw = await env.DB.prepare('SELECT config_json, private_json FROM lesson_modules WHERE id = ?1').bind(spec[0].id).first();
   assert.ok(!raw.config_json.includes('"4"'));
@@ -440,6 +445,7 @@ console.log('lessons');
   const copy = (await body(await call(lessonsIdx, 'POST', L('/api/teach/lessons', { method: 'POST', body: { copyFrom: lesson.id } }), {}, teachMw))).lesson;
   assert.equal(copy.title, 'Solving linear equations (copy)');
   assert.equal(copy.modules.length, 6);
+  assert.equal(copy.topic, 'Two-step equations');
   assert.ok(copy.modules.every((m, i) => m.id !== lesson.modules[i].id));
   assert.equal(copy.modules[0].config.questions[0].answer, '4');
   ok('duplicate makes an independent copy (new ids, answer keys kept)');
@@ -478,6 +484,7 @@ console.log('lessons');
   const summary = list.lessons.find((l) => l.id === lesson.id);
   assert.equal(summary.plannedSec, 2880);
   assert.equal(summary.moduleCount, 6);
+  assert.equal(summary.topic, 'Two-step equations');
   assert.equal(summary.nextRunAt, run1.scheduledStart);
   ok('teach home lists upcoming deliveries and lesson summaries');
 

@@ -1,14 +1,19 @@
 <!-- src/components/teach/LessonBuilder.svelte -->
-<!-- /teach/lesson?id=  The lesson builder (sketch 2): lesson fields, the tile chain, the open tile's -->
-<!-- settings, a timeline against the planned duration, and a "what if a module runs long" preview. -->
+<!-- /teach/lesson?id=  The lesson builder (sketch 2): lesson fields, the tile chain (wraps into rows), -->
+<!-- the open tile's settings, a timeline against the planned duration, and a utility zone on the right -->
+<!-- (collapsed by default) holding the "what if a module runs long" preview. -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { api, ApiError } from '../../lib/api.ts';
   import {
+    ACTIVITY_CATEGORIES,
     LIMITS,
     MODULE_TYPES,
     MODULE_TYPE_LIST,
+    activityCategory,
+    insertIndex,
     newModule,
+    type ActivityCategory,
     type LessonModule,
     type ModuleType
   } from '../../lib/lesson/modules.ts';
@@ -21,6 +26,7 @@
   type Lesson = {
     id: string;
     title: string;
+    topic: string;
     objective: string;
     successCriteria: string;
     durationSec: number;
@@ -41,7 +47,10 @@
 
   /** 'lesson' (the main tile) or a module id. */
   let selected = $state<string>('lesson');
-  let adding = $state(false);
+  /** The "+" tile's menu: closed, the module types, or the activity categories. */
+  let adding = $state<null | 'type' | 'activity'>(null);
+  /** Which field hints ([ ? ]) are open. */
+  let hint = $state<null | 'objective' | 'criteria'>(null);
   let dragFrom = $state<number | null>(null);
   let dropAt = $state<number | null>(null);
 
@@ -50,9 +59,10 @@
   let previewMin = $state(2);
 
   const editable = (l: Lesson) =>
-    JSON.stringify({ t: l.title, o: l.objective, s: l.successCriteria, d: l.durationSec, m: l.modules });
+    JSON.stringify({ t: l.title, p: l.topic, o: l.objective, s: l.successCriteria, d: l.durationSec, m: l.modules });
   const dirty = $derived(lesson ? editable(lesson) !== savedJson : false);
   const planned = $derived(lesson ? totalSec(lesson.modules) : 0);
+  const hasFlex = $derived(lesson ? lesson.modules.some((m) => m.pacing === 'flex') : false);
   const selectedIndex = $derived(lesson ? lesson.modules.findIndex((m) => m.id === selected) : -1);
 
   function loaded(l: Lesson) {
@@ -105,6 +115,7 @@
         body: {
           baseUpdatedAt: lesson.updatedAt,
           title: lesson.title,
+          topic: lesson.topic,
           objective: lesson.objective,
           successCriteria: lesson.successCriteria,
           durationSec: lesson.durationSec,
@@ -122,13 +133,13 @@
 
   /* ---------- tiles ---------- */
 
-  function addModule(type: ModuleType) {
+  /** New modules go before a locked final module (the exit ticket), so it stays last. */
+  function addModule(type: ModuleType, category?: ActivityCategory) {
     if (!lesson) return;
-    const m = newModule(type);
-    if (type === 'prompt' && lesson.modules.length > 0) m.title = 'Exit ticket';
-    lesson.modules.push(m);
+    const m = newModule(type, category);
+    lesson.modules.splice(insertIndex(lesson.modules), 0, m);
     selected = m.id;
-    adding = false;
+    adding = null;
   }
 
   function removeModule(i: number) {
@@ -202,6 +213,14 @@
   });
 
   const TYPE_MARK: Record<ModuleType, string> = { prompt: '?', notes: '¶', activity: '*', independent: '~' };
+
+  /** Top line of a tile: "3 · Notes", or the activity's category ("3 · Turn & Talk"). */
+  const tileKind = (m: LessonModule) =>
+    m.type === 'activity' && (m.config as any).category !== 'other'
+      ? activityCategory((m.config as any).category).label
+      : MODULE_TYPES[m.type].label;
+
+  const tile = 'rounded-md border-2 bg-[var(--bg-surface)] transition-colors';
 </script>
 
 {#if loadError}
@@ -239,198 +258,273 @@
     {/if}
 
     <!-- lesson fields (top of the sketch) -->
-    <section class="grid gap-4 sm:grid-cols-2">
-      <label class="block space-y-1">
-        <span class={label}>lesson title</span>
-        <input class="{field} text-base font-bold" bind:value={lesson.title} maxlength={LIMITS.lessonTitle} required />
-      </label>
-      <label class="block space-y-1">
-        <span class={label}>lesson objective</span>
-        <textarea class={field} rows="2" bind:value={lesson.objective} maxlength={LIMITS.objective} placeholder="Students will be able to..."></textarea>
-      </label>
-      <label class="block space-y-1">
-        <span class={label}>success criteria</span>
-        <textarea class={field} rows="2" bind:value={lesson.successCriteria} maxlength={LIMITS.successCriteria} placeholder="I can..."></textarea>
-      </label>
-      <label class="block space-y-1">
-        <span class={label}>duration (minutes)</span>
-        <input
-          class="{field} w-28"
-          type="number"
-          min="5"
-          max="240"
-          step="1"
-          value={lesson.durationSec / 60}
-          onchange={(e) => {
-            const v = Math.round(Number((e.currentTarget as HTMLInputElement).value));
-            if (lesson && v >= 5 && v <= 240) lesson.durationSec = v * 60;
-            else (e.currentTarget as HTMLInputElement).value = String((lesson?.durationSec ?? 0) / 60);
-          }}
-        />
-      </label>
+    <section class="grid gap-4 md:grid-cols-2 items-start">
+      <div class="space-y-4">
+        <label class="block space-y-1">
+          <span class={label}>lesson title</span>
+          <input class="{field} text-base font-bold" bind:value={lesson.title} maxlength={LIMITS.lessonTitle} required />
+        </label>
+        <label class="block space-y-1">
+          <span class={label}>duration (minutes)</span>
+          <input
+            class="{field} w-28"
+            type="number"
+            min="5"
+            max="240"
+            step="1"
+            value={lesson.durationSec / 60}
+            onchange={(e) => {
+              const v = Math.round(Number((e.currentTarget as HTMLInputElement).value));
+              if (lesson && v >= 5 && v <= 240) lesson.durationSec = v * 60;
+              else (e.currentTarget as HTMLInputElement).value = String((lesson?.durationSec ?? 0) / 60);
+            }}
+          />
+        </label>
+      </div>
+
+      <div class="space-y-4">
+        <label class="block space-y-1">
+          <span class={label}>topic</span>
+          <input class={field} bind:value={lesson.topic} maxlength={LIMITS.topic} placeholder="e.g. Solving two-step equations" />
+        </label>
+
+        <div class="space-y-1">
+          <div class="flex items-center gap-2">
+            <label for="f-objective" class={label}>learning objective</label>
+            <button type="button" class="hover:text-[var(--accent)] cursor-pointer" aria-expanded={hint === 'objective'} onclick={() => (hint = hint === 'objective' ? null : 'objective')} title="What makes a good objective?">[ ? ]</button>
+          </div>
+          {#if hint === 'objective'}
+            <p class="{label} leading-relaxed">
+              // aim for a SMART goal: <b>S</b>pecific (one skill), <b>M</b>easurable (evidence you can see), <b>A</b>chievable
+              this period, <b>R</b>elevant to the unit, <b>T</b>ime-bound ("by the end of class"). e.g. "By the end of class,
+              students will solve two-step equations with integer coefficients, shown by 4 of 5 exit-ticket problems correct."
+            </p>
+          {/if}
+          <textarea
+            id="f-objective"
+            class={field}
+            rows="3"
+            bind:value={lesson.objective}
+            maxlength={LIMITS.objective}
+            placeholder="By the end of class, students will [do what] with [how well], shown by [evidence]."
+          ></textarea>
+        </div>
+
+        <div class="space-y-1">
+          <div class="flex items-center gap-2">
+            <label for="f-criteria" class={label}>success criteria</label>
+            <button type="button" class="hover:text-[var(--accent)] cursor-pointer" aria-expanded={hint === 'criteria'} onclick={() => (hint = hint === 'criteria' ? null : 'criteria')} title="What are success criteria?">[ ? ]</button>
+          </div>
+          {#if hint === 'criteria'}
+            <p class="{label} leading-relaxed">
+              // written from the student's side, one per line: what a student could say or show once they've got it. They
+              should add up to the objective.
+            </p>
+          {/if}
+          <textarea
+            id="f-criteria"
+            class={field}
+            rows="3"
+            bind:value={lesson.successCriteria}
+            maxlength={LIMITS.successCriteria}
+            placeholder={'I can ...\nI can ...'}
+          ></textarea>
+        </div>
+      </div>
     </section>
 
-    <!-- tile chain -->
-    <section class="space-y-3">
-      <div class={heading}>// modules</div>
-      <div class="flex items-stretch overflow-x-auto pb-3 pt-1" role="list" aria-label="Lesson modules in order">
-        <button
-          type="button"
-          onclick={() => (selected = 'lesson')}
-          class="shrink-0 w-40 p-3 rounded-md border-2 text-left bg-[var(--bg-surface)] cursor-pointer transition-colors {selected === 'lesson'
-            ? 'border-[var(--accent)]'
-            : 'border-dashed border-[var(--border-color)] hover:border-[var(--accent)]'}"
-        >
-          <div class="font-bold text-sm leading-tight line-clamp-2">{lesson.title || 'Untitled lesson'}</div>
-          <div class="{label} mt-2">{mmss(lesson.durationSec)} · {runs.filter((r) => r.status !== 'ended').length} scheduled</div>
-          <div class="{label} mt-1">lesson + when</div>
-        </button>
-
-        {#each lesson.modules as m, i (m.id)}
-          <div class="shrink-0 self-center px-1 {label}" aria-hidden="true">-&gt;</div>
-          <div
-            role="listitem"
-            class="shrink-0 relative w-40 rounded-md border-2 bg-[var(--bg-surface)] transition-colors {selected === m.id
-              ? 'border-[var(--accent)]'
-              : 'border-[var(--border-color)] hover:border-[var(--accent)]'} {dropAt === i && dragFrom !== i ? 'ring-2 ring-[var(--accent)]' : ''} {dragFrom === i ? 'opacity-50' : ''}"
-            draggable="true"
-            ondragstart={(e) => {
-              dragFrom = i;
-              e.dataTransfer?.setData('text/plain', String(i));
-              if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-            }}
-            ondragover={(e) => {
-              e.preventDefault();
-              dropAt = i;
-            }}
-            ondragleave={() => (dropAt = dropAt === i ? null : dropAt)}
-            ondrop={(e) => {
-              e.preventDefault();
-              if (dragFrom !== null) move(dragFrom, i);
-              dragFrom = null;
-              dropAt = null;
-            }}
-            ondragend={() => {
-              dragFrom = null;
-              dropAt = null;
-            }}
-          >
+    <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] items-start">
+      <!-- tile chain + timeline -->
+      <section class="space-y-3 min-w-0">
+        <div class={heading}>// modules</div>
+        <div class="flex flex-wrap gap-y-3 items-stretch pt-1" role="list" aria-label="Lesson modules in order">
+          <div role="listitem" class="flex items-stretch">
             <button
-              id="tile-{m.id}"
               type="button"
-              class="w-full h-full p-3 text-left cursor-pointer"
-              onclick={() => (selected = m.id)}
-              onkeydown={(e) => tileKeys(e, i)}
-              aria-label="{i + 1}. {m.title}, {MODULE_TYPES[m.type].label}, {mmss(m.plannedSec)}{m.pacing === 'locked' ? ', locked' : ''}. Alt plus arrow keys to move."
+              onclick={() => (selected = 'lesson')}
+              class="{tile} w-40 min-h-[6.5rem] p-3 text-left cursor-pointer {selected === 'lesson'
+                ? 'border-[var(--accent)]'
+                : 'border-dashed border-[var(--line)] hover:border-[var(--accent)]'}"
             >
-              <div class="{label} flex justify-between pr-5">
-                <span>{i + 1} · {MODULE_TYPES[m.type].label}</span>
-              </div>
-              <div class="font-bold text-sm leading-tight mt-1 line-clamp-2">{m.title}</div>
-              <div class="mt-2 flex items-center gap-2">
-                <span class="text-sm">{mmss(m.plannedSec)}</span>
-                {#if m.pacing === 'locked'}
-                  <span class="px-1 rounded border border-[var(--border-color)]" title="Locked: always gets its planned time">locked</span>
-                {/if}
-                {#if m.onTimeUp === 'hold'}
-                  <span class="px-1 rounded border border-[var(--border-color)]" title="Holds when time runs out">hold</span>
-                {/if}
-              </div>
+              <div class="font-bold text-sm leading-tight line-clamp-2">{lesson.title || 'Untitled lesson'}</div>
+              <div class="{label} mt-2">{mmss(lesson.durationSec)} · {runs.filter((r) => r.status !== 'ended').length} scheduled</div>
+              <div class="{label} mt-1">lesson + when</div>
             </button>
-            <button
-              type="button"
-              class="absolute top-1 right-1 w-6 h-6 rounded hover:text-[var(--bad)] cursor-pointer {label}"
-              onclick={() => removeModule(i)}
-              aria-label="Remove {m.title}">x</button
-            >
+            <div class="w-6 self-center text-center {label}" aria-hidden="true">-&gt;</div>
           </div>
-        {/each}
 
-        <div class="shrink-0 self-center px-1 {label}" aria-hidden="true">-&gt;</div>
-        {#if adding}
-          <div class="shrink-0 w-48 p-2 rounded-md border-2 border-dashed border-[var(--accent)] space-y-1">
-            {#each MODULE_TYPE_LIST as t}
-              <button type="button" class="block w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer" onclick={() => addModule(t)}>
-                <span class="font-mono {label} mr-1">{TYPE_MARK[t]}</span>{MODULE_TYPES[t].label}
-              </button>
-            {/each}
-            <button type="button" class="block w-full text-left px-2 py-1 {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => (adding = false)}>cancel</button>
-          </div>
-        {:else if lesson.modules.length < LIMITS.modules}
-          <button
-            type="button"
-            class="shrink-0 w-16 self-stretch rounded-md border-2 border-dashed border-[var(--border-color)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-2xl cursor-pointer"
-            onclick={() => (adding = true)}
-            aria-label="Add a module">+</button
-          >
-        {/if}
-      </div>
-
-      <!-- timeline against the duration -->
-      <div class="space-y-1">
-        <div class="flex h-5 w-full rounded overflow-hidden border border-[var(--border-color)] bg-[var(--well)]">
-          {#each lesson.modules as m (m.id)}
-            <button
-              type="button"
-              class="h-full border-r border-[var(--bg-surface)] cursor-pointer {selected === m.id ? 'bg-[var(--accent)]' : 'bg-[var(--edge)] hover:bg-[var(--accent)]'} {m.pacing === 'locked' ? 'opacity-60' : ''}"
-              style="width: {(m.plannedSec / scale) * 100}%"
-              title="{m.title}: {mmss(m.plannedSec)}"
-              aria-label="{m.title}: {mmss(m.plannedSec)}"
-              onclick={() => (selected = m.id)}
-            ></button>
+          {#each lesson.modules as m, i (m.id)}
+            <div role="listitem" class="flex items-stretch">
+              <div
+                class="{tile} relative w-40 min-h-[6.5rem] {selected === m.id
+                  ? 'border-[var(--accent)]'
+                  : 'border-[var(--line)] hover:border-[var(--accent)]'} {dropAt === i && dragFrom !== i ? 'ring-2 ring-[var(--accent)]' : ''} {dragFrom === i ? 'opacity-50' : ''}"
+                draggable="true"
+                role="group"
+                ondragstart={(e) => {
+                  dragFrom = i;
+                  e.dataTransfer?.setData('text/plain', String(i));
+                  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+                }}
+                ondragover={(e) => {
+                  e.preventDefault();
+                  dropAt = i;
+                }}
+                ondragleave={() => (dropAt = dropAt === i ? null : dropAt)}
+                ondrop={(e) => {
+                  e.preventDefault();
+                  if (dragFrom !== null) move(dragFrom, i);
+                  dragFrom = null;
+                  dropAt = null;
+                }}
+                ondragend={() => {
+                  dragFrom = null;
+                  dropAt = null;
+                }}
+              >
+                <button
+                  id="tile-{m.id}"
+                  type="button"
+                  class="w-full h-full p-3 text-left cursor-pointer"
+                  onclick={() => (selected = m.id)}
+                  onkeydown={(e) => tileKeys(e, i)}
+                  aria-label="{i + 1}. {m.title}, {tileKind(m)}, {mmss(m.plannedSec)}{m.pacing === 'locked' ? ', locked' : ''}. Alt plus arrow keys to move."
+                >
+                  <div class="{label} truncate pr-5">{i + 1} · {tileKind(m)}</div>
+                  <div class="font-bold text-sm leading-tight mt-1 line-clamp-2">{m.title}</div>
+                  <div class="mt-2 flex items-center gap-2">
+                    <span class="text-sm">{mmss(m.plannedSec)}</span>
+                    {#if m.pacing === 'locked'}
+                      <span class="px-1 rounded border border-[var(--line)]" title="Locked: always gets its planned time">locked</span>
+                    {/if}
+                    {#if m.onTimeUp === 'hold'}
+                      <span class="px-1 rounded border border-[var(--line)]" title="Holds when time runs out">hold</span>
+                    {/if}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  class="absolute top-1 right-1 w-6 h-6 rounded hover:text-[var(--bad)] cursor-pointer {label}"
+                  onclick={() => removeModule(i)}
+                  aria-label="Remove {m.title}">x</button
+                >
+              </div>
+              <div class="w-6 self-center text-center {label}" aria-hidden="true">-&gt;</div>
+            </div>
           {/each}
-        </div>
-        <div class="flex flex-wrap justify-between gap-2">
-          <span>{mmss(planned)} of {mmss(lesson.durationSec)} planned</span>
-          {#if planned < lesson.durationSec}
-            <span class={label}>{mmss(lesson.durationSec - planned)} unplanned: flex modules will stretch (up to 1.5x)</span>
-          {:else if planned > lesson.durationSec}
-            <span class="text-[var(--warn)]">{mmss(planned - lesson.durationSec)} over: flex modules will be squeezed to fit</span>
-          {:else}
-            <span class="text-[var(--ok)]">fits exactly</span>
-          {/if}
-        </div>
-      </div>
 
-      <!-- what-if preview -->
-      {#if preview}
-        {@const p = preview}
-        {@const rest = lesson.modules.slice(p.index + 1)}
-        <details class="{panel} space-y-2" open>
-          <summary class="cursor-pointer {heading}">// what if a module runs long?</summary>
-          <div class="flex flex-wrap items-center gap-2 pt-2">
-            <span>if</span>
-            <select class="{field} w-56 p-1" bind:value={previewIndex}>
-              {#each lesson.modules.slice(0, -1) as m, i (m.id)}<option value={i}>{i + 1}. {m.title}</option>{/each}
-            </select>
-            <span>runs</span>
-            <input class="{field} w-16 p-1" type="number" step="0.5" min="-60" max="60" bind:value={previewMin} />
-            <span>min {previewMin < 0 ? 'short (negative)' : 'long'}, the rest become:</span>
+          <div role="listitem" class="flex items-stretch">
+            {#if adding === 'type'}
+              <div class="{tile} w-52 p-2 border-dashed border-[var(--accent)] space-y-1">
+                {#each MODULE_TYPE_LIST as t}
+                  <button
+                    type="button"
+                    class="flex justify-between w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer"
+                    onclick={() => (t === 'activity' ? (adding = 'activity') : addModule(t))}
+                  >
+                    <span><span class="font-mono {label} mr-1">{TYPE_MARK[t]}</span>{MODULE_TYPES[t].label}</span>
+                    {#if t === 'activity'}<span class={label}>&gt;</span>{/if}
+                  </button>
+                {/each}
+                <button type="button" class="block w-full text-left px-2 py-1 {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => (adding = null)}>cancel</button>
+              </div>
+            {:else if adding === 'activity'}
+              <div class="{tile} w-52 p-2 border-dashed border-[var(--accent)] space-y-1">
+                <div class="px-2 {label}">what kind of activity?</div>
+                {#each ACTIVITY_CATEGORIES as c}
+                  <button type="button" class="block w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer" onclick={() => addModule('activity', c.id)}>{c.label}</button>
+                {/each}
+                <button type="button" class="block w-full text-left px-2 py-1 {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => (adding = 'type')}>&lt;- back</button>
+              </div>
+            {:else if lesson.modules.length < LIMITS.modules}
+              <button
+                type="button"
+                class="{tile} w-16 min-h-[6.5rem] border-dashed border-[var(--line)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-2xl cursor-pointer"
+                onclick={() => (adding = 'type')}
+                aria-label="Add a module">+</button
+              >
+            {/if}
           </div>
-          <table class="text-left">
-            <tbody>
-              {#each rest as m, k (m.id)}
-                {@const now = p.result.seconds[k]}
-                <tr>
-                  <td class="pr-4 py-0.5">{p.index + 2 + k}. {m.title}</td>
-                  <td class="pr-4 {label}">{mmss(m.plannedSec)}</td>
-                  <td class="pr-2">-&gt;</td>
-                  <td class="font-bold {now < m.plannedSec ? 'text-[var(--warn)]' : now > m.plannedSec ? 'text-[var(--ok)]' : ''}">{mmss(now)}</td>
-                  <td class="pl-3 {label}">{m.pacing === 'locked' ? 'locked' : ''}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-          {#if p.result.overSec > 0}
-            <p class="text-[var(--warn)]">// still {mmss(p.result.overSec)} over at the bell: you'd skip a module or shorten a locked one.</p>
-          {/if}
-          {#if p.result.spareSec > 0}
-            <p class={label}>// {mmss(p.result.spareSec)} spare for you to place.</p>
-          {/if}
-          <p class={label}>// the bell doesn't move: locked modules keep their time and flex modules share the rest.</p>
+        </div>
+
+        <!-- timeline against the duration -->
+        <div class="space-y-1">
+          <div class="flex h-5 w-full rounded overflow-hidden border border-[var(--line)] bg-[var(--well)]">
+            {#each lesson.modules as m (m.id)}
+              <button
+                type="button"
+                class="h-full border-r border-[var(--bg-surface)] cursor-pointer {selected === m.id ? 'bg-[var(--accent)]' : 'bg-[var(--edge)] hover:bg-[var(--accent)]'} {m.pacing === 'locked' ? 'opacity-60' : ''}"
+                style="width: {(m.plannedSec / scale) * 100}%"
+                title="{m.title}: {mmss(m.plannedSec)}"
+                aria-label="{m.title}: {mmss(m.plannedSec)}"
+                onclick={() => (selected = m.id)}
+              ></button>
+            {/each}
+          </div>
+          <div class="flex flex-wrap justify-between gap-2">
+            <span>{mmss(planned)} of {mmss(lesson.durationSec)} planned</span>
+            {#if planned < lesson.durationSec}
+              <span class={label}>
+                {mmss(lesson.durationSec - planned)} unplanned:
+                {hasFlex ? 'flex modules will stretch (up to 1.5x)' : 'add a module to fill the time'}
+              </span>
+            {:else if planned > lesson.durationSec}
+              <span class="text-[var(--warn)]">{mmss(planned - lesson.durationSec)} over: flex modules will be squeezed to fit</span>
+            {:else}
+              <span class="text-[var(--ok)]">fits exactly</span>
+            {/if}
+          </div>
+        </div>
+      </section>
+
+      <!-- utility zone: tools you reach for when you need them, collapsed by default -->
+      <aside class="space-y-2 min-w-0" aria-label="Utilities">
+        <details class="rounded-md border-2 border-[var(--line)] bg-[var(--bg-surface)]">
+          <summary class="cursor-pointer p-3 {heading}">// what if a module runs long?</summary>
+          <div class="p-3 pt-0 space-y-3">
+            {#if preview}
+              {@const p = preview}
+              {@const rest = lesson.modules.slice(p.index + 1)}
+              <div class="space-y-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span>if</span>
+                  <select class="{field} p-1 flex-1 min-w-0" bind:value={previewIndex}>
+                    {#each lesson.modules.slice(0, -1) as m, i (m.id)}<option value={i}>{i + 1}. {m.title}</option>{/each}
+                  </select>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span>runs</span>
+                  <input class="{field} w-16 p-1" type="number" step="0.5" min="-60" max="60" bind:value={previewMin} aria-label="Minutes over (negative = short)" />
+                  <span>min {previewMin < 0 ? 'short' : 'long'}; the rest become:</span>
+                </div>
+              </div>
+              <table class="text-left w-full">
+                <tbody>
+                  {#each rest as m, k (m.id)}
+                    {@const now = p.result.seconds[k]}
+                    <tr class="border-t border-[var(--border-color)]">
+                      <td class="pr-2 py-1">{p.index + 2 + k}. {m.title}{m.pacing === 'locked' ? ' (locked)' : ''}</td>
+                      <td class="pr-2 {label} whitespace-nowrap">{mmss(m.plannedSec)}</td>
+                      <td class="pr-2">-&gt;</td>
+                      <td class="font-bold whitespace-nowrap {now < m.plannedSec ? 'text-[var(--warn)]' : now > m.plannedSec ? 'text-[var(--ok)]' : ''}">{mmss(now)}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+              {#if p.result.overSec > 0}
+                <p class="text-[var(--warn)]">// still {mmss(p.result.overSec)} over at the bell: you'd skip a module or shorten a locked one.</p>
+              {/if}
+              {#if p.result.spareSec > 0}
+                <p class={label}>// {mmss(p.result.spareSec)} spare for you to place.</p>
+              {/if}
+              <p class={label}>// the bell doesn't move: locked modules keep their time and flex modules share the rest.</p>
+            {:else}
+              <p class={label}>add at least two modules to try this.</p>
+            {/if}
+          </div>
         </details>
-      {/if}
-    </section>
+      </aside>
+    </div>
 
     <!-- the open tile's panel -->
     {#if selected === 'lesson' || selectedIndex < 0}

@@ -74,16 +74,18 @@ every PIN is keyed with it.
 
 ## 3. Database tables
 
-Three migrations, applied in order. Each only adds tables (`leaderboard_entries` is untouched) and
-running one twice is harmless.
+Four migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
+`0001`-`0003` are safe to run twice; `0004` is not (SQLite can't add a column twice: "duplicate column
+name" just means it's already applied).
 
 ```sh
 # local (the database wrangler pages dev uses)
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0001_teachers_classes.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0002_allowed_teachers.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0003_lessons.sql
+npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0004_lesson_topic.sql
 
-# production (once each, when you're ready to deploy): same three commands with --remote
+# production (once each, when you're ready to deploy): same four commands with --remote
 ```
 
 | File | Adds |
@@ -91,6 +93,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0003_l
 | `0001_teachers_classes.sql` | teachers, sessions, classes, aliases (Phase 2) |
 | `0002_allowed_teachers.sql` | the teacher list managed in [teachers] |
 | `0003_lessons.sql` | lessons, their modules, scheduled deliveries (Phase 3) |
+| `0004_lesson_topic.sql` | a topic for each lesson |
 
 ## 4. Try it locally
 
@@ -111,12 +114,15 @@ Teachers and classes:
 
 Lesson builder (the Phase 3 gate):
 
-1. **[lessons] > [+ new lesson]**. Fill in title, objective, success criteria, duration 48.
-2. With the **+** tile, build the spec's lesson: Prompt "Bellwork" 6:00, Notes 10:00 (pick a note),
-   Activity 6:00, Activity 7:00, Independent work 15:00, Prompt "Exit ticket" 4:00 set to **locked**.
-   Add a couple of questions with answer keys to the bellwork. **[save]** (or Ctrl+S).
-3. The bar under the tiles should read "48:00 of 48:00 planned". In "what if a module runs long?",
-   pick Notes and 1 min: the rest should become 5:45, 6:45, 14:30, 4:00.
+1. **[lessons] > [+ new lesson]**. It starts with a locked Bellwork (5:00) and a locked Exit ticket
+   (4:00). Fill in title, topic, learning objective, success criteria, duration 48.
+2. With the **+** tile (new modules land before the exit ticket), build the spec's lesson: set
+   Bellwork to 6:00, add Notes 10:00 (pick a note), Activity 6:00 and 7:00 (pick a category),
+   Independent work 15:00, and set the Exit ticket to 4:00. Add a couple of questions with answer
+   keys to the bellwork. **[save]** (or Ctrl+S).
+3. The bar under the tiles should read "48:00 of 48:00 planned". Open **// what if a module runs
+   long?** in the utilities column on the right, pick Notes and 1 min: the rest should become
+   5:45, 6:45, 14:30, 4:00.
 4. Drag a tile to reorder it (or focus it and press Alt + arrow keys), then reload: order and
    settings are kept.
 5. Click the lesson tile: under **when**, add two classes (bell times fill in). They show up on the

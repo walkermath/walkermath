@@ -1,10 +1,14 @@
 <!-- src/components/teach/ModuleSettings.svelte -->
 <!-- The settings panel under the tile chain for the open module: timing, then its type's content. -->
 <script lang="ts">
+  import { onMount } from 'svelte';
   import {
+    ACTIVITY_CATEGORIES,
     LIMITS,
     MODULE_TYPES,
+    activityCategory,
     newQuestion,
+    type ActivityCategory,
     type LessonModule,
     type Link,
     type Question,
@@ -38,6 +42,32 @@
   } = $props();
 
   const info = $derived(MODULE_TYPES[module.type]);
+
+  /* The explanations under flex / locked / move on / hold only need reading once. [ ? ] folds them away,
+     and the choice is remembered on this device (a convenience only: it works without storage). */
+  let hintsOpen = $state(true);
+  onMount(() => {
+    try {
+      hintsOpen = localStorage.getItem('wm_module_hints') !== 'closed';
+    } catch {
+      // storage blocked: keep the default
+    }
+  });
+  function toggleHints() {
+    hintsOpen = !hintsOpen;
+    try {
+      localStorage.setItem('wm_module_hints', hintsOpen ? 'open' : 'closed');
+    } catch {
+      // ignore
+    }
+  }
+
+  /** Picking an activity category renames the module only while it still has a stock title. */
+  const STOCK_TITLES = new Set(ACTIVITY_CATEGORIES.map((c) => c.title as string));
+  function setCategory(id: ActivityCategory) {
+    module.config.category = id;
+    if (!module.title.trim() || STOCK_TITLES.has(module.title)) module.title = activityCategory(id).title;
+  }
 
   function setPacing(p: 'flex' | 'locked') {
     module.pacing = p;
@@ -86,7 +116,9 @@
 <section class="{panel} space-y-5 text-xs">
   <div class="flex flex-wrap justify-between items-start gap-3">
     <div>
-      <div class={heading}>// module {index + 1} · {info.label}</div>
+      <div class={heading}>
+        // module {index + 1} · {info.label}{module.type === 'activity' ? ` · ${activityCategory(module.config.category).label}` : ''}
+      </div>
       <div class="{label} mt-1">{info.hint}</div>
     </div>
     <div class="flex flex-wrap gap-2">
@@ -108,16 +140,25 @@
     </label>
   </div>
 
+  <div class="flex items-center justify-between gap-3">
+    <div class={heading}>// timing</div>
+    <button
+      type="button"
+      class="hover:text-[var(--accent)] cursor-pointer"
+      aria-expanded={hintsOpen}
+      onclick={toggleHints}
+      title={hintsOpen ? 'Hide the explanations' : 'Show what these options mean'}>[ ? ]</button
+    >
+  </div>
+
   <div class="grid gap-4 sm:grid-cols-2">
     <fieldset class="space-y-2">
-      <legend class="{label} mb-1">when the schedule has to re-fit</legend>
+      <legend class="{label} mb-1">if the schedule has to re-fit</legend>
       <label class="flex items-start gap-2 cursor-pointer">
         <input type="radio" name="pacing-{module.id}" checked={module.pacing === 'flex'} onchange={() => setPacing('flex')} />
         <span>
-          <b>flex</b>: shares overruns and spare time with the other flex modules
-          <span class="block {label}">
-            between {mmss(floorOf(module))} and {mmss(capOf(module))}
-          </span>
+          <b>flex</b> <span class={label}>({mmss(floorOf(module))} to {mmss(capOf(module))})</span>
+          {#if hintsOpen}<span class="block {label}">shares overruns and spare time with the other flex modules</span>{/if}
         </span>
       </label>
       {#if module.pacing === 'flex'}
@@ -130,12 +171,15 @@
             max={module.plannedSec}
             placeholder={mmss(floorOf({ ...module, minSec: null }))}
           />
-          <span class={label}>(blank = half)</span>
+          {#if hintsOpen}<span class={label}>(blank = half)</span>{/if}
         </label>
       {/if}
       <label class="flex items-start gap-2 cursor-pointer">
         <input type="radio" name="pacing-{module.id}" checked={module.pacing === 'locked'} onchange={() => setPacing('locked')} />
-        <span><b>locked</b>: always gets its planned time (good for an exit ticket)</span>
+        <span>
+          <b>locked</b>
+          {#if hintsOpen}<span class="block {label}">always gets its planned time (good for an exit ticket)</span>{/if}
+        </span>
       </label>
     </fieldset>
 
@@ -143,16 +187,22 @@
       <legend class="{label} mb-1">when time runs out</legend>
       <label class="flex items-start gap-2 cursor-pointer">
         <input type="radio" name="tu-{module.id}" checked={module.onTimeUp === 'auto'} onchange={() => (module.onTimeUp = 'auto')} />
-        <span><b>move on</b>: collect answers and go to the next module</span>
+        <span>
+          <b>move on</b>
+          {#if hintsOpen}<span class="block {label}">collect answers and go to the next module</span>{/if}
+        </span>
       </label>
       <label class="flex items-start gap-2 cursor-pointer">
         <input type="radio" name="tu-{module.id}" checked={module.onTimeUp === 'hold'} onchange={() => (module.onTimeUp = 'hold')} />
-        <span><b>hold</b>: collect answers, show "time's up", wait for you</span>
+        <span>
+          <b>hold</b>
+          {#if hintsOpen}<span class="block {label}">collect answers, show "time's up", wait for you</span>{/if}
+        </span>
       </label>
     </fieldset>
   </div>
 
-  <hr class="border-[var(--border-color)]" />
+  <hr class="border-[var(--line)]" />
 
   <!-- content -->
   {#if module.type === 'prompt'}
@@ -162,7 +212,7 @@
         <p class={label}>no questions yet.</p>
       {/if}
       {#each module.config.questions as q, qi (q.id)}
-        <div class="p-3 rounded border border-[var(--border-color)] space-y-2">
+        <div class="p-3 rounded border border-[var(--line)] space-y-2">
           <div class="flex flex-wrap items-center gap-2">
             <span class="font-bold">Q{qi + 1}</span>
             <select class="{field} w-40 p-1" value={q.kind} onchange={(e) => setKind(qi, (e.currentTarget as HTMLSelectElement).value as QuestionKind)}>
@@ -260,6 +310,18 @@
   {:else}
     <!-- activity and independent work share instructions + links -->
     <div class="space-y-3">
+      {#if module.type === 'activity'}
+        <label class="flex items-center gap-2">
+          <span class={label}>category</span>
+          <select
+            class="{field} w-56 p-1"
+            value={module.config.category}
+            onchange={(e) => setCategory((e.currentTarget as HTMLSelectElement).value as ActivityCategory)}
+          >
+            {#each ACTIVITY_CATEGORIES as c}<option value={c.id}>{c.label}</option>{/each}
+          </select>
+        </label>
+      {/if}
       <label class="block space-y-1">
         <span class={label}>instructions</span>
         <textarea class={field} rows="4" bind:value={module.config.instructions} maxlength={LIMITS.text} placeholder="What students do (use $...$ for math)"></textarea>

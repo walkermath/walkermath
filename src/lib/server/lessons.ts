@@ -4,6 +4,7 @@
 
 import { isBellTime } from '../classroom.ts';
 import {
+  isActivityCategory,
   joinModule,
   splitModule,
   type LessonFields,
@@ -20,6 +21,7 @@ export const MIN_RUN_MIN = 5;
 export interface LessonSummary {
   id: string;
   title: string;
+  topic: string;
   durationSec: number;
   archived: boolean;
   updatedAt: number;
@@ -60,16 +62,21 @@ const parse = (s: unknown, fallback: any) => {
   }
 };
 
-const toModule = (r: any): LessonModule => ({
-  id: r.id,
-  type: r.type as ModuleType,
-  title: r.title,
-  plannedSec: r.planned_sec,
-  pacing: r.pacing === 'locked' ? 'locked' : 'flex',
-  minSec: r.min_sec ?? null,
-  onTimeUp: r.on_time_up === 'hold' ? 'hold' : 'auto',
-  config: joinModule(parse(r.config_json, {}), parse(r.private_json, {}), r.type)
-});
+const toModule = (r: any): LessonModule => {
+  const config: any = joinModule(parse(r.config_json, {}), parse(r.private_json, {}), r.type);
+  // Activities saved before categories existed.
+  if (r.type === 'activity' && !isActivityCategory(config.category)) config.category = 'other';
+  return {
+    id: r.id,
+    type: r.type as ModuleType,
+    title: r.title,
+    plannedSec: r.planned_sec,
+    pacing: r.pacing === 'locked' ? 'locked' : 'flex',
+    minSec: r.min_sec ?? null,
+    onTimeUp: r.on_time_up === 'hold' ? 'hold' : 'auto',
+    config
+  };
+};
 
 const toRun = (r: any): Run => ({
   id: r.id,
@@ -92,7 +99,7 @@ const toRun = (r: any): Run => ({
 export async function listLessons(db: any, teacherId: string, now = Date.now()): Promise<LessonSummary[]> {
   const { results } = await db
     .prepare(
-      `SELECT l.id, l.title, l.duration_sec, l.archived, l.updated_at,
+      `SELECT l.id, l.title, l.topic, l.duration_sec, l.archived, l.updated_at,
               (SELECT COUNT(*) FROM lesson_modules m WHERE m.lesson_id = l.id) AS module_count,
               (SELECT COALESCE(SUM(planned_sec), 0) FROM lesson_modules m WHERE m.lesson_id = l.id) AS planned_sec,
               (SELECT MIN(scheduled_start) FROM lesson_runs r
@@ -105,6 +112,7 @@ export async function listLessons(db: any, teacherId: string, now = Date.now()):
   return results.map((r: any) => ({
     id: r.id,
     title: r.title,
+    topic: r.topic ?? '',
     durationSec: r.duration_sec,
     archived: !!r.archived,
     updatedAt: r.updated_at,
@@ -125,6 +133,7 @@ export async function getLesson(db: any, teacherId: string, lessonId: unknown): 
   return {
     id: row.id,
     title: row.title,
+    topic: row.topic ?? '',
     objective: row.objective,
     successCriteria: row.success_criteria,
     durationSec: row.duration_sec,
@@ -166,10 +175,10 @@ export async function createLesson(db: any, teacherId: string, fields: LessonFie
   await db.batch([
     db
       .prepare(
-        `INSERT INTO lessons (id, teacher_id, title, objective, success_criteria, duration_sec, archived, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?7)`
+        `INSERT INTO lessons (id, teacher_id, title, topic, objective, success_criteria, duration_sec, archived, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?8)`
       )
-      .bind(id, teacherId, fields.title, fields.objective, fields.successCriteria, fields.durationSec, now),
+      .bind(id, teacherId, fields.title, fields.topic, fields.objective, fields.successCriteria, fields.durationSec, now),
     ...moduleInserts(db, id, modules)
   ]);
   return id;
@@ -201,10 +210,10 @@ export async function saveLesson(
   await db.batch([
     db
       .prepare(
-        `UPDATE lessons SET title = ?2, objective = ?3, success_criteria = ?4, duration_sec = ?5, updated_at = ?6
+        `UPDATE lessons SET title = ?2, topic = ?3, objective = ?4, success_criteria = ?5, duration_sec = ?6, updated_at = ?7
           WHERE id = ?1`
       )
-      .bind(lesson.id, fields.title, fields.objective, fields.successCriteria, fields.durationSec, now),
+      .bind(lesson.id, fields.title, fields.topic, fields.objective, fields.successCriteria, fields.durationSec, now),
     db.prepare('DELETE FROM lesson_modules WHERE lesson_id = ?1').bind(lesson.id),
     ...moduleInserts(db, lesson.id, modules)
   ]);

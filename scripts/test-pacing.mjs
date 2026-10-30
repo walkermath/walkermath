@@ -113,3 +113,19 @@ test('mm:ss helpers', () => {
   assert.equal(parseMmss('5:75'), null);
   assert.equal(addToClock('09:51', 48 * 60), '10:39');
 });
+
+test('new modules go before a locked exit ticket, never ahead of the bellwork', async () => {
+  const { insertIndex, starterModules, newModule, activityCategory } = await import('../src/lib/lesson/modules.ts');
+  const lesson = starterModules();
+  assert.deepEqual(lesson.map((m) => [m.title, m.plannedSec, m.pacing]), [['Bellwork', 300, 'locked'], ['Exit ticket', 240, 'locked']]);
+  assert.equal(insertIndex(lesson), 1, 'between bellwork and exit ticket');
+  lesson.splice(1, 0, newModule('notes'));
+  assert.equal(insertIndex(lesson), 2, 'still before the exit ticket');
+  assert.equal(insertIndex([{ pacing: 'locked' }]), 1, 'a lone locked module: add after it');
+  assert.equal(insertIndex([]), 0);
+  assert.equal(insertIndex([{ pacing: 'flex' }, { pacing: 'flex' }]), 2);
+  const a = newModule('activity', 'coliseum');
+  assert.equal(a.title, 'Coliseum practice');
+  assert.equal(a.config.category, 'coliseum');
+  assert.equal(activityCategory('nope').id, 'other');
+});

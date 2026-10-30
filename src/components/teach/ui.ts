@@ -2,14 +2,14 @@
 // Shared Tailwind class strings for the teacher screens, so they all look like ClassManager.
 
 export const field =
-  'w-full bg-[var(--bg-primary)] border border-[var(--border-color)] p-2 rounded font-mono text-sm focus:outline-none focus:border-[var(--accent)]';
+  'w-full bg-[var(--bg-primary)] border border-[var(--line)] p-2 rounded font-mono text-sm focus:outline-none focus:border-[var(--accent)]';
 export const btn =
-  'px-3 py-1.5 rounded border border-[var(--border-color)] text-xs hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+  'px-3 py-1.5 rounded border border-[var(--line)] text-xs hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
 export const btnDanger =
-  'px-3 py-1.5 rounded border border-[var(--border-color)] text-xs hover:border-[var(--bad)] hover:text-[var(--bad)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+  'px-3 py-1.5 rounded border border-[var(--line)] text-xs hover:border-[var(--bad)] hover:text-[var(--bad)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
 export const btnMain =
   'px-3 py-1.5 rounded border border-[var(--accent)] text-[var(--accent)] text-xs font-bold hover:bg-[var(--accent)] hover:text-[var(--bg-surface)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
-export const panel = 'p-5 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md';
+export const panel = 'p-5 border border-[var(--line)] bg-[var(--bg-surface)] rounded-md';
 export const heading = 'text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]';
 export const label = 'text-[var(--text-muted)]';
 

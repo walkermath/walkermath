@@ -188,7 +188,7 @@
         {#if editing === r.id}
           {@render editor()}
         {:else}
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 p-2 rounded border border-[var(--border-color)]">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 p-2 rounded border border-[var(--line)]">
             <span class="font-bold text-sm w-40">{r.period} · {r.className}</span>
             <span class="w-28">{niceDate(r.date)}</span>
             <span class={label}>{clock12(r.startTime)} - {clock12(r.endTime)}</span>

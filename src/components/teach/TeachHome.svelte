@@ -9,6 +9,7 @@
   type Summary = {
     id: string;
     title: string;
+    topic: string;
     durationSec: number;
     archived: boolean;
     updatedAt: number;
@@ -108,9 +109,10 @@
         <li>
           <a
             href="/teach/lesson?id={l.id}"
-            class="block p-4 rounded-md border border-[var(--border-color)] bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-colors"
+            class="block p-4 rounded-md border border-[var(--line)] bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-colors"
           >
             <div class="text-sm font-bold">{l.title}</div>
+            {#if l.topic}<div>{l.topic}</div>{/if}
             <div class={label}>
               {l.moduleCount} module{l.moduleCount === 1 ? '' : 's'} · {mmss(l.plannedSec)} of {mmss(l.durationSec)} planned
             </div>

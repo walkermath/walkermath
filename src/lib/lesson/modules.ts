@@ -12,6 +12,7 @@ import { STEP_SEC } from './time.ts';
 
 export const LIMITS = {
   lessonTitle: 100,
+  topic: 100,
   objective: 500,
   successCriteria: 1000,
   minLessonSec: 5 * 60,
@@ -68,7 +69,22 @@ export interface NotesConfig {
   revealSections: boolean;
 }
 
+/** What kind of activity this is. Picking one also gives the module its starting title. */
+export const ACTIVITY_CATEGORIES = [
+  { id: 'turn-talk', label: 'Turn & Talk', title: 'Turn & Talk' },
+  { id: 'coliseum', label: 'Coliseum Practice', title: 'Coliseum practice' },
+  { id: 'external', label: 'External Tool', title: 'External tool' },
+  { id: 'handout', label: 'Paper Handout', title: 'Paper handout' },
+  { id: 'other', label: 'Other', title: 'Learning activity' }
+] as const;
+export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number]['id'];
+export const isActivityCategory = (v: unknown): v is ActivityCategory =>
+  ACTIVITY_CATEGORIES.some((c) => c.id === v);
+export const activityCategory = (id: unknown) =>
+  ACTIVITY_CATEGORIES.find((c) => c.id === id) ?? ACTIVITY_CATEGORIES[ACTIVITY_CATEGORIES.length - 1];
+
 export interface ActivityConfig {
+  category: ActivityCategory;
   instructions: string;
   links: Link[];
   /** Students can tap "done". */
@@ -98,6 +114,8 @@ export interface LessonModule {
 
 export interface LessonFields {
   title: string;
+  /** The subject being taught, e.g. "Solving two-step equations". */
+  topic: string;
   objective: string;
   successCriteria: string;
   durationSec: number;
@@ -118,7 +136,7 @@ export const MODULE_TYPES: Record<ModuleType, ModuleTypeInfo> = {
   prompt: {
     label: 'Prompt',
     hint: 'questions: bellwork, check-in, exit ticket',
-    defaultTitle: 'Bellwork',
+    defaultTitle: 'Questions',
     defaultSec: 5 * 60,
     defaultConfig: (): PromptConfig => ({ questions: [] }),
     collects: () => true
@@ -136,7 +154,7 @@ export const MODULE_TYPES: Record<ModuleType, ModuleTypeInfo> = {
     hint: 'instructions and links',
     defaultTitle: 'Learning activity',
     defaultSec: 7 * 60,
-    defaultConfig: (): ActivityConfig => ({ instructions: '', links: [], doneTap: true }),
+    defaultConfig: (): ActivityConfig => ({ category: 'other', instructions: '', links: [], doneTap: true }),
     collects: () => false
   },
   independent: {
@@ -154,9 +172,9 @@ export const isModuleType = (v: unknown): v is ModuleType => typeof v === 'strin
 
 const newUuid = () => crypto.randomUUID();
 
-export function newModule(type: ModuleType): LessonModule {
+export function newModule(type: ModuleType, category?: ActivityCategory): LessonModule {
   const t = MODULE_TYPES[type];
-  return {
+  const m: LessonModule = {
     id: newUuid(),
     type,
     title: t.defaultTitle,
@@ -166,6 +184,33 @@ export function newModule(type: ModuleType): LessonModule {
     onTimeUp: 'auto',
     config: t.defaultConfig()
   };
+  if (type === 'activity' && category) {
+    (m.config as ActivityConfig).category = category;
+    m.title = activityCategory(category).title;
+  }
+  return m;
+}
+
+/** Every new lesson starts with a locked 5-minute Bellwork and a locked 4-minute Exit ticket. */
+export function starterModules(): LessonModule[] {
+  const bellwork = newModule('prompt');
+  bellwork.title = 'Bellwork';
+  bellwork.plannedSec = 5 * 60;
+  bellwork.pacing = 'locked';
+  const exit = newModule('prompt');
+  exit.title = 'Exit ticket';
+  exit.plannedSec = 4 * 60;
+  exit.pacing = 'locked';
+  return [bellwork, exit];
+}
+
+/**
+ * Where a new module goes: just before the final module when that one is locked (the exit ticket
+ * stays last), otherwise at the end. A lone locked module doesn't count: nothing goes before it.
+ */
+export function insertIndex(modules: { pacing: Pacing }[]): number {
+  const n = modules.length;
+  return n > 1 && modules[n - 1].pacing === 'locked' ? n - 1 : n;
 }
 
 export const newQuestion = (kind: QuestionKind = 'text'): Question => ({
@@ -265,7 +310,12 @@ function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | st
     case 'activity': {
       const links = cleanLinks(c.links);
       if (typeof links === 'string') return `${where}: ${links}`;
-      return { instructions: cleanText(c.instructions, LIMITS.text), links, doneTap: c.doneTap !== false };
+      return {
+        category: isActivityCategory(c.category) ? c.category : 'other',
+        instructions: cleanText(c.instructions, LIMITS.text),
+        links,
+        doneTap: c.doneTap !== false
+      };
     }
     case 'independent': {
       const links = cleanLinks(c.links);
@@ -310,6 +360,7 @@ export function cleanLessonFields(b: any): LessonFields | string {
   }
   return {
     title,
+    topic: cleanLine(b?.topic, LIMITS.topic),
     objective: cleanText(b?.objective, LIMITS.objective),
     successCriteria: cleanText(b?.successCriteria, LIMITS.successCriteria),
     durationSec

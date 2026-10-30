@@ -1,9 +1,9 @@
 // functions/api/teach/lessons/index.js
 //   GET                          -> { lessons: [...] }   (summaries, newest first, archived last)
-//   POST { title?, copyFrom? }   -> { lesson }           new blank lesson, or a copy of one of yours
+//   POST { title?, copyFrom? }   -> { lesson }           new lesson (bellwork + exit ticket), or a copy of one of yours
 
 import { fail, json, readJson } from '../../../../src/lib/server/http.ts';
-import { DEFAULT_LESSON_SEC, cleanLine, LIMITS } from '../../../../src/lib/lesson/modules.ts';
+import { DEFAULT_LESSON_SEC, cleanLine, LIMITS, starterModules } from '../../../../src/lib/lesson/modules.ts';
 import { MAX_LESSONS, createLesson, getLesson, listLessons } from '../../../../src/lib/server/lessons.ts';
 
 export async function onRequestGet({ env, data }) {
@@ -34,7 +34,13 @@ export async function onRequestPost({ request, env, data }) {
     id = await createLesson(env.DB, teacherId, { ...src, title }, modules);
   } else {
     const title = cleanLine(body.title, LIMITS.lessonTitle) || 'Untitled lesson';
-    id = await createLesson(env.DB, teacherId, { title, objective: '', successCriteria: '', durationSec: DEFAULT_LESSON_SEC });
+    // New lessons start with a locked Bellwork (5:00) and a locked Exit ticket (4:00).
+    id = await createLesson(
+      env.DB,
+      teacherId,
+      { title, topic: '', objective: '', successCriteria: '', durationSec: DEFAULT_LESSON_SEC },
+      starterModules()
+    );
   }
   return json({ lesson: await getLesson(env.DB, teacherId, id) }, 201);
 }

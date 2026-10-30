@@ -7,6 +7,7 @@
     --text-primary: #18181b;
     --text-muted: #64748b;
     --border-color: #e2e8f0;
+    --line: #8494aa; /* stronger edge for boxes you need to find and click (builder tiles, fields, panels) */
     --accent: #4338ca;
 
     /* game surfaces: light-theme values (dark-theme values below match the original black overlays) */
@@ -27,6 +28,7 @@
     --text-primary: #f4f4f5;
     --text-muted: #a1a1aa;
     --border-color: #27272a;
+    --line: #5b5b66;
     --accent: #f59e0b;
 
     --well: rgb(0 0 0 / 0.2);
