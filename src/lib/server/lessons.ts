@@ -8,6 +8,7 @@ import {
   isPromptCategory,
   joinModule,
   splitModule,
+  upgradeNotesConfig,
   type LessonFields,
   type LessonModule,
   type ModuleType
@@ -65,7 +66,8 @@ const parse = (s: unknown, fallback: any) => {
 
 const toModule = (r: any): LessonModule => {
   const priv = parse(r.private_json, {});
-  const config: any = joinModule(parse(r.config_json, {}), priv, r.type);
+  let config: any = joinModule(parse(r.config_json, {}), priv, r.type);
+  if (r.type === 'notes') config = upgradeNotesConfig(config); // saved before slides existed
   // Activities saved before categories existed.
   if (r.type === 'activity' && !isActivityCategory(config.category)) config.category = 'other';
   if (r.type === 'prompt' && !isPromptCategory(config.category)) config.category = 'other';

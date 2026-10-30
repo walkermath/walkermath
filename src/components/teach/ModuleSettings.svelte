@@ -20,6 +20,7 @@
   import { floorOf, capOf } from '../../lib/lesson/pacing.ts';
   import { mmss } from '../../lib/lesson/time.ts';
   import MmssInput from './MmssInput.svelte';
+  import NotesEditor from './NotesEditor.svelte';
   import { btn, btnDanger, field, heading, label, panel } from './ui.ts';
 
   type Note = { id: string; title: string; subject: string | null; unitTitle: string | null };
@@ -113,15 +114,6 @@
   const addLink = () => module.config.links.push({ label: '', url: '' } as Link);
   const removeLink = (i: number) => module.config.links.splice(i, 1);
 
-  const noteGroups = $derived.by(() => {
-    const groups = new Map<string, Note[]>();
-    for (const n of notes) {
-      const g = n.unitTitle || n.subject || 'Notes';
-      if (!groups.has(g)) groups.set(g, []);
-      groups.get(g)!.push(n);
-    }
-    return [...groups];
-  });
 </script>
 
 <section class="{panel} space-y-5 text-xs">
@@ -292,42 +284,7 @@
       {/if}
     </div>
   {:else if module.type === 'notes'}
-    <div class="space-y-3">
-      <div class="flex flex-wrap gap-4">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="radio" name="src-{module.id}" checked={module.config.source === 'note'} onchange={() => (module.config.source = 'note')} />
-          a page from /notes
-        </label>
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="radio" name="src-{module.id}" checked={module.config.source === 'markdown'} onchange={() => (module.config.source = 'markdown')} />
-          my own notes (Markdown)
-        </label>
-      </div>
-      {#if module.config.source === 'note'}
-        <div class="flex flex-wrap items-center gap-3">
-          <select class="{field} sm:w-96" bind:value={module.config.noteId}>
-            <option value="">pick a note...</option>
-            {#each noteGroups as [group, list]}
-              <optgroup label={group}>
-                {#each list as n}<option value={n.id}>{n.title}</option>{/each}
-              </optgroup>
-            {/each}
-          </select>
-          {#if module.config.noteId}
-            <a class="underline hover:text-[var(--accent)]" href="/notes/{module.config.noteId}" target="_blank" rel="noopener">[open note]</a>
-          {/if}
-        </div>
-        {#if notes.length === 0}
-          <p class={label}>// the notes list didn't load (it's built with the site: run npm run build).</p>
-        {/if}
-      {:else}
-        <textarea class="{field} font-mono" rows="10" bind:value={module.config.markdown} maxlength={LIMITS.markdown} placeholder={'## Example\n\nSolve $2x + 3 = 11$ ...'}></textarea>
-      {/if}
-      <label class="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" bind:checked={module.config.revealSections} />
-        reveal one section (## heading) at a time during the lesson
-      </label>
-    </div>
+    <NotesEditor bind:config={module.config} {notes} />
   {:else}
     <!-- activity and independent work share instructions + links -->
     <div class="space-y-3">

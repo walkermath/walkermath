@@ -129,9 +129,17 @@ Lesson builder (the Phase 3 gate):
    settings are kept.
 5. Click the lesson tile: under **when**, add two classes (bell times fill in). They show up on the
    [lessons] home under "coming up".
+6. Add **Notes > Pre-written slides**, import a walkerMath note (it's cut into slides at its
+   headings), and edit a slide: the preview beside it is what students will see. A line of `---`
+   splits a slide when you click out of the box. A `!` on a thumbnail means the slide is taller than
+   one page.
 
-Tests (no install needed): `npm run test:lessons` (API, against a stand-in database) and
-`npm run test:pacing` (the pacing engine).
+The slide renderer needs packages added to `package.json` (`unified`, `remark-*`, `rehype-*`,
+including the new `rehype-sanitize`): run `npm install` once and commit the updated
+`package-lock.json`, or the Cloudflare build will fail.
+
+Tests (no install needed): `npm run test:lessons` (API, against a stand-in database),
+`npm run test:pacing` (the pacing engine) and `npm run test:slides` (cutting notes into slides).
 
 ## What's stored
 

@@ -16,7 +16,7 @@ import {
   setLessonArchived
 } from '../../../../../src/lib/server/lessons.ts';
 
-const MAX_BODY = 300_000;
+const MAX_BODY = 1_000_000; // a lesson of long pre-written notes
 
 export async function onRequestGet({ env, data, params }) {
   const lesson = await getLesson(env.DB, data.teacher.id, params.lessonId);

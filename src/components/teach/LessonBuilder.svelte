@@ -7,6 +7,7 @@
   import { api, ApiError } from '../../lib/api.ts';
   import {
     ACTIVITY_CATEGORIES,
+    NOTES_MODES,
     PROMPT_CATEGORIES,
     LIMITS,
     MODULE_TYPES,
@@ -16,6 +17,7 @@
     newModule,
     promptCategory,
     type ActivityCategory,
+    type NotesMode,
     type Link,
     type PromptCategory,
     type LessonModule,
@@ -53,8 +55,16 @@
 
   /** 'lesson' (the main tile) or a module id. */
   let selected = $state<string>('lesson');
-  /** The "+" tile's menu: closed, the module types, or the activity categories. */
-  let adding = $state<null | 'type' | 'activity' | 'prompt'>(null);
+  /** The "+" tile's menu: closed, the module types, or one type's second step (its kinds). */
+  let adding = $state<null | 'type' | 'prompt' | 'notes' | 'activity'>(null);
+
+  /** Types whose "+" menu has a second step, and what it asks. */
+  const SUBMENU: Partial<Record<ModuleType, { ask: string; items: readonly { id: string; label: string }[] }>> = {
+    prompt: { ask: 'what are the questions for?', items: PROMPT_CATEGORIES },
+    notes: { ask: 'how will you give the notes?', items: NOTES_MODES },
+    activity: { ask: 'what kind of activity?', items: ACTIVITY_CATEGORIES }
+  };
+  const submenu = $derived(adding && adding !== 'type' ? SUBMENU[adding] : undefined);
   /** Which field hints ([ ? ]) are open. */
   let hint = $state<null | 'objective' | 'criteria'>(null);
   let dragFrom = $state<number | null>(null);
@@ -142,7 +152,7 @@
   /* ---------- tiles ---------- */
 
   /** New modules go before a locked final module (the exit ticket), so it stays last. */
-  function addModule(type: ModuleType, category?: ActivityCategory | PromptCategory) {
+  function addModule(type: ModuleType, category?: ActivityCategory | PromptCategory | NotesMode) {
     if (!lesson) return;
     const m = newModule(type, category);
     lesson.modules.splice(insertIndex(lesson.modules), 0, m);
@@ -228,7 +238,11 @@
       ? activityCategory((m.config as any).category).label
       : m.type === 'prompt' && (m.config as any).category !== 'other'
         ? promptCategory((m.config as any).category).label
-        : MODULE_TYPES[m.type].label;
+        : m.type === 'notes'
+          ? (m.config as any).mode === 'prewritten'
+            ? `Notes · ${(m.config as any).slides.length} slide${(m.config as any).slides.length === 1 ? '' : 's'}`
+            : 'Notes · blackboard'
+          : MODULE_TYPES[m.type].label;
 
   const tile = 'rounded-md border-2 bg-[var(--bg-surface)] transition-colors';
 </script>
@@ -449,27 +463,20 @@
                   <button
                     type="button"
                     class="flex justify-between w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer"
-                    onclick={() => (t === 'activity' ? (adding = 'activity') : t === 'prompt' ? (adding = 'prompt') : addModule(t))}
+                    onclick={() => (SUBMENU[t] ? (adding = t as 'prompt' | 'notes' | 'activity') : addModule(t))}
                   >
                     <span><span class="font-mono {label} mr-1">{TYPE_MARK[t]}</span>{MODULE_TYPES[t].label}</span>
-                    {#if t === 'activity' || t === 'prompt'}<span class={label}>&gt;</span>{/if}
+                    {#if SUBMENU[t]}<span class={label}>&gt;</span>{/if}
                   </button>
                 {/each}
                 <button type="button" class="block w-full text-left px-2 py-1 {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => (adding = null)}>cancel</button>
               </div>
-            {:else if adding === 'activity'}
+            {:else if submenu && adding && adding !== 'type'}
+              {@const type = adding}
               <div class="{tile} w-52 p-2 border-dashed border-[var(--accent)] space-y-1">
-                <div class="px-2 {label}">what kind of activity?</div>
-                {#each ACTIVITY_CATEGORIES as c}
-                  <button type="button" class="block w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer" onclick={() => addModule('activity', c.id)}>{c.label}</button>
-                {/each}
-                <button type="button" class="block w-full text-left px-2 py-1 {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => (adding = 'type')}>&lt;- back</button>
-              </div>
-            {:else if adding === 'prompt'}
-              <div class="{tile} w-52 p-2 border-dashed border-[var(--accent)] space-y-1">
-                <div class="px-2 {label}">what are the questions for?</div>
-                {#each PROMPT_CATEGORIES as c}
-                  <button type="button" class="block w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer" onclick={() => addModule('prompt', c.id)}>{c.label}</button>
+                <div class="px-2 {label}">{submenu.ask}</div>
+                {#each submenu.items as c}
+                  <button type="button" class="block w-full text-left px-2 py-1 rounded hover:bg-[var(--well-strong)] cursor-pointer" onclick={() => addModule(type, c.id as any)}>{c.label}</button>
                 {/each}
                 <button type="button" class="block w-full text-left px-2 py-1 {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => (adding = 'type')}>&lt;- back</button>
               </div>

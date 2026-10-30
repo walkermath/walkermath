@@ -6,6 +6,7 @@
 // Answer keys live only in a module's private part. splitModule() separates them before storage
 // and publicModule() is the only shape that will ever be sent to students.
 
+import { splitSlides } from './slides.ts';
 import { STEP_SEC } from './time.ts';
 
 /* ---------------- limits ---------------- */
@@ -25,7 +26,10 @@ export const LIMITS = {
   minModuleSec: STEP_SEC,
   maxModuleSec: 2 * 60 * 60,
   text: 2000,
-  markdown: 20000,
+  /** All of a Notes module's slides together (a long walkerMath note is about 20k). */
+  markdown: 60000,
+  slides: 40,
+  slide: 8000,
   links: 10,
   linkLabel: 80,
   url: 500,
@@ -76,14 +80,30 @@ export interface PromptConfig {
   questions: Question[];
 }
 
-export interface NotesConfig {
-  source: 'note' | 'markdown';
-  /** A published note's id from /notes (source 'note'). */
-  noteId: string;
-  /** Markdown with $...$ KaTeX (source 'markdown'). */
+/** The two kinds of Notes. Either way, the finished module is a slideshow students can reopen. */
+export const NOTES_MODES = [
+  { id: 'freeform', label: 'Freeform blackboard', title: 'Notes' },
+  { id: 'prewritten', label: 'Pre-written slides', title: 'Notes' }
+] as const;
+export type NotesMode = (typeof NOTES_MODES)[number]['id'];
+export const isNotesMode = (v: unknown): v is NotesMode => NOTES_MODES.some((c) => c.id === v);
+export const notesMode = (id: unknown) => NOTES_MODES.find((c) => c.id === id) ?? NOTES_MODES[0];
+
+/**
+ * One pre-written slide. Only Markdown for now (with $...$ math and the HTML walkerMath notes use);
+ * `kind` leaves room for slides imported later from Google Slides or a .pptx (images).
+ */
+export interface Slide {
+  id: string;
+  kind: 'markdown';
   markdown: string;
-  /** Teacher reveals the note's sections one at a time during the lesson. */
-  revealSections: boolean;
+}
+
+export interface NotesConfig {
+  /** freeform: a blank blackboard the teacher writes on live ([next board] adds another).
+   *  prewritten: the slides below. Slides are kept if the teacher switches to freeform. */
+  mode: NotesMode;
+  slides: Slide[];
 }
 
 /** What kind of activity this is. Picking one also gives the module its starting title. */
@@ -166,10 +186,10 @@ export const MODULE_TYPES: Record<ModuleType, ModuleTypeInfo> = {
   },
   notes: {
     label: 'Notes',
-    hint: 'a page from /notes, or your own Markdown',
+    hint: 'a blackboard you write on live, or pre-written slides',
     defaultTitle: 'Notes',
     defaultSec: 10 * 60,
-    defaultConfig: (): NotesConfig => ({ source: 'note', noteId: '', markdown: '', revealSections: false }),
+    defaultConfig: (): NotesConfig => ({ mode: 'freeform', slides: [] }),
     collects: () => false
   },
   activity: {
@@ -195,7 +215,7 @@ export const isModuleType = (v: unknown): v is ModuleType => typeof v === 'strin
 
 const newUuid = () => crypto.randomUUID();
 
-export function newModule(type: ModuleType, category?: ActivityCategory | PromptCategory): LessonModule {
+export function newModule(type: ModuleType, category?: ActivityCategory | PromptCategory | NotesMode): LessonModule {
   const t = MODULE_TYPES[type];
   const m: LessonModule = {
     id: newUuid(),
@@ -211,6 +231,9 @@ export function newModule(type: ModuleType, category?: ActivityCategory | Prompt
   if (type === 'activity' && category && isActivityCategory(category)) {
     (m.config as ActivityConfig).category = category;
     m.title = activityCategory(category).title;
+  }
+  if (type === 'notes' && category === 'prewritten') {
+    m.config = { mode: 'prewritten', slides: [newSlide()] } satisfies NotesConfig;
   }
   if (type === 'prompt' && category && isPromptCategory(category)) {
     const c = promptCategory(category);
@@ -293,6 +316,24 @@ function cleanLinks(v: unknown): Link[] | string {
 
 export const NOTE_ID = /^[a-z0-9][a-z0-9/_-]{0,119}$/i;
 
+export const newSlide = (markdown = ''): Slide => ({ id: newUuid(), kind: 'markdown', markdown });
+
+/**
+ * Notes modules saved before slides existed ({ source, noteId, markdown, revealSections }):
+ * their Markdown becomes slides; a linked /notes page becomes one slide linking to it, so the
+ * teacher can import it properly.
+ */
+export function upgradeNotesConfig(c: any): any {
+  if (!c || typeof c !== 'object' || c.mode !== undefined || (c.markdown === undefined && c.noteId === undefined)) return c;
+  if (c.source === 'markdown' && typeof c.markdown === 'string' && c.markdown.trim()) {
+    return { mode: 'prewritten', slides: splitSlides(c.markdown).map((md) => newSlide(md)) };
+  }
+  if (typeof c.noteId === 'string' && NOTE_ID.test(c.noteId)) {
+    return { mode: 'prewritten', slides: [newSlide(`[open the ${c.noteId} note](/notes/${c.noteId})`)] };
+  }
+  return { mode: 'freeform', slides: [] };
+}
+
 function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | string {
   c = c && typeof c === 'object' ? c : {};
   switch (type) {
@@ -321,14 +362,20 @@ function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | st
       return { category: isPromptCategory(c.category) ? c.category : 'other', questions };
     }
     case 'notes': {
-      const source = c.source === 'markdown' ? 'markdown' : 'note';
-      const noteId = source === 'note' && typeof c.noteId === 'string' && NOTE_ID.test(c.noteId) ? c.noteId : '';
-      return {
-        source,
-        noteId,
-        markdown: cleanText(c.markdown, LIMITS.markdown),
-        revealSections: c.revealSections === true
-      };
+      c = upgradeNotesConfig(c);
+      const raw = Array.isArray(c.slides) ? c.slides : [];
+      if (raw.length > LIMITS.slides) return `${where}: at most ${LIMITS.slides} slides.`;
+      const slides: Slide[] = [];
+      let total = 0;
+      for (const [i, sl] of raw.entries()) {
+        const text = typeof sl?.markdown === 'string' ? sl.markdown : '';
+        if (text.length > LIMITS.slide) return `${where}: slide ${i + 1} is too long. Split it with a line of ---.`;
+        const markdown = cleanText(text, LIMITS.slide);
+        total += markdown.length;
+        slides.push({ id: isUuid(sl?.id) ? sl.id : newUuid(), kind: 'markdown', markdown });
+      }
+      if (total > LIMITS.markdown) return `${where}: the slides are too long altogether. Move some into another Notes module.`;
+      return { mode: isNotesMode(c.mode) ? c.mode : 'freeform', slides };
     }
     case 'activity': {
       const links = cleanLinks(c.links);

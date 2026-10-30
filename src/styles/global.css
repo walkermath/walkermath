@@ -54,3 +54,32 @@
   margin-bottom: 1.5rem !important;
   }
 }
+/* Pre-written slides (SlideView.svelte): Tailwind's reset flattens headings and lists, so slides set
+   their own type, sized for a projector. In the components layer so a note's own utility classes
+   (the tape diagrams' my-6, text-sm...) still win. */
+@layer components {
+  .slide {
+    font-size: 22px;
+    line-height: 1.45;
+    font-family: "Courier New", Courier, monospace;
+    color: var(--text-primary);
+  }
+  .slide > * + * { margin-top: 0.6em; }
+  .slide h1 { font-size: 1.8em; font-weight: 700; line-height: 1.15; }
+  .slide h2 { font-size: 1.45em; font-weight: 700; }
+  .slide h3 { font-size: 1.2em; font-weight: 700; }
+  .slide h4, .slide h5, .slide h6 { font-weight: 700; }
+  .slide ul { list-style: disc; padding-left: 1.4em; }
+  .slide ol { list-style: decimal; padding-left: 1.6em; }
+  .slide li + li, .slide li > * + * { margin-top: 0.25em; }
+  .slide blockquote { border-left: 4px solid var(--line); padding-left: 0.8em; color: var(--text-muted); }
+  .slide a { color: var(--accent); text-decoration: underline; }
+  .slide code { background: rgb(127 127 127 / 0.15); padding: 0 0.25em; border-radius: 3px; }
+  .slide pre { background: rgb(127 127 127 / 0.15); padding: 0.6em 0.8em; border-radius: 4px; overflow-x: auto; }
+  .slide pre code { background: none; padding: 0; }
+  .slide table { border-collapse: collapse; }
+  .slide th, .slide td { border: 1px solid var(--line); padding: 0.2em 0.6em; }
+  .slide hr { border-color: var(--line); }
+  .slide img { max-width: 100%; max-height: 400px; }
+  .slide .katex-display { margin: 0.6em 0 !important; }
+}
