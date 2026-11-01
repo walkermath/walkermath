@@ -2,8 +2,10 @@
 // The way into a live lesson's room, for its teacher and the students of its class.
 //
 //   GET with "Upgrade: websocket" -> the room's WebSocket (lesson, state, roster messages)
-//   GET [?full=1]                 -> { state, serverNow, lesson?, students? }   polling fallback
+//   GET [?full=1]                 -> { state, serverNow, inkRev, lesson?, students? }   polling fallback
+//   GET ?ink=<pageId>,<pageId>    -> { pages: { pageId: strokes }, rev }   ink, for slow mode
 //   POST { cmd }                  -> { state, serverNow }   teacher only (next, back, adjust...)
+//   POST { ink }                  -> { ok, rev }            teacher only: a pen stroke, erase or clear (slow mode)
 //
 // Who is connecting is checked here, from the session cookie, and passed to the room as
 // headers. Only those headers are forwarded: the room never sees cookies, IPs or anything else.
@@ -37,7 +39,12 @@ export async function onRequestGet({ request, env, params }) {
   if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
     return room.fetch('https://room.internal/socket', { headers: { Upgrade: 'websocket', ...w.headers } });
   }
-  const full = new URL(request.url).searchParams.get('full') === '1' ? '?full=1' : '';
+  const q = new URL(request.url).searchParams;
+  if (q.has('ink')) {
+    const res = await room.fetch(`https://room.internal/ink?pages=${encodeURIComponent(q.get('ink') ?? '')}`, { headers: w.headers });
+    return new Response(res.body, { status: res.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  }
+  const full = q.get('full') === '1' ? '?full=1' : '';
   const res = await room.fetch(`https://room.internal/state${full}`, { headers: w.headers });
   return new Response(res.body, { status: res.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 }
@@ -47,8 +54,16 @@ export async function onRequestPost({ request, env, params }) {
   if (request.headers.get('Origin') !== new URL(request.url).origin) return fail('Bad origin.', 403);
   const w = await who(env, request, params.runId);
   if (!w || w.role !== 'teacher') return fail('Not found.', 404);
-  const body = await readJson(request);
+  const body = await readJson(request, 400_000); // a page of strokes put back by undo can be large
   if (!body) return fail('Invalid request.');
+  if (body.ink) {
+    const res = await roomStub(env, w.run.id).fetch('https://room.internal/ink', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...w.headers },
+      body: JSON.stringify({ op: body.ink })
+    });
+    return new Response(res.body, { status: res.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  }
   const res = await roomStub(env, w.run.id).fetch('https://room.internal/cmd', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...w.headers },

@@ -2,11 +2,14 @@
 <!-- /teach/live?run=  The control panel: the current module large with its countdown and the -->
 <!-- controls (-1 / +1 min, pause, back, next, Notes pages), the re-planned rest of the lesson with -->
 <!-- clock times, who's connected, and [end]. The room keeps the clock; this screen only asks it. -->
+<!-- Writing on the board happens on the presenter screen ([presenter], /teach/present); the -->
+<!-- preview here shows the ink as it's written. -->
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
   import { MODULE_TYPES, type LessonModule } from '../../lib/lesson/modules.ts';
-  import { finishesAt, holdingMs, leftSec, lessonLeftMs, moduleEndsAt, moduleLeftMs, moduleStarts, type Command, type RoomState } from '../../lib/lesson/room.ts';
+  import { finishesAt, holdingMs, leftSec, lessonLeftMs, moduleEndsAt, moduleLeftMs, moduleStarts, pagesOf, type Command, type RoomState } from '../../lib/lesson/room.ts';
+  import { InkStore, inkHandlers } from '../../lib/lesson/inkStore.svelte.ts';
   import { mmss } from '../../lib/lesson/time.ts';
   import {
     clockAt,
@@ -43,6 +46,7 @@
   let busy = $state(false);
   let now = $state(Date.now());
   let conn: LiveConnection | null = null;
+  const ink = new InkStore();
   let timer: ReturnType<typeof setInterval> | null = null;
 
   onMount(async () => {
@@ -77,9 +81,14 @@
         if (s.status === 'ended' && run) run.status = 'ended';
       },
       onRoster: (r) => (students = r),
-      onTransport: (t) => (transport = t),
-      onGone: (_status, message) => (error = message)
+      onTransport: (t) => {
+        if (t === 'socket' && transport !== 'socket') ink.resync(); // changes may have been missed
+        transport = t;
+      },
+      onGone: (_status, message) => (error = message),
+      ...inkHandlers(ink)
     });
+    ink.fetcher = (ids) => conn?.inkGet(ids);
   }
 
   async function start() {
@@ -127,7 +136,9 @@
   const plannedEnd = $derived(rs ? finishesAt(rs, now) : 0);
   const here = $derived(students.filter((s) => s.here));
   const gone = $derived(students.filter((s) => !s.here));
-  const pageCount = $derived(current?.type === 'notes' ? (current.config.slides ?? []).length : 0);
+  const pages = $derived(lesson && rs ? pagesOf(rs, lesson.modules, rs.index) : []);
+  const pageCount = $derived(current?.type === 'notes' ? pages.length : 0);
+  const newBoardId = () => `b-${Array.from(crypto.getRandomValues(new Uint8Array(9)), (b) => (b % 36).toString(36)).join('')}`;
 
   // Keyboard: right / left arrow = next / back (ignored while typing anywhere).
   function keys(e: KeyboardEvent) {
@@ -180,6 +191,7 @@
           ● {transport === 'socket' ? 'live' : transport === 'polling' ? 'live (slow mode)' : transport}
         </span>
         {#if rs.status === 'live'}
+          <a class={btnMain} href="/teach/present?run={run.id}" target="_blank" rel="noopener" title="The projector screen, where you write on the board">[presenter ↗]</a>
           <button type="button" class={btnDanger} onclick={end} disabled={busy}>[end lesson]</button>
         {/if}
       </div>
@@ -236,7 +248,19 @@
                   <button type="button" class={btn} onclick={() => send({ type: 'page', page: (rs?.page ?? 0) - 1 })} disabled={rs.page === 0}>[&lt; page]</button>
                   <span>page {rs.page + 1} of {pageCount}</span>
                   <button type="button" class={btn} onclick={() => send({ type: 'page', page: (rs?.page ?? 0) + 1 })} disabled={rs.page >= pageCount - 1}>[page &gt;]</button>
-                  <span class={label}>// left / right arrow keys turn pages</span>
+                  <button type="button" class={btn} onclick={() => send({ type: 'addBoard', id: newBoardId() })} title="A blank blackboard right after this page">[+ blackboard]</button>
+                  <span class={label}>// left / right arrow keys turn pages. write on pages in the [presenter].</span>
+                </div>
+              {:else}
+                <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-[var(--line)]">
+                  {#if rs.onBoard}
+                    <span>board {rs.page + 1} of {pages.length} is up</span>
+                    <button type="button" class={btn} onclick={() => send({ type: 'board', on: false })}>[back to {current.title}]</button>
+                  {:else if pages.length}
+                    <button type="button" class={btn} onclick={() => send({ type: 'page', page: Math.min(rs?.page ?? 0, pages.length - 1) })}>[show board]</button>
+                  {/if}
+                  <button type="button" class={btn} onclick={() => send({ type: 'addBoard', id: newBoardId() })} title="A scratch blackboard for this module">[+ board]</button>
+                  <span class={label}>// a scratch board for going over answers or an example; write on it in the [presenter].</span>
                 </div>
               {/if}
             </section>
@@ -262,7 +286,7 @@
 
             <section class="{panel} space-y-2">
               <div class={heading}>// what students see</div>
-              <LiveModule module={current} livePage={rs.page} follow={false} />
+              <LiveModule module={current} {pages} livePage={rs.page} follow={false} boardUp={rs.onBoard} {ink} />
             </section>
           {/if}
         </div>

@@ -26,8 +26,10 @@
   let importing = $state(false);
   let message = $state('');
   let error = $state('');
-  /** Slide ids whose content is taller than the page. */
+  /** Slide ids whose content is taller than the page, even shrunk as far as it goes. */
   let tall = $state<Record<string, boolean>>({});
+  /** How far each slide's text is shrunk to fit its page (1 = not at all). */
+  let shrunk = $state<Record<string, number>>({});
 
   /** The open slide's position (clamped, since slides can be deleted or split around it). */
   const si = $derived(Math.max(0, Math.min(current, config.slides.length - 1)));
@@ -195,9 +197,11 @@
               placeholder={'## Two-step equations\n\nSolve $2x + 3 = 11$:\n\n$$2x = 8$$\n\n---\n(a line of --- starts the next slide)'}
             ></textarea>
             <div class="space-y-1">
-              <SlideView markdown={slide.markdown} />
+              <SlideView markdown={slide.markdown} onfit={(f) => (shrunk[slide.id] = f)} onoverflow={(o) => (tall[slide.id] = o)} />
               {#if tall[slide.id]}
-                <p class="text-[var(--warn)]">// too tall for one page: it won't fit when you write on it. split it with a line of ---.</p>
+                <p class="text-[var(--warn)]">// too much for one page, even with the text shrunk: the bottom is cut off. split it with a line of ---.</p>
+              {:else if (shrunk[slide.id] ?? 1) < 0.85}
+                <p class="text-[var(--warn)]">// the text is shrunk to {Math.round((shrunk[slide.id] ?? 1) * 100)}% to fit the page. split it with a line of --- if that's too small to read.</p>
               {:else}
                 <p class={label}>// {slide && !slide.markdown.trim() ? 'blank: a blackboard to write on in class. type to make it a slide.' : 'what students see, and what you write over in class.'} a line of --- starts a new page.</p>
               {/if}

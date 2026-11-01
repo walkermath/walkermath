@@ -4,13 +4,17 @@
 <!-- clock; students follow the teacher's module but can open any module the class has reached. -->
 <!-- Answers save as the student types (a pause, a choice picked, a field left), and once more the -->
 <!-- moment the module closes; the server refuses changes after that (a few seconds' grace). -->
+<!-- The teacher's ink shows on every page; a student reading anything other than the teacher's -->
+<!-- page (or board) gets a small live view of it in the corner, which takes them back. -->
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { MODULE_TYPES } from '../../lib/lesson/modules.ts';
-  import { lessonLeftMs, moduleLeftMs, type RoomState } from '../../lib/lesson/room.ts';
+  import { lessonLeftMs, livePage, moduleLeftMs, pagesOf, type RoomState } from '../../lib/lesson/room.ts';
+  import { InkStore, inkHandlers } from '../../lib/lesson/inkStore.svelte.ts';
   import { answerSpec, isAnswered, type Answers } from '../../lib/lesson/answers.ts';
   import { clockAt, connectLive, countdown, type LiveConnection, type LiveLesson, type Transport } from '../../lib/lesson/liveClient.ts';
   import LiveModule, { type SaveState } from './LiveModule.svelte';
+  import PageView from './PageView.svelte';
 
   let runId = $state('');
   let lesson = $state<LiveLesson | null>(null);
@@ -21,6 +25,7 @@
   let showList = $state(true);
   let conn: LiveConnection | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
+  const ink = new InkStore();
 
   onMount(() => {
     runId = new URLSearchParams(location.search).get('run') ?? '';
@@ -31,10 +36,15 @@
     conn = connectLive(runId, {
       onLesson: (l) => (lesson = l),
       onState: (s) => (rs = s),
-      onTransport: (t) => (transport = t),
+      onTransport: (t) => {
+        if (t === 'socket' && transport !== 'socket') ink.resync(); // changes may have been missed
+        transport = t;
+      },
       onGone: (status, message) =>
-        (gone = status === 404 ? "This lesson isn't running for your class right now." : message)
+        (gone = status === 404 ? "This lesson isn't running for your class right now." : message),
+      ...inkHandlers(ink)
     });
+    ink.fetcher = (ids) => conn?.inkGet(ids);
     timer = setInterval(() => (now = conn?.now() ?? Date.now()), 250);
     loadMine();
     addEventListener('beforeunload', warnUnsaved);
@@ -166,6 +176,34 @@
   $effect(() => {
     if (rs && viewing === rs.index) viewing = null;
   });
+
+  /* Pages: the page (or board) a student flipped to, by id; null = the teacher's page (Notes) or the module itself. */
+  let browsing = $state<string | null>(null);
+  let browsingIn = -1;
+  $effect(() => {
+    // Opening another module starts on its own page.
+    if (shownIndex !== browsingIn) {
+      browsingIn = shownIndex;
+      browsing = null;
+    }
+  });
+  const shownPages = $derived(lesson && rs ? pagesOf(rs, lesson.modules, shownIndex) : []);
+  /** The teacher's page right now (a Notes page, or another module's board), or null. */
+  const teacherPage = $derived(lesson && rs ? livePage(rs, lesson.modules) : null);
+  /** The student is looking at something other than the teacher's page: show it small in the corner. */
+  const pip = $derived.by(() => {
+    if (!teacherPage || !rs || !lesson) return null;
+    if (!onLive) return teacherPage;
+    const notes = lesson.modules[rs.index]?.type === 'notes';
+    const onIt = notes ? browsing === null || browsing === teacherPage.id : browsing === teacherPage.id;
+    return onIt ? null : teacherPage;
+  });
+  function goLive() {
+    if (!rs || !lesson || !teacherPage) return;
+    viewing = null;
+    browsingIn = rs.index;
+    browsing = lesson.modules[rs.index]?.type === 'notes' ? null : teacherPage.id;
+  }
   /** The student can change their answers to module i: it's the live module and its time hasn't run out. */
   const editable = (i: number) => !!rs && rs.status === 'live' && i === rs.index && !rs.holding;
 
@@ -327,7 +365,12 @@
         {#key current.id}
           <LiveModule
             module={current}
+            pages={shownPages}
             livePage={onLive ? rs.page : (rs.pages?.[shownIndex] ?? 0)}
+            isLive={onLive}
+            boardUp={onLive && rs.onBoard}
+            bind:browsing
+            {ink}
             {runId}
             answers={mine[current.id] ?? {}}
             editable={editable(shownIndex)}
@@ -338,4 +381,17 @@
       </main>
     {/if}
   </div>
+
+  {#if pip}
+    <!-- The teacher's board, live, while the student reads something else. Tap to go there. -->
+    <button
+      type="button"
+      class="fixed bottom-4 right-4 z-20 w-56 sm:w-64 p-1.5 rounded-md border-2 border-[var(--accent)] bg-[var(--bg-surface)] shadow-lg text-left cursor-pointer"
+      onclick={goLive}
+      title="Go to your teacher's board"
+    >
+      <div class="pointer-events-none"><PageView page={pip} {ink} /></div>
+      <div class="mt-1 text-xs font-bold text-[var(--accent)]">● live board · tap to go there</div>
+    </button>
+  {/if}
 {/if}

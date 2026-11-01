@@ -23,6 +23,7 @@ import {
   type RoomModule,
   type RoomState
 } from '../../src/lib/lesson/room.ts';
+import { INK_LIMITS, PAGE_ID, applyInk, parseInkOp, type InkOp, type Stroke } from '../../src/lib/lesson/ink.ts';
 
 export interface Env {}
 
@@ -32,8 +33,18 @@ const MAX_SOCKETS = 200;
 const STALE_MS = 70_000;
 /** A student in slow mode (polling every 3 s) counts as here while their last poll is this recent. */
 const POLL_HERE_MS = 12_000;
-/** Client messages are small JSON; anything bigger is refused. */
+/** Client messages are small JSON; anything bigger is refused. The teacher's ink (a long stroke,
+ *  or a page of strokes put back by undo) can be bigger. */
 const MAX_MESSAGE_CHARS = 4096;
+const MAX_TEACHER_MESSAGE_CHARS = 400_000;
+/** Ink this recent means the teacher is writing: a board's time running out waits for them. */
+const WRITING_MS = 15_000;
+/** Pages one request may ask ink for. */
+const MAX_INK_PAGES = 20;
+/** Pages with ink one delivery may have (each page has its own stroke limit). */
+const MAX_INKED_PAGES = 400;
+/** Durable Object storage takes at most 128 keys per put or delete. */
+const STORAGE_BATCH = 128;
 
 type Role = 'teacher' | 'student' | 'test';
 type Who = { role: Role; who: string; name: string; at?: number };
@@ -65,6 +76,12 @@ export class LessonRoom extends DurableObject<Env> {
   private seen: Map<string, string> | null = null;
   /** Students in slow mode: alias id -> last poll (in memory; polling keeps the room awake). */
   private polled = new Map<string, { alias: string; at: number }>();
+  /** Ink by page, read from storage when first needed (each stroke is its own key: k:<page>:<stroke>). */
+  private inkCache = new Map<string, Map<string, Stroke>>();
+  /** A counter per page that goes up with every change, so slow-mode devices know what to fetch. */
+  private inkRev: Record<string, number> | null = null;
+  /** When the teacher last wrote (epoch ms). */
+  private lastInkAt: number | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -179,11 +196,118 @@ export class LessonRoom extends DurableObject<Env> {
     }
   }
 
-  private broadcast(msg: string, tag?: string) {
+  private broadcast(msg: string, tag?: string, except?: WebSocket) {
     for (const ws of this.ctx.getWebSockets(tag)) {
+      if (ws === except) continue;
       const a = ws.deserializeAttachment() as Who | null;
       if (a?.role !== 'test') this.send(ws, msg);
     }
+  }
+
+  /* ---------------- ink ---------------- */
+
+  private async loadRev(): Promise<Record<string, number>> {
+    if (!this.inkRev) this.inkRev = (await this.ctx.storage.get<Record<string, number>>('inkrev')) ?? {};
+    return this.inkRev;
+  }
+
+  /** A page's strokes by id, from memory or storage. */
+  private async inkPage(page: string): Promise<Map<string, Stroke>> {
+    let m = this.inkCache.get(page);
+    if (!m) {
+      const found = await this.ctx.storage.list<Stroke>({ prefix: `k:${page}:` });
+      m = new Map([...found.values()].map((st) => [st.id, st]));
+      this.inkCache.set(page, m);
+    }
+    return m;
+  }
+
+  /** A page's strokes in drawing order (ids sort by time). */
+  private async strokes(page: string): Promise<Stroke[]> {
+    return [...(await this.inkPage(page)).values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  }
+
+  /** Ink for some pages, and each page's counter: what a device asks for when it shows a page. */
+  private async inkPages(ids: unknown): Promise<{ pages: Record<string, Stroke[]>; rev: Record<string, number> }> {
+    const list = Array.isArray(ids) ? ids.filter((id) => typeof id === 'string' && PAGE_ID.test(id)).slice(0, MAX_INK_PAGES) : [];
+    const rev = await this.loadRev();
+    const pages: Record<string, Stroke[]> = {};
+    const revs: Record<string, number> = {};
+    for (const id of list) {
+      pages[id] = await this.strokes(id);
+      revs[id] = rev[id] ?? 0;
+    }
+    return { pages, rev: revs };
+  }
+
+  /**
+   * The teacher's ink. A stroke being drawn ('live') is only passed on; finished strokes, erasing
+   * and clearing are stored and passed on, and bump the page's counter. Everyone but the sender
+   * hears about it (the sender has already drawn it).
+   */
+  private async ink(op: InkOp | null, from?: WebSocket): Promise<boolean> {
+    const loaded = await this.load();
+    if (!op || !loaded || loaded.state.status !== 'live') return false;
+    const now = Date.now();
+    this.lastInkAt = now;
+    if (op.op === 'live') {
+      this.broadcast(JSON.stringify({ type: 'ink', op }), undefined, from);
+      return true;
+    }
+    const rev = await this.loadRev();
+    if (!(op.page in rev) && Object.keys(rev).length >= MAX_INKED_PAGES) return false;
+    const page = await this.inkPage(op.page);
+    let applied: InkOp = op;
+    if (op.op === 'add') {
+      const room = INK_LIMITS.strokes - page.size;
+      const fresh = op.strokes.filter((st) => !page.has(st.id)).slice(0, Math.max(0, room));
+      if (!fresh.length) return false;
+      for (let i = 0; i < fresh.length; i += STORAGE_BATCH) {
+        const entries: Record<string, Stroke> = {};
+        for (const st of fresh.slice(i, i + STORAGE_BATCH)) {
+          page.set(st.id, st);
+          entries[`k:${op.page}:${st.id}`] = st;
+        }
+        await this.ctx.storage.put(entries);
+      }
+      applied = { ...op, strokes: fresh };
+    } else if (op.op === 'erase') {
+      const gone = op.ids.filter((id) => page.has(id));
+      if (!gone.length) return false;
+      for (const id of gone) page.delete(id);
+      await this.deleteKeys(gone.map((id) => `k:${op.page}:${id}`));
+      applied = { ...op, ids: gone };
+    } else {
+      if (!page.size) return false;
+      await this.deleteKeys([...page.keys()].map((id) => `k:${op.page}:${id}`));
+      page.clear();
+    }
+    rev[op.page] = (rev[op.page] ?? 0) + 1;
+    await this.ctx.storage.put({ inkrev: rev, lastInk: now });
+    this.broadcast(JSON.stringify({ type: 'ink', op: applied, rev: rev[op.page] }), undefined, from);
+    return true;
+  }
+
+  private async deleteKeys(keys: string[]) {
+    for (let i = 0; i < keys.length; i += STORAGE_BATCH) await this.ctx.storage.delete(keys.slice(i, i + STORAGE_BATCH));
+  }
+
+  /** Every page's ink, for the record kept when the delivery ends. */
+  private async inkDump(): Promise<Record<string, Stroke[]>> {
+    const all = await this.ctx.storage.list<Stroke>({ prefix: 'k:' });
+    const pages: Record<string, Stroke[]> = {};
+    for (const [key, st] of all) {
+      const page = key.slice(2, key.lastIndexOf(':'));
+      (pages[page] ??= []).push(st);
+    }
+    for (const list of Object.values(pages)) list.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    return pages;
+  }
+
+  /** Has the teacher written in the last few seconds? */
+  private async writing(now: number): Promise<boolean> {
+    if (this.lastInkAt === null) this.lastInkAt = (await this.ctx.storage.get<number>('lastInk')) ?? 0;
+    return now - this.lastInkAt < WRITING_MS;
   }
 
   private async run(cmd: unknown, now = Date.now()): Promise<RoomState | null> {
@@ -265,9 +389,29 @@ export class LessonRoom extends DurableObject<Env> {
       return json({
         state: loaded.state,
         serverNow: Date.now(),
+        inkRev: await this.loadRev(),
         ...(url.searchParams.get('full') === '1' ? { lesson: loaded.lesson } : {}),
         ...(who.role === 'teacher' ? { students: await this.roster() } : {})
       });
+    }
+
+    // Ink over plain HTTP: slow-mode devices fetch pages whose counter moved; a slow-mode teacher writes.
+    if (request.method === 'GET' && url.pathname === '/ink') {
+      if (!(await this.load())) return json({ error: 'Not started' }, 409);
+      return json(await this.inkPages((url.searchParams.get('pages') ?? '').split(',')));
+    }
+    if (request.method === 'POST' && url.pathname === '/ink') {
+      if (who.role !== 'teacher') return json({ error: 'Forbidden' }, 403);
+      const body = (await request.json().catch(() => null)) as { op?: unknown } | null;
+      const op = parseInkOp(body?.op);
+      if (!op) return json({ error: 'Invalid ink.' }, 400);
+      await this.ink(op);
+      return json({ ok: true, rev: (await this.loadRev())[op.page] ?? 0 });
+    }
+    // The record kept when the delivery ends: every page's ink.
+    if (request.method === 'GET' && url.pathname === '/inkdump') {
+      if (who.role !== 'teacher') return json({ error: 'Forbidden' }, 403);
+      return json({ pages: await this.inkDump() });
     }
 
     if (request.method === 'POST' && url.pathname === '/cmd') {
@@ -283,7 +427,9 @@ export class LessonRoom extends DurableObject<Env> {
   /* ---------------- sockets ---------------- */
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    if (typeof message !== 'string' || message.length > MAX_MESSAGE_CHARS) {
+    const a = ws.deserializeAttachment() as Who | null;
+    const max = a?.role === 'teacher' ? MAX_TEACHER_MESSAGE_CHARS : MAX_MESSAGE_CHARS;
+    if (typeof message !== 'string' || message.length > max) {
       ws.close(1009, 'Message too large');
       return;
     }
@@ -293,7 +439,6 @@ export class LessonRoom extends DurableObject<Env> {
     } catch {
       return; // ignore anything that is not JSON
     }
-    const a = ws.deserializeAttachment() as Who | null;
 
     if (a?.role === 'test') {
       if (data?.type === 'echo') {
@@ -305,6 +450,16 @@ export class LessonRoom extends DurableObject<Env> {
 
     if (data?.type === 'cmd' && a?.role === 'teacher') {
       await this.run(data.cmd);
+      return;
+    }
+    if (data?.type === 'ink' && a?.role === 'teacher') {
+      await this.ink(parseInkOp(data.op), ws);
+      return;
+    }
+    // A device showing a page asks for its ink (and again after reconnecting).
+    if (data?.type === 'inkGet') {
+      if (!(await this.load())) return;
+      this.send(ws, JSON.stringify({ type: 'inkPages', ...(await this.inkPages(data.pages)) }));
       return;
     }
     // The control panel asks every few seconds, so students who went quiet or stopped polling grey out.
@@ -348,7 +503,8 @@ export class LessonRoom extends DurableObject<Env> {
   async alarm(): Promise<void> {
     const loaded = await this.load();
     if (!loaded) return;
-    const next = timeUp(loaded.state, loaded.lesson.modules, Date.now());
+    const now = Date.now();
+    const next = timeUp(loaded.state, loaded.lesson.modules, now, { writing: await this.writing(now) });
     if (next !== loaded.state) {
       await this.save(next);
       this.broadcast(this.stateMsg(next));

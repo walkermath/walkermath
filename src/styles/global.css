@@ -20,6 +20,14 @@
     --bad: #b91c1c;
     --bad-bg: #fee2e2;
     --warn: #b45309;
+
+    /* Ink on boards and slides (Phase 4c): palette slots chalk, yellow, blue, red, green (ink.ts).
+       Each theme draws a slot in its own shade, so marks read on a light page and a dark one. */
+    --ink-0: #18181b;
+    --ink-1: #a16207;
+    --ink-2: #1d4ed8;
+    --ink-3: #c62828;
+    --ink-4: #15803d;
   }
 
   html.dark {
@@ -40,6 +48,12 @@
     --bad: #f87171;
     --bad-bg: rgb(69 10 10 / 0.4);
     --warn: #fbbf24;
+
+    --ink-0: #f4f4f5;
+    --ink-1: #fde047;
+    --ink-2: #7dd3fc;
+    --ink-3: #fca5a5;
+    --ink-4: #86efac;
   }
 
   body {

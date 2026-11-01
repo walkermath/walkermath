@@ -74,8 +74,8 @@ every PIN is keyed with it.
 
 ## 3. Database tables
 
-Seven migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
-`0001`-`0003` are safe to run twice; `0004`-`0007` are not (SQLite can't add a column twice: "duplicate column
+Eight migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
+`0001`-`0003` and `0008` are safe to run twice; `0004`-`0007` are not (SQLite can't add a column twice: "duplicate column
 name" just means it's already applied).
 
 ```sh
@@ -88,6 +88,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0004_l
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0005_lesson_extras.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0006_lesson_scores.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0007_submissions.sql
+npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0008_run_ink.sql
 
 # production (once each, when you're ready to deploy): the same commands with --remote
 ```
@@ -102,6 +103,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0007_s
 | `0005_lesson_extras.sql` | standards and the Resources links on each lesson |
 | `0006_lesson_scores.sql` | Coliseum games in lessons: kept scores, each class's leaderboard switch (off), students' leaderboard names |
 | `0007_submissions.sql` | students' answers in live lessons; which delivery a game score belongs to; each delivery's final timing |
+| `0008_run_ink.sql` | what you wrote on each page of a delivery, kept when it ends |
 
 ## 4. Try it locally
 
@@ -200,12 +202,36 @@ keys (a number, a choice), then start a delivery as above:
 5. A Coliseum Practice module: finish a game as the student; the answers box shows the best score
    and number of games.
 
-The blackboard is 4c.
+The blackboard (Phase 4c; run `0008_run_ink.sql` first). Start a delivery of a lesson with a Notes
+module, then on the control panel click **[presenter ↗]**: the projector screen opens in a new tab.
+Drag that tab to the BenQ (or press **full screen**).
+
+1. Write with a finger or the mouse: pick a color and width at the bottom left. The student window
+   shows the stroke as you draw it, and the control panel's preview too.
+2. **eraser** removes a whole stroke you touch; **undo** (or Ctrl+Z) takes back your last stroke,
+   erase or clear; **clear** wipes the page (undo brings it back).
+3. **next page >** / **< page** turn pages (so do Page Down / Page Up, the arrow keys, and a
+   presentation clicker). On the last page it becomes **next: <module> ->**.
+4. **+ blackboard** adds a blank page right after the one on screen, for this delivery only (the
+   lesson itself doesn't change). Students see it appear in their page list.
+5. As the student, flip back a page: the live board shows small in the corner; tap it to return.
+6. In any other module (the bellwork, say), **+ board** on the presenter opens a scratch board for
+   going over answers; **back to Bellwork** shows the module again. Students get a "board" tab and
+   the corner view; they aren't pulled off their answers.
+7. Switch the site to light mode (the presenter has a light/dark button too): the board turns light
+   and the ink changes shade with it (chalk writes black).
+8. Let a Notes module run out while you're writing: it waits ("time's up") instead of moving on. In
+   the last 30 seconds the presenter shows the time left in the top bar.
+9. End the lesson: every page's ink is kept with the delivery (`run_ink`), for the past-lessons page
+   in Phase 5.
+
+A slide with more text than fits now shrinks its text to fit instead of scrolling (ink has to stay
+where you wrote it). The lesson builder says when a slide is shrunk below 85%.
 
 Tests (no install needed): `npm run test:lessons` (API, against a stand-in database),
 `npm run test:pacing` (the pacing engine), `npm run test:slides` (cutting notes into slides),
-`npm run test:room` (the live room's clock and commands) and `npm run test:answers` (what students
-hand in, and marking against the key).
+`npm run test:room` (the live room's clock and commands), `npm run test:answers` (what students
+hand in, and marking against the key) and `npm run test:ink` (strokes, the eraser, simplifying).
 
 ## What's stored
 

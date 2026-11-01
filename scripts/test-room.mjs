@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-const { startRoom, apply, timeUp, moduleLeftMs, nextAlarm, parseCommand, moduleStarts, finishesAt, upgradeState, answersOpen } = await import('../src/lib/lesson/room.ts');
+const { startRoom, apply, timeUp, moduleLeftMs, nextAlarm, parseCommand, moduleStarts, finishesAt, upgradeState, answersOpen, pagesOf, livePage } = await import('../src/lib/lesson/room.ts');
 
 const M = (title, plannedSec, pacing = 'flex', extra = {}) => ({
   id: title, type: 'activity', title, plannedSec, pacing, minSec: null, onTimeUp: 'auto', collects: false, config: {}, ...extra
@@ -10,7 +10,7 @@ const M = (title, plannedSec, pacing = 'flex', extra = {}) => ({
 // The spec's 48-minute lesson.
 const lesson = () => [
   M('Bellwork', 360, 'locked', { type: 'prompt' }),
-  M('Notes', 600, 'flex', { type: 'notes' }),
+  M('Notes', 600, 'flex', { type: 'notes', config: { slides: ['s1', 's2', 's3', 's4', 's5'].map((id, i) => ({ id, kind: 'markdown', markdown: i === 4 ? '' : `## Slide ${i + 1}` })) } }),
   M('Activity 1', 360),
   M('Activity 2', 420),
   M('Independent', 900),
@@ -209,6 +209,61 @@ test('answers: open while the module runs (paused too), closed once it moves on 
   assert.equal(answersOpen(s, 0, T0 + min(10) + 1000), true, '+1 min reopens it');
   s = apply(s, ms, { type: 'end' }, T0 + min(11));
   assert.equal(answersOpen(s, 0, T0 + min(11)), false, 'nothing after the end');
+});
+
+test('blackboards: added after the page on screen, for this delivery only; ids keep pages straight', () => {
+  const ms = lesson();
+  let s = startRoom('run', ms, T0 + min(48), T0);
+  s = apply(s, ms, { type: 'next' }, T0 + min(6)); // notes
+  assert.deepEqual(pagesOf(s, ms, 1).map((p) => p.id), ['s1', 's2', 's3', 's4', 's5']);
+  s = apply(s, ms, { type: 'page', page: 1 }, T0 + min(7));
+  s = apply(s, ms, { type: 'addBoard', id: 'b-board001' }, T0 + min(8));
+  assert.deepEqual(pagesOf(s, ms, 1).map((p) => p.id), ['s1', 's2', 'b-board001', 's3', 's4', 's5']);
+  assert.equal(s.page, 2, 'the new board is on screen');
+  assert.deepEqual(livePage(s, ms), { id: 'b-board001', markdown: '', added: true });
+  assert.equal(apply(s, ms, { type: 'addBoard', id: 'b-board001' }, T0 + min(8)), s, 'the same id twice is ignored');
+  assert.equal(apply(s, ms, { type: 'page', page: 6 }, T0 + min(8)), s, 'no page 7');
+  s = apply(s, ms, { type: 'page', page: 5 }, T0 + min(9));
+  assert.equal(livePage(s, ms).id, 's5');
+  assert.equal(ms[1].config.slides.length, 5, 'the lesson itself is untouched');
+  assert.equal(parseCommand({ type: 'addBoard', id: 'not ok' }), null);
+  assert.equal(parseCommand({ type: 'addBoard', id: 's1' }), null, 'only board ids');
+});
+
+test('a scratch board in any module: up, down, more boards; it never replaces the module', () => {
+  const ms = lesson();
+  let s = startRoom('run', ms, T0 + min(48), T0); // bellwork
+  assert.equal(livePage(s, ms), null);
+  assert.equal(apply(s, ms, { type: 'board', on: true }, T0 + min(1)), s, 'no board yet');
+  s = apply(s, ms, { type: 'addBoard', id: 'b-scratch1' }, T0 + min(1));
+  assert.equal(s.onBoard, true);
+  assert.equal(livePage(s, ms).id, 'b-scratch1');
+  s = apply(s, ms, { type: 'board', on: false }, T0 + min(2));
+  assert.equal(livePage(s, ms), null, 'back to the bellwork');
+  s = apply(s, ms, { type: 'addBoard', id: 'b-scratch2' }, T0 + min(3));
+  assert.deepEqual(pagesOf(s, ms, 0).map((p) => p.id), ['b-scratch1', 'b-scratch2']);
+  assert.equal(s.page, 1);
+  s = apply(s, ms, { type: 'board', on: false }, T0 + min(3));
+  s = apply(s, ms, { type: 'page', page: 0 }, T0 + min(4));
+  assert.equal(s.onBoard, true, 'turning to a board puts it up');
+  s = apply(s, ms, { type: 'next' }, T0 + min(5));
+  assert.equal(s.onBoard, false, 'a new module starts on its own content');
+  s = apply(s, ms, { type: 'back' }, T0 + min(6));
+  assert.equal(pagesOf(s, ms, 0).length, 2, 'the boards stay with the module');
+});
+
+test('time up on a board you are writing on waits instead of moving on', () => {
+  const ms = lesson();
+  let s = startRoom('run', ms, T0 + min(48), T0);
+  s = apply(s, ms, { type: 'next' }, T0 + min(6)); // notes: auto, 10 min
+  const end = T0 + min(6) + s.plan[1] * 1000;
+  const writing = timeUp(s, ms, end, { writing: true });
+  assert.equal(writing.index, 1);
+  assert.equal(writing.holding, true);
+  assert.equal(timeUp(s, ms, end, { writing: false }).index, 2, 'not writing: moves on as set');
+  // An activity without its board up moves on even if ink was just written elsewhere.
+  let a = apply(s, ms, { type: 'next' }, T0 + min(7));
+  assert.equal(timeUp(a, ms, T0 + min(7) + a.plan[2] * 1000, { writing: true }).index, 3);
 });
 
 test('commands from the network are checked', () => {

@@ -126,6 +126,47 @@ export async function startRun(env: any, run: LiveRun, now = Date.now()): Promis
   return { ok: true, room };
 }
 
+/** A page's ink is stored in parts of at most this many characters (D1 rows have a size limit). */
+const INK_PART_CHARS = 800_000;
+
+/**
+ * Copies every page's ink from the room into D1 (run_ink), so the delivery's boards outlive the
+ * room: the past-lessons page (Phase 5) shows them, absent students included.
+ */
+async function saveInk(env: any, run: LiveRun) {
+  const res = await roomStub(env, run.id).fetch('https://room.internal/inkdump', {
+    headers: { 'X-Role': 'teacher', 'X-Who': run.teacherId }
+  });
+  if (!res.ok) return;
+  const { pages } = (await res.json()) as { pages: Record<string, unknown[]> };
+  const now = Date.now();
+  const rows: any[] = [];
+  for (const [pageId, strokes] of Object.entries(pages ?? {})) {
+    if (!Array.isArray(strokes) || !strokes.length) continue;
+    // Split a heavy page into parts, whole strokes each.
+    let part: unknown[] = [];
+    let size = 0;
+    let n = 0;
+    const flush = () => {
+      rows.push(
+        env.DB.prepare('INSERT OR REPLACE INTO run_ink (run_id, page_id, part, strokes_json, created_at) VALUES (?1, ?2, ?3, ?4, ?5)').bind(
+          run.id, pageId, n++, JSON.stringify(part), now
+        )
+      );
+      part = [];
+      size = 0;
+    };
+    for (const st of strokes) {
+      const len = JSON.stringify(st).length + 1;
+      if (size + len > INK_PART_CHARS && part.length) flush();
+      part.push(st);
+      size += len;
+    }
+    if (part.length) flush();
+  }
+  if (rows.length) await env.DB.batch(rows);
+}
+
 export async function endRun(env: any, run: LiveRun, now = Date.now()) {
   let timing: string | null = null;
   if (env.LESSON_ROOM && run.status === 'live') {
@@ -139,8 +180,18 @@ export async function endRun(env: any, run: LiveRun, now = Date.now()) {
     // Keep the final clock (time each module was given, used and on screen) for records.
     const st = res?.ok ? ((await res.json().catch(() => null)) as any)?.state : null;
     if (st && Array.isArray(st.plan)) {
-      timing = JSON.stringify({ plan: st.plan, spent: st.spent ?? null, took: st.took ?? null, done: st.done ?? null, startedAt: st.startedAt, endedAt: st.endedAt });
+      timing = JSON.stringify({
+        plan: st.plan,
+        spent: st.spent ?? null,
+        took: st.took ?? null,
+        done: st.done ?? null,
+        // Blackboards added in class, in page order per module (null = the lesson's own pages).
+        pageOrder: st.pageOrder ?? null,
+        startedAt: st.startedAt,
+        endedAt: st.endedAt
+      });
     }
+    await saveInk(env, run).catch(() => null); // the run still ends if the ink can't be copied
   }
   await env.DB.prepare("UPDATE lesson_runs SET status = 'ended', ended_at = ?2, timing_json = COALESCE(?3, timing_json) WHERE id = ?1 AND status != 'ended'")
     .bind(run.id, now, timing)

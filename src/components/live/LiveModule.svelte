@@ -1,22 +1,30 @@
 <!-- src/components/live/LiveModule.svelte -->
-<!-- A module's content in a live lesson, as students see it (the control panel shows the same -->
-<!-- thing, read-only, as its preview). Students answer here: questions, a short answer, or a -->
-<!-- "done" tap. ClassLive owns the answers and saving; this only draws the form and reports edits. -->
+<!-- A module's content in a live lesson, as students see it (the control panel and the presenter -->
+<!-- show the same thing, read-only). Students answer here: questions, a short answer, or a "done" -->
+<!-- tap. ClassLive owns the answers and saving; this only draws the form and reports edits. -->
+<!-- Pages (Notes, and boards the teacher opened in any other module) are drawn with their ink. -->
+<!-- `browsing` is the page a student flipped to (by id, so a board added in class never shifts it). -->
 <script module lang="ts">
   export type SaveState = '' | 'pending' | 'saving' | 'saved' | 'error' | 'closed';
 </script>
 
 <script lang="ts">
   import 'katex/dist/katex.min.css';
-  import type { RoomModule } from '../../lib/lesson/room.ts';
+  import type { Page, RoomModule } from '../../lib/lesson/room.ts';
+  import type { InkStore } from '../../lib/lesson/inkStore.svelte.ts';
   import { ANSWER_LIMITS, answerSpec, isAnswered, type Answers } from '../../lib/lesson/answers.ts';
   import { renderMarkdown } from '../../lib/lesson/markdown.ts';
-  import SlideView from '../teach/SlideView.svelte';
+  import PageView from './PageView.svelte';
 
   let {
     module,
+    pages = [],
     livePage = 0,
+    isLive = true,
     follow = true,
+    boardUp = false,
+    browsing = $bindable(null),
+    ink = null,
     runId = '',
     answers,
     editable = false,
@@ -24,10 +32,19 @@
     onanswer
   }: {
     module: RoomModule;
-    /** The page the teacher is showing (Notes). */
+    /** The module's pages right now: Notes slides and blackboards, or another module's boards (room.ts pagesOf). */
+    pages?: Page[];
+    /** The page the teacher is showing (or left this module on), as an index into `pages`. */
     livePage?: number;
-    /** Students can flip through Notes pages; false keeps them on the live page (teacher preview). */
+    /** This is the module the class is on. */
+    isLive?: boolean;
+    /** Students can flip through pages; false keeps the view on the teacher's page (previews). */
     follow?: boolean;
+    /** Another module's board is up (the teacher is writing on it). */
+    boardUp?: boolean;
+    /** The page id a student flipped to, or null = the teacher's page (Notes) / the module itself (others). */
+    browsing?: string | null;
+    ink?: InkStore | null;
     /** The live run, so a Coliseum score made here is filed under this lesson. */
     runId?: string;
     /** The student's answers to this module. Undefined = not a student (the control panel's preview). */
@@ -51,18 +68,28 @@
     onanswer?.({ ...mine, [key]: value }, flush);
   };
 
-  /* Notes: students follow the live page until they flip away; [back to live] returns. */
-  let browsing = $state<number | null>(null);
-  const pages = $derived<{ id: string; markdown: string }[]>(module.type === 'notes' ? (c.slides ?? []) : []);
-  const shown = $derived(Math.min(browsing ?? livePage, Math.max(0, pages.length - 1)));
-  $effect(() => {
-    void module.id; // a new module starts on its live page
-    browsing = null;
+  /* Notes: students follow the teacher's page until they flip away; [back to live] returns. */
+  const home = $derived(Math.min(livePage, Math.max(0, pages.length - 1)));
+  const shown = $derived.by(() => {
+    if (follow && browsing) {
+      const k = pages.findIndex((p) => p.id === browsing);
+      if (k >= 0) return k;
+    }
+    return home;
   });
   const flip = (to: number) => {
     if (to < 0 || to >= pages.length) return;
-    browsing = to === livePage ? null : to;
+    browsing = to === home ? null : pages[to].id;
   };
+
+  /* Other modules: the board on screen, if any (a student's pick, or the teacher's board in a preview). */
+  const board = $derived.by(() => {
+    if (module.type === 'notes' || !pages.length) return null;
+    if (!follow) return boardUp ? (pages[home] ?? null) : null;
+    return pages.find((p) => p.id === browsing) ?? null;
+  });
+  const liveBoardId = $derived(isLive && boardUp ? (pages[home]?.id ?? null) : null);
+  const kindName = $derived(module.type === 'prompt' ? 'questions' : module.type === 'independent' ? 'the work' : 'the activity');
 
   const coliseumSrc = $derived(
     `/embed/coliseum/${encodeURIComponent(c.coliseumId ?? '')}${runId ? `?run=${encodeURIComponent(runId)}&module=${encodeURIComponent(module.id)}` : ''}`
@@ -117,15 +144,17 @@
 <div class="space-y-4">
   {#if module.type === 'notes'}
     {#if pages.length}
-      <SlideView markdown={pages[shown]?.markdown ?? ''} scroll />
+      <PageView page={pages[shown]} {ink} />
       {#if !follow || pages.length > 1}
         <div class="flex flex-wrap items-center gap-3 text-xs">
           {#if follow}
             <button type="button" class="hover:text-[var(--accent)] cursor-pointer disabled:opacity-40" onclick={() => flip(shown - 1)} disabled={shown === 0}>[&lt; page]</button>
-            <span class={label}>page {shown + 1} of {pages.length}</span>
+            <span class={label}>page {shown + 1} of {pages.length}{pages[shown]?.added ? ' · added in class' : ''}</span>
             <button type="button" class="hover:text-[var(--accent)] cursor-pointer disabled:opacity-40" onclick={() => flip(shown + 1)} disabled={shown >= pages.length - 1}>[page &gt;]</button>
-            {#if browsing !== null && browsing !== livePage}
-              <button type="button" class="ml-auto font-bold text-[var(--accent)] cursor-pointer" onclick={() => (browsing = null)}>[back to live: page {livePage + 1}]</button>
+            {#if shown !== home}
+              <button type="button" class="ml-auto font-bold text-[var(--accent)] cursor-pointer" onclick={() => (browsing = null)}>
+                [{isLive ? `back to live: page ${home + 1}` : `back to page ${home + 1}`}]
+              </button>
             {/if}
           {:else}
             <span class={label}>page {shown + 1} of {pages.length}</span>
@@ -133,6 +162,34 @@
         </div>
       {/if}
     {/if}
+  {:else}
+    {#if pages.length && follow}
+      <!-- Boards the teacher opened during this module: the module itself, then each board. -->
+      <div class="flex flex-wrap gap-2 text-xs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!board}
+          class="px-2 py-1 rounded border cursor-pointer {!board ? 'border-[var(--accent)] font-bold' : 'border-[var(--line)] hover:border-[var(--accent)]'}"
+          onclick={() => (browsing = null)}
+        >{kindName}</button>
+        {#each pages as p, k (p.id)}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={board?.id === p.id}
+            class="px-2 py-1 rounded border cursor-pointer {board?.id === p.id ? 'border-[var(--accent)] font-bold' : 'border-[var(--line)] hover:border-[var(--accent)]'}"
+            onclick={() => (browsing = p.id)}
+          >board {k + 1}{liveBoardId === p.id ? ' · live' : ''}</button>
+        {/each}
+      </div>
+    {/if}
+  {/if}
+
+  {#if board}
+    <PageView page={board} {ink} />
+  {:else if module.type === 'notes'}
+    <!-- (drawn above) -->
   {:else if module.type === 'prompt'}
     <ol class="space-y-3">
       {#each c.questions ?? [] as q, i (q.id)}

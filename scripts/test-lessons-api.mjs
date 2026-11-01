@@ -105,6 +105,7 @@ const classLive = await load('functions/api/class/live.js');
 
 /* ---------- a stand-in for the LessonRoom Durable Object (same state machine, no sockets) ---------- */
 const room = await load('src/lib/lesson/room.ts');
+const ink = await load('src/lib/lesson/ink.ts');
 const rooms = new Map();
 const roomCalls = [];
 env.LESSON_ROOM = {
@@ -127,6 +128,19 @@ env.LESSON_ROOM = {
       if (!r) return Response.json({ error: 'Not started' }, { status: 409 });
       if (u.pathname === '/state') return Response.json({ state: r.state, ...(u.searchParams.get('full') ? { lesson: r.lesson } : {}) });
       if (u.pathname === '/peek') return Response.json({ state: r.state });
+      if (u.pathname === '/ink' && (init.method ?? 'GET') === 'GET') {
+        const ids = (u.searchParams.get('pages') ?? '').split(',').filter(Boolean);
+        return Response.json({ pages: Object.fromEntries(ids.map((id) => [id, r.ink?.[id] ?? []])), rev: {} });
+      }
+      if (u.pathname === '/ink') {
+        if (h.get('X-Role') !== 'teacher') return Response.json({ error: 'Forbidden' }, { status: 403 });
+        const op = ink.parseInkOp(JSON.parse(init.body).op);
+        if (!op) return Response.json({ error: 'Invalid ink.' }, { status: 400 });
+        r.ink ??= {};
+        r.ink[op.page] = ink.applyInk(r.ink[op.page] ?? [], op);
+        return Response.json({ ok: true });
+      }
+      if (u.pathname === '/inkdump') return Response.json({ pages: r.ink ?? {} });
       if (u.pathname === '/cmd') {
         if (h.get('X-Role') !== 'teacher') return Response.json({ error: 'Forbidden' }, { status: 403 });
         const c = room.parseCommand(JSON.parse(init.body).cmd);
@@ -652,6 +666,19 @@ console.log('live lessons');
   assert.equal(moved.state.index, 1);
   ok('the teacher drives the lesson through the room');
 
+  // Ink: the teacher writes (slow mode: by POST); students read it; only the teacher writes.
+  const board = 'b-testboard1';
+  await body(await call(liveR, 'POST', T(`/api/live/${run.id}`, { method: 'POST', body: { cmd: { type: 'addBoard', id: board } } }), { runId: run.id }));
+  const stroke = { id: ink.newStrokeId(), c: 1, w: 2, p: [10, 10, 200, 120] };
+  const wrote = await call(liveR, 'POST', T(`/api/live/${run.id}`, { method: 'POST', body: { ink: { op: 'add', page: board, strokes: [stroke] } } }), { runId: run.id });
+  assert.equal(wrote.status, 200);
+  assert.equal((await call(liveR, 'POST', T(`/api/live/${run.id}`, { method: 'POST', body: { ink: { op: 'add', page: board, strokes: [{ ...stroke, c: 99 }] } } }), { runId: run.id })).status, 400, 'checked by the room');
+  assert.equal((await call(liveR, 'POST', S(`/api/live/${run.id}`, { method: 'POST', body: { ink: { op: 'clear', page: board } } }), { runId: run.id })).status, 404, 'students cannot write');
+  const seenInk = await body(await call(liveR, 'GET', S(`/api/live/${run.id}?ink=${board}`), { runId: run.id }));
+  assert.deepEqual(seenInk.pages[board], [stroke]);
+  assert.equal((await body(await call(liveR, 'GET', S(`/api/live/${run.id}`), { runId: run.id }))).state.onBoard, true, "the activity's scratch board is up");
+  ok("the teacher's ink reaches students through the room; only the teacher can write");
+
   assert.equal((await A({ moduleId: bell.id, answers: { [qid]: '44' } })).status, 200, 'the last keystrokes land in the grace period');
   rooms.get(`run:${run.id}`).state.closedAt[0] = Date.now() - 60_000; // ...and a minute later
   const late = await A({ moduleId: bell.id, answers: { [qid]: '4' } });
@@ -677,6 +704,9 @@ console.log('live lessons');
   const timing = JSON.parse(env.DB.sql.prepare('SELECT timing_json FROM lesson_runs WHERE id = ?').get(run.id).timing_json);
   assert.equal(timing.plan.length, 3);
   assert.equal(timing.took.length, 3, 'the final clock is kept for records');
+  assert.deepEqual(timing.pageOrder[1], [board], 'boards added in class are kept with their module');
+  const kept = env.DB.sql.prepare('SELECT page_id, part, strokes_json FROM run_ink WHERE run_id = ?').all(run.id);
+  assert.deepEqual(kept.map((r) => [r.page_id, r.part, JSON.parse(r.strokes_json)]), [[board, 0, [stroke]]], 'the ink is kept when the delivery ends');
   assert.equal((await A({ moduleId: l.modules[2].id, answers: {} })).status, 404, 'no answers after the end');
   assert.deepEqual((await body(await call(classLive, 'GET', S('/api/class/live'), {}, classMw))).runs, []);
   assert.equal((await call(liveR, 'GET', S(`/api/live/${run.id}`), { runId: run.id })).status, 404, 'students leave an ended lesson');

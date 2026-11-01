@@ -1,0 +1,31 @@
+---
+// src/pages/teach/present.astro
+// The presenter screen for one delivery (?run=): the projector view and the board you write on.
+// No site chrome: the page fills the screen. Static shell; the screen talks to the room.
+import Present from '../../components/live/Present.svelte';
+import 'katex/dist/katex.min.css';
+import '../../styles/global.css';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.png" />
+    <title>walkerMath\present</title>
+    <script is:inline>
+      // Match the site theme (set by the floating nav on other pages) before first paint.
+      try {
+        const t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        if (t !== 'light') document.documentElement.classList.add('dark');
+      } catch {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
+  </head>
+  <body class="font-mono overflow-hidden">
+    <Present client:only="svelte" />
+  </body>
+</html>

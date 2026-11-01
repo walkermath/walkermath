@@ -12,6 +12,7 @@
 // Every state carries serverNow; `offset` turns the device clock into the room's clock.
 
 import type { RoomModule, RoomState, Command } from './room.ts';
+import type { InkOp, Stroke } from './ink.ts';
 
 export type Link = { label: string; url: string };
 export type LiveLesson = { title: string; resources: Link[]; modules: RoomModule[] };
@@ -26,12 +27,22 @@ export interface LiveHandlers {
   onTransport?: (t: Transport) => void;
   /** The lesson can't be reached: not started (409), not yours / over (404), or another error. */
   onGone?: (status: number, message: string) => void;
+  /** Someone else's ink (a stroke being drawn, or a stored change and the page's new counter). */
+  onInk?: (op: InkOp, rev?: number) => void;
+  /** Ink for pages this device asked for. */
+  onInkPages?: (pages: Record<string, Stroke[]>, rev: Record<string, number>) => void;
+  /** Slow mode: every page's counter, so changed pages can be fetched. */
+  onInkRev?: (rev: Record<string, number>) => void;
 }
 
 export interface LiveConnection {
   /** The room's clock, in epoch ms. */
   now: () => number;
   send: (cmd: Command) => Promise<void>;
+  /** Asks for some pages' ink (answered through onInkPages). */
+  inkGet: (pageIds: string[]) => void;
+  /** The teacher's ink. A stroke still being drawn is only sent over a socket (slow mode sends finished strokes). */
+  sendInk: (op: InkOp) => Promise<void>;
   close: () => void;
 }
 
@@ -83,6 +94,7 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
       if (data.lesson) h.onLesson(data.lesson);
       if (data.students) h.onRoster?.(data.students);
       takeState(data.state, data.serverNow);
+      if (data.inkRev) h.onInkRev?.(data.inkRev);
       return true;
     } catch {
       return false;
@@ -133,6 +145,8 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
       if (msg.type === 'lesson') h.onLesson(msg.lesson);
       else if (msg.type === 'state') takeState(msg.state, msg.serverNow);
       else if (msg.type === 'roster') h.onRoster?.(msg.students);
+      else if (msg.type === 'ink') h.onInk?.(msg.op, msg.rev);
+      else if (msg.type === 'inkPages') h.onInkPages?.(msg.pages ?? {}, msg.rev ?? {});
     };
     ws.onclose = () => {
       if (pingTimer) clearInterval(pingTimer);
@@ -190,6 +204,32 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
       takeState(data.state, data.serverNow);
+    },
+    inkGet(pageIds) {
+      const ids = [...new Set(pageIds)].filter(Boolean);
+      if (!ids.length || closed) return;
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'inkGet', pages: ids }));
+        return;
+      }
+      fetch(`${base}?ink=${encodeURIComponent(ids.join(','))}`, { credentials: 'same-origin', cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => d && h.onInkPages?.(d.pages ?? {}, d.rev ?? {}))
+        .catch(() => {});
+    },
+    async sendInk(op) {
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'ink', op }));
+        return;
+      }
+      if (op.op === 'live') return; // slow mode: only finished strokes
+      const res = await fetch(base, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ink: op }),
+        credentials: 'same-origin'
+      });
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as any).error || `Request failed (${res.status}).`);
     },
     close: stop
   };

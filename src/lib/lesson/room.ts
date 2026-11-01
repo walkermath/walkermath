@@ -60,8 +60,15 @@ export interface RoomState {
   endsAt: number;
   startedAt: number;
   endedAt: number | null;
-  /** The page the teacher shows in a Notes module (students can browse the others). */
+  /** The page the teacher shows (an index into pagesOf()): a Notes page, or the open board of another module. */
   page: number;
+  /**
+   * Each module's pages, by id, when they differ from the lesson's (a blackboard was added during the
+   * delivery); null = as written: a Notes module's slides, no pages for the other modules.
+   */
+  pageOrder: (string[] | null)[];
+  /** The current module (not Notes) has its board up instead of its own content. */
+  onBoard: boolean;
   /** From the latest re-plan: how far the floors run past the bell, and time nothing can absorb. */
   overSec: number;
   spareSec: number;
@@ -75,7 +82,47 @@ export type Command =
   | { type: 'pause' }
   | { type: 'resume' }
   | { type: 'page'; page: number }
+  | { type: 'addBoard'; id: string }
+  | { type: 'board'; on: boolean }
   | { type: 'end' };
+
+/** Pages a module can have (40 slides plus the blackboards added in class). */
+export const MAX_PAGES = 80;
+/** A blackboard added in class: 'b-' and a random tail, made by the presenting device. */
+export const BOARD_ID = /^b-[A-Za-z0-9_-]{6,32}$/;
+
+/** A page of a module as everyone draws it: a pre-written slide, or a blank blackboard (markdown ''). */
+export interface Page {
+  id: string;
+  markdown: string;
+  /** Added during this delivery (not in the lesson). */
+  added: boolean;
+}
+
+/** Module `i`'s pages right now: the lesson's slides (Notes) plus any blackboards added in class. */
+export function pagesOf(s: RoomState | null, modules: RoomModule[], i: number): Page[] {
+  const m = modules[i];
+  if (!m) return [];
+  const slides: { id: string; markdown: string }[] = m.type === 'notes' && Array.isArray(m.config?.slides) ? m.config.slides : [];
+  const order = s?.pageOrder?.[i];
+  if (!order) return slides.map((p) => ({ id: p.id, markdown: p.markdown ?? '', added: false }));
+  const byId = new Map(slides.map((p) => [p.id, p]));
+  return order.map((id) => {
+    const sl = byId.get(id);
+    return sl ? { id, markdown: sl.markdown ?? '', added: false } : { id, markdown: '', added: true };
+  });
+}
+
+/**
+ * The page the class should be looking at, or null: the current Notes page, or the board another
+ * module has up. (Students in another module, or on another page, get a small live view of it.)
+ */
+export function livePage(s: RoomState | null, modules: RoomModule[]): Page | null {
+  if (!s || s.status !== 'live') return null;
+  const m = modules[s.index];
+  if (!m || (m.type !== 'notes' && !s.onBoard)) return null;
+  return pagesOf(s, modules, s.index)[s.page] ?? null;
+}
 
 const sec = (ms: number) => Math.round(ms / 1000);
 const step = (s: number) => Math.max(STEP_SEC, Math.round(s / STEP_SEC) * STEP_SEC);
@@ -86,7 +133,7 @@ const step = (s: number) => Math.max(STEP_SEC, Math.round(s / STEP_SEC) * STEP_S
 export function upgradeState(s: RoomState): RoomState {
   const n = s.plan.length;
   const old: Partial<RoomState> = s;
-  if (old.spent && old.took && old.done && old.pages && old.closedAt) return s;
+  if (old.spent && old.took && old.done && old.pages && old.closedAt && old.pageOrder && typeof old.onBoard === 'boolean') return s;
   const before = (i: number) => i < s.index;
   return {
     ...s,
@@ -211,7 +258,8 @@ function enter(s: RoomState, modules: RoomModule[], index: number, now: number):
     pausedAt: null,
     // A module whose time already ran out stays at 0:00 and waits.
     holding: !!s.done[index],
-    page: s.pages[index] ?? 0
+    page: s.pages[index] ?? 0,
+    onBoard: false
   };
   if (base.holding) return replanRest(base, modules, now);
   return fit(base, modules, index, sec(s.endsAt - now));
@@ -268,6 +316,8 @@ export function startRoom(runId: string, modules: RoomModule[], endsAt: number, 
     startedAt: now,
     endedAt: null,
     page: 0,
+    pageOrder: modules.map(() => null),
+    onBoard: false,
     overSec: 0,
     spareSec: 0
   };
@@ -291,7 +341,11 @@ export function parseCommand(v: any): Command | null {
       return Number.isInteger(seconds) && Math.abs(seconds) <= 30 * 60 ? { type: 'adjust', seconds } : null;
     }
     case 'page':
-      return Number.isInteger(v.page) && v.page >= 0 && v.page < 500 ? { type: 'page', page: v.page } : null;
+      return Number.isInteger(v.page) && v.page >= 0 && v.page < MAX_PAGES ? { type: 'page', page: v.page } : null;
+    case 'addBoard':
+      return typeof v.id === 'string' && BOARD_ID.test(v.id) ? { type: 'addBoard', id: v.id } : null;
+    case 'board':
+      return typeof v.on === 'boolean' ? { type: 'board', on: v.on } : null;
     default:
       return null;
   }
@@ -354,9 +408,34 @@ export function apply(s: RoomState, modules: RoomModule[], cmd: Command, now: nu
         next = replanRest(resumed, modules, now);
       }
       break;
-    case 'page':
-      if (modules[s.index]?.type === 'notes' && cmd.page !== s.page) next = { ...s, page: cmd.page };
+    case 'page': {
+      // A Notes page, or (another module) one of its boards; turning to a board puts the board up.
+      const count = pagesOf(s, modules, s.index).length;
+      const notes = modules[s.index]?.type === 'notes';
+      if (cmd.page < count && (cmd.page !== s.page || (!notes && !s.onBoard))) next = { ...s, page: cmd.page, onBoard: !notes };
       break;
+    }
+    case 'addBoard': {
+      // A blank blackboard right after the page on screen (a Notes module), or a new board for any
+      // other module, for this delivery only. It becomes the page on screen.
+      const pages = pagesOf(s, modules, s.index);
+      if (pages.length >= MAX_PAGES || pages.some((p) => p.id === cmd.id)) break;
+      const notes = modules[s.index]?.type === 'notes';
+      const order = pages.map((p) => p.id);
+      const at = notes ? Math.min(s.page + 1, order.length) : order.length;
+      order.splice(at, 0, cmd.id);
+      const pageOrder = [...s.pageOrder];
+      pageOrder[s.index] = order;
+      next = { ...s, pageOrder, page: at, onBoard: !notes };
+      break;
+    }
+    case 'board': {
+      // Another module's board up (or back to the module's own content). Notes are always pages.
+      if (modules[s.index]?.type === 'notes' || cmd.on === s.onBoard) break;
+      if (cmd.on && pagesOf(s, modules, s.index).length === 0) break;
+      next = { ...s, onBoard: cmd.on };
+      break;
+    }
     case 'end':
       next = { ...close(s, now), status: 'ended', endedAt: now, holding: false, pausedAt: null };
       break;
@@ -366,15 +445,18 @@ export function apply(s: RoomState, modules: RoomModule[], cmd: Command, now: nu
 
 /**
  * The alarm: the current module's time is up. Modules set to 'auto' move on; 'hold' modules (and
- * the last module) stop at 0:00 and wait for the teacher. Early or stale alarms change nothing.
+ * the last module) stop at 0:00 and wait for the teacher, and so does a board the teacher is
+ * writing on (`writing`: ink in the last few seconds). Early or stale alarms change nothing.
  */
-export function timeUp(s: RoomState, modules: RoomModule[], now: number): RoomState {
+export function timeUp(s: RoomState, modules: RoomModule[], now: number, opts: { writing?: boolean } = {}): RoomState {
   if (s.status !== 'live' || s.pausedAt !== null || s.holding) return s;
   s = upgradeState(s);
   if (moduleLeftMs(s, now) > 500) return s;
   const held = hold(s, now);
   const m = modules[s.index];
-  if (s.index < modules.length - 1 && m?.onTimeUp !== 'hold') {
+  // Never pull the board away mid-sentence: if the teacher is writing on it, wait for them.
+  const writing = !!opts.writing && livePage(s, modules) !== null;
+  if (s.index < modules.length - 1 && m?.onTimeUp !== 'hold' && !writing) {
     return { ...enter(held, modules, s.index + 1, now), version: s.version + 1 };
   }
   return { ...held, version: s.version + 1 };
