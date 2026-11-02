@@ -1,0 +1,51 @@
+---
+// src/pages/embed/notes/[id].astro
+// A note with no site chrome, sized to sit inside a lesson's module pane (Phase 4) or the
+// builder's preview. Same content and styles as /notes/<id>.
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import 'katex/dist/katex.min.css';
+import '../../../styles/global.css';
+
+export async function getStaticPaths() {
+  const notes = await getCollection('notes', ({ data }) => !data.unpublished);
+  return notes.map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+}
+
+interface Props {
+  entry: CollectionEntry<'notes'>;
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="robots" content="noindex" />
+    <title>{entry.data.title}</title>
+    <script is:inline>
+      // Match the site theme (set by the floating nav on other pages) before first paint.
+      try {
+        const t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        if (t !== 'light') document.documentElement.classList.add('dark');
+      } catch {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
+  </head>
+  <body class="p-4 sm:p-6 font-mono">
+    <article class="prose dark:prose-invert max-w-none text-sm leading-relaxed space-y-4">
+      <Content />
+    </article>
+  </body>
+</html>
+
+<style is:global>
+  article .katex-display {
+    margin-top: 1.75rem !important;
+    margin-bottom: 1.75rem !important;
+  }
+</style>

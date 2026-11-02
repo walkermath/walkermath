@@ -1,0 +1,329 @@
+---
+// src/pages/live-test.astro
+// Phase 1 network check: can a student device hold a WebSocket to walkerMath?
+// Collects nothing. Not linked from the nav; share the URL directly.
+import Layout from '../layouts/Layout.astro';
+import '../styles/global.css';
+---
+
+<Layout title="walkerMath\live-test">
+  <main class="py-12 space-y-6 font-mono max-w-2xl mx-auto">
+    <header class="border-b border-[var(--border-color)] pb-6 flex justify-between items-end">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">walkerMath\live-test</h1>
+        <p class="text-xs text-[var(--text-muted)] mt-1">// connection check for live lessons</p>
+      </div>
+      <a href="/" class="text-xs text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">&lt;- [home]</a>
+    </header>
+
+    <!-- Verdict -->
+    <section class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md space-y-4">
+      <div class="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">// status</div>
+      <div id="verdict" data-state="testing" class="text-2xl sm:text-3xl font-black tracking-wide">
+        testing...
+      </div>
+      <p id="verdict-detail" class="text-xs text-[var(--text-muted)]">
+        trying a live connection to walkerMath.
+      </p>
+    </section>
+
+    <!-- Numbers -->
+    <section class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md">
+      <dl class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+        <div class="space-y-1">
+          <dt class="text-[var(--text-muted)]">transport</dt>
+          <dd id="stat-transport" class="text-base font-bold">-</dd>
+        </div>
+        <div class="space-y-1">
+          <dt class="text-[var(--text-muted)]">round trip</dt>
+          <dd id="stat-rtt" class="text-base font-bold">-</dd>
+        </div>
+        <div class="space-y-1">
+          <dt class="text-[var(--text-muted)]">connected for</dt>
+          <dd id="stat-held" class="text-base font-bold">-</dd>
+        </div>
+        <div class="space-y-1">
+          <dt class="text-[var(--text-muted)]">drops</dt>
+          <dd id="stat-drops" class="text-base font-bold">0</dd>
+        </div>
+      </dl>
+    </section>
+
+    <!-- Result line to report -->
+    <section class="p-4 border border-[var(--border-color)] bg-[var(--well)] rounded-md space-y-3 text-xs">
+      <div class="text-[var(--text-muted)]">// result (read this out or copy it)</div>
+      <div class="flex flex-wrap items-center gap-3">
+        <code id="result-line" class="flex-1 min-w-0 break-words text-sm text-[var(--text-primary)]">testing...</code>
+        <button
+          id="copy-btn"
+          type="button"
+          class="px-3 py-1.5 rounded border border-[var(--border-color)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+        >[copy]</button>
+        <button
+          id="stop-btn"
+          type="button"
+          class="px-3 py-1.5 rounded border border-[var(--border-color)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+        >[stop test]</button>
+      </div>
+    </section>
+
+    <section class="space-y-2 text-xs text-[var(--text-muted)] leading-relaxed">
+      <p>// leave this tab open for the whole class period to check that the connection holds.</p>
+      <p>// this page collects nothing: no name, no account, nothing saved on your device, and the server keeps no record of who connected.</p>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  #verdict[data-state='testing'] { color: var(--text-muted); }
+  #verdict[data-state='ws'] { color: var(--ok); }
+  #verdict[data-state='poll'] { color: var(--warn); }
+  #verdict[data-state='down'] { color: var(--bad); }
+  #verdict[data-state='stopped'] { color: var(--text-muted); }
+</style>
+
+<script>
+  const ENDPOINT = '/api/live-test';
+  const OPEN_TIMEOUT_MS = 5000;   // a socket that hasn't opened by now counts as a failure
+  const ECHO_EVERY_MS = 5000;     // round-trip probe while connected
+  const PING_EVERY_MS = 20000;    // keep-alive, answered by the server runtime
+  const POLL_EVERY_MS = 3000;     // fallback cadence (matches the plan)
+  const WS_FAILS_BEFORE_POLL = 2;
+  const POLL_FAILS_BEFORE_DOWN = 3;
+
+  type Mode = 'testing' | 'ws' | 'poll' | 'down' | 'stopped';
+
+  const $ = (id: string) => document.getElementById(id)!;
+  const verdict = $('verdict');
+  const verdictDetail = $('verdict-detail');
+  const statTransport = $('stat-transport');
+  const statRtt = $('stat-rtt');
+  const statHeld = $('stat-held');
+  const statDrops = $('stat-drops');
+  const resultLine = $('result-line');
+
+  let mode: Mode = 'testing';
+  let ws: WebSocket | null = null;
+  let everOpened = false;
+  let wsFails = 0;
+  let drops = 0;
+  let reconnectDelay = 500;
+  let openedAt = 0;          // start of the current unbroken connection
+  let longestMs = 0;         // longest unbroken connection so far
+  let pollFails = 0;
+  let usedPolling = false;
+  const rtts: number[] = [];
+
+  let openTimer: ReturnType<typeof setTimeout> | undefined;
+  let echoTimer: ReturnType<typeof setInterval> | undefined;
+  let pingTimer: ReturnType<typeof setInterval> | undefined;
+  let pollTimer: ReturnType<typeof setInterval> | undefined;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function median(xs: number[]): number | null {
+    if (!xs.length) return null;
+    const s = [...xs].sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)];
+  }
+
+  function recordRtt(ms: number) {
+    rtts.push(ms);
+    if (rtts.length > 15) rtts.shift();
+  }
+
+  function fmtDuration(ms: number): string {
+    const total = Math.floor(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  function heldMs(): number {
+    const current = mode === 'ws' && openedAt ? performance.now() - openedAt : 0;
+    return Math.max(longestMs, current);
+  }
+
+  function setMode(next: Mode, detail: string) {
+    mode = next;
+    verdict.dataset.state = next;
+    verdict.textContent = {
+      testing: 'testing...',
+      ws: 'WebSocket OK',
+      poll: 'fell back to polling',
+      down: "can't reach walkerMath",
+      stopped: 'test stopped'
+    }[next];
+    verdictDetail.textContent = detail;
+    render();
+  }
+
+  function render() {
+    const rtt = median(rtts);
+    statTransport.textContent = mode === 'ws' ? 'websocket' : mode === 'poll' ? 'polling' : '-';
+    statRtt.textContent = rtt === null ? '-' : `${Math.round(rtt)} ms`;
+    statHeld.textContent = everOpened ? fmtDuration(heldMs()) : '-';
+    statDrops.textContent = String(drops);
+
+    const label =
+      mode === 'ws' ? 'ws ok'
+      : mode === 'poll' ? 'polling fallback'
+      : mode === 'down' ? 'no connection'
+      : mode === 'stopped' ? (everOpened ? 'ws ok (stopped)' : usedPolling ? 'polling fallback (stopped)' : 'stopped')
+      : 'testing';
+    const parts = [label];
+    if (rtt !== null) parts.push(`rtt ${Math.round(rtt)} ms`);
+    if (everOpened) parts.push(`held ${fmtDuration(heldMs())}`);
+    parts.push(`drops ${drops}`);
+    resultLine.textContent = parts.join(' · ');
+  }
+
+  function clearSocketTimers() {
+    clearTimeout(openTimer);
+    clearInterval(echoTimer);
+    clearInterval(pingTimer);
+  }
+
+  function socketUrl(): string {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${location.host}${ENDPOINT}`;
+  }
+
+  function connect() {
+    if (mode === 'stopped' || mode === 'poll') return;
+    let opened = false;
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(socketUrl());
+    } catch {
+      onFailedOpen();
+      return;
+    }
+    ws = socket;
+
+    openTimer = setTimeout(() => {
+      if (!opened) {
+        socket.close();
+        // onclose will treat this as a failed open
+      }
+    }, OPEN_TIMEOUT_MS);
+
+    socket.addEventListener('open', () => {
+      opened = true;
+      everOpened = true;
+      clearTimeout(openTimer);
+      reconnectDelay = 500;
+      openedAt = performance.now();
+      setMode('ws', 'live connection is open. leave this tab open to check that it holds.');
+      sendEcho();
+      echoTimer = setInterval(sendEcho, ECHO_EVERY_MS);
+      pingTimer = setInterval(() => socket.readyState === WebSocket.OPEN && socket.send('ping'), PING_EVERY_MS);
+    });
+
+    socket.addEventListener('message', (ev) => {
+      if (typeof ev.data !== 'string' || ev.data === 'pong') return;
+      try {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === 'echo' && typeof msg.t === 'number') {
+          recordRtt(performance.now() - msg.t);
+          render();
+        }
+      } catch {
+        // ignore
+      }
+    });
+
+    socket.addEventListener('close', () => {
+      clearSocketTimers();
+      if (ws === socket) ws = null;
+      if (mode === 'stopped') return;
+      if (!opened) {
+        onFailedOpen();
+        return;
+      }
+      // an open connection dropped: count it, then reconnect with backoff
+      longestMs = Math.max(longestMs, performance.now() - openedAt);
+      openedAt = 0;
+      drops++;
+      setMode('testing', `connection dropped (${drops}). reconnecting...`);
+      retryTimer = setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 8000);
+    });
+  }
+
+  function sendEcho() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'echo', t: performance.now() }));
+    }
+  }
+
+  function onFailedOpen() {
+    wsFails++;
+    if (!everOpened && wsFails >= WS_FAILS_BEFORE_POLL) {
+      startPolling();
+      return;
+    }
+    setMode('testing', `live connection didn't open (try ${wsFails}). retrying...`);
+    retryTimer = setTimeout(connect, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 8000);
+  }
+
+  async function poll() {
+    const t0 = performance.now();
+    try {
+      const res = await fetch(ENDPOINT, { cache: 'no-store' });
+      if (!res.ok) throw new Error(String(res.status));
+      await res.json();
+      pollFails = 0;
+      recordRtt(performance.now() - t0);
+      if (mode !== 'poll') {
+        setMode('poll', "websockets didn't get through, but checking every 3 seconds works. lessons would still run.");
+      } else {
+        render();
+      }
+    } catch {
+      pollFails++;
+      if (pollFails >= POLL_FAILS_BEFORE_DOWN && mode !== 'down') {
+        setMode('down', 'neither a live connection nor regular checks reached walkerMath. the site may be blocked on this network.');
+      }
+    }
+  }
+
+  function startPolling() {
+    clearSocketTimers();
+    usedPolling = true;
+    mode = 'poll';
+    poll();
+    pollTimer = setInterval(() => {
+      if (mode === 'stopped') return;
+      poll();
+    }, POLL_EVERY_MS);
+  }
+
+  function stop() {
+    if (mode === 'ws' && openedAt) longestMs = Math.max(longestMs, performance.now() - openedAt);
+    openedAt = 0;
+    clearSocketTimers();
+    clearInterval(pollTimer);
+    clearTimeout(retryTimer);
+    const s = ws;
+    ws = null;
+    setMode('stopped', 'reload the page to run the test again.');
+    s?.close(1000, 'Test stopped');
+  }
+
+  $('stop-btn').addEventListener('click', stop);
+  $('copy-btn').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(resultLine.textContent ?? '');
+      $('copy-btn').textContent = '[copied]';
+      setTimeout(() => ($('copy-btn').textContent = '[copy]'), 1500);
+    } catch {
+      // clipboard may be blocked; the line is still on screen
+    }
+  });
+
+  // refresh "connected for" once a second
+  setInterval(() => mode === 'ws' && render(), 1000);
+
+  connect();
+</script>
