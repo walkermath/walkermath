@@ -75,9 +75,11 @@ npx wrangler secret put AUTH_SECRET
 `PROFANITY_BLOCKLIST` (optional, extra blocked words for leaderboard names) goes in the same way if
 the Pages project had it.
 
-Use a **different** `AUTH_SECRET` from the local one, and when moving from Pages to the Worker use
-the **same** production value Pages had. Never change it once students have cards: every PIN is
-keyed with it.
+Use a **different** `AUTH_SECRET` from the local one. Cloudflare secrets can't be read back, so if
+the Pages value wasn't saved elsewhere it can't be copied to the Worker; set a new one. That only
+matters if students already have cards: every PIN is keyed with the secret, so changing it makes all
+existing PINs stop working (reset them from the class page) and signs everyone out once. Save the
+new value in a password manager, and don't change it again after students have cards.
 
 ## 3. Database tables
 
@@ -243,8 +245,9 @@ database). Live rooms start fresh, so don't do it during a lesson; finished less
 database and are kept.
 
 1. **Database:** run any migrations production doesn't have yet, with `--remote` (section 3).
-2. **Secrets:** create the Worker's secrets (section 2), with the same production values the Pages
-   project has, `AUTH_SECRET` above all.
+2. **Secrets:** create the Worker's secrets (section 2). `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+   and `ADMIN_EMAIL` come from Google Cloud Console and your own address. `AUTH_SECRET` can be new
+   (see section 2); if no student cards exist in production yet, nothing is lost.
 3. **Free the domain:** Cloudflare dashboard > Workers & Pages > the walkermath **Pages** project >
    Custom domains > remove `walkermath.com` (and `www.walkermath.com` if it's there). The site is
    down from here until step 4 finishes, a minute or two.
