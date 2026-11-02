@@ -1,6 +1,6 @@
 // src/lib/server/live.ts
 // Starting, ending and connecting to live lessons. The clock itself runs in the LessonRoom
-// Durable Object (live-worker/); these helpers decide who may reach which room and hand the
+// Durable Object (src/worker/LessonRoom.ts); these helpers decide who may reach which room and hand the
 // room what it needs: the lesson's modules, student-safe (no answer keys, no private notes).
 
 import { MODULE_TYPES, publicModule } from '../lesson/modules.ts';
@@ -100,7 +100,7 @@ export async function startRun(env: any, run: LiveRun, now = Date.now()): Promis
   const lesson = await getLesson(env.DB, run.teacherId, run.lessonId);
   if (!lesson) return { ok: false, error: 'Lesson not found.', status: 404 };
   if (lesson.modules.length === 0) return { ok: false, error: 'This lesson has no modules yet.', status: 409 };
-  if (!env.LESSON_ROOM) return { ok: false, error: 'The live room is not available (is the walkermath-live Worker running?).', status: 503 };
+  if (!env.LESSON_ROOM) return { ok: false, error: 'The live room is not available (check the LESSON_ROOM binding in wrangler.toml).', status: 503 };
 
   const res = await roomStub(env, run.id).fetch('https://room.internal/init', {
     method: 'POST',

@@ -1,10 +1,11 @@
-// live-worker/src/LessonRoom.ts
+// src/worker/LessonRoom.ts
 // One LessonRoom per running lesson, named by its run id. It owns the clock: it stores the
 // lesson's state, applies the teacher's commands, wakes itself (an alarm) when a module's time is
 // up, and tells every connected device. The state machine itself is src/lib/lesson/room.ts.
 //
-// The room is only reachable through the Pages Functions (this Worker has no public route), which
-// check who is connecting and pass that on as X-Role / X-Who / X-Name headers.
+// The room has no route of its own: it is only reached through the site's /api handlers
+// (functions/api/live/[runId].js and friends), which check who is connecting and pass that on as
+// X-Role / X-Who / X-Name headers.
 //
 // The room named 'live-test' is the Phase 1 network check (echo), kept for /live-test.
 //
@@ -22,8 +23,8 @@ import {
   upgradeState,
   type RoomModule,
   type RoomState
-} from '../../src/lib/lesson/room.ts';
-import { INK_LIMITS, PAGE_ID, applyInk, parseInkOp, type InkOp, type Stroke } from '../../src/lib/lesson/ink.ts';
+} from '../lib/lesson/room.ts';
+import { INK_LIMITS, PAGE_ID, applyInk, parseInkOp, type InkOp, type Stroke } from '../lib/lesson/ink.ts';
 
 export interface Env {}
 
@@ -322,7 +323,7 @@ export class LessonRoom extends DurableObject<Env> {
     return next;
   }
 
-  /* ---------------- HTTP (from the Pages Functions) ---------------- */
+  /* ---------------- HTTP (from the /api handlers) ---------------- */
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -366,7 +367,7 @@ export class LessonRoom extends DurableObject<Env> {
       return json({ state, serverNow: Date.now() });
     }
 
-    // The Pages Functions read the state to check a student's answers (no roster side effects).
+    // The /api handlers read the state to check a student's answers (no roster side effects).
     if (request.method === 'GET' && url.pathname === '/peek') {
       const loaded = await this.load();
       if (!loaded) return json({ error: 'Not started' }, 409);

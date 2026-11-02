@@ -4,7 +4,7 @@
 //   GET with "Upgrade: websocket"  -> WebSocket, handed to the shared test room (echo)
 //   plain GET                      -> polling fallback snapshot from the same room
 //
-// The room lives in the separate walkermath-live Worker (binding LESSON_ROOM, see wrangler.toml).
+// The room is the LessonRoom Durable Object in this same Worker (binding LESSON_ROOM, see wrangler.toml).
 // Only the upgrade header is passed on: the room never sees the visitor's cookies, IP or other headers.
 
 const TEST_ROOM = 'live-test';

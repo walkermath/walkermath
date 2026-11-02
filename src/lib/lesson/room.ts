@@ -1,6 +1,6 @@
 // src/lib/lesson/room.ts
 // The live lesson's state machine: pure functions, no I/O. The LessonRoom Durable Object
-// (live-worker/) stores the state and calls apply() for every teacher command and every alarm;
+// (src/worker/LessonRoom.ts) stores the state and calls apply() for every teacher command and every alarm;
 // the control panel and the student view use the clock helpers to draw countdowns.
 //
 // The room stores timestamps, never a ticking counter. Every module has its own clock: it is

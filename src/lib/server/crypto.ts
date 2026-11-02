@@ -1,5 +1,5 @@
 // src/lib/server/crypto.ts
-// Small Web Crypto helpers for the Pages Functions (Workers runtime). No dependencies.
+// Small Web Crypto helpers for the /api handlers (Workers runtime). No dependencies.
 
 const enc = new TextEncoder();
 

@@ -1,6 +1,6 @@
 // src/lib/lesson/answers.ts
 // What students hand in during a live lesson, and the rules for it. Pure functions: the live room
-// (live-worker/) and the Pages Functions use them to check a submission, the screens use them to
+// (src/worker/) and the /api handlers use them to check a submission, the screens use them to
 // draw the form, the ticks and the control panel's answer table.
 //
 // A module takes one of three kinds of answer, from its (student-safe) config:

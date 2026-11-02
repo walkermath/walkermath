@@ -1,5 +1,5 @@
 // src/lib/server/http.ts
-// Response, cookie and request helpers for the Pages Functions.
+// Response, cookie and request helpers for the /api handlers.
 
 export function json(data: unknown, status = 200, headers?: HeadersInit): Response {
   const h = new Headers(headers);

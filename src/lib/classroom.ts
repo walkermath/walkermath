@@ -1,5 +1,5 @@
 // src/lib/classroom.ts
-// Class-level rules shared by the browser and the Pages Functions: periods, bell times,
+// Class-level rules shared by the browser and the /api handlers: periods, bell times,
 // class passcodes and student PINs. No storage, no network.
 
 /** Same period codes the leaderboard uses. */

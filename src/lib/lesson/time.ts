@@ -1,5 +1,5 @@
 // src/lib/lesson/time.ts
-// Time helpers shared by the browser and the Pages Functions. No dependencies: time zones go
+// Time helpers shared by the browser and the /api handlers. No dependencies: time zones go
 // through Intl, which both browsers and the Workers runtime support.
 
 export const STEP_SEC = 15;

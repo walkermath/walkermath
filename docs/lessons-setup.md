@@ -1,7 +1,11 @@
-# Lessons setup (Phases 2-3: teachers, classes and the lesson builder)
+# Lessons setup
 
 Three one-time steps: a Google sign-in client, four settings, and the database tables.
-Then a local test, then production.
+Then a local test, then production (section 5).
+
+The site runs as one Cloudflare Worker (`wrangler.toml`): the static Astro build is served as
+files, `/api/*` runs the handlers in `functions/` through `src/worker/router.ts`, and the live
+lesson rooms (a Durable Object) live in the same Worker.
 
 ## 1. Google sign-in client (about 10 minutes)
 
@@ -17,12 +21,12 @@ Then a local test, then production.
 4. **APIs & Services > Credentials > Create credentials > OAuth client ID**
    - Application type: **Web application**
    - Authorized redirect URIs (add all that apply):
-     - `http://localhost:8788/api/auth/google/callback`
+     - `http://localhost:8787/api/auth/google/callback`
      - `https://walkermath.com/api/auth/google/callback`
      - `https://www.walkermath.com/api/auth/google/callback` (only if the site is also served on www)
    - Copy the **Client ID** and **Client secret**.
 
-Locally, always open the site as `http://localhost:8788`, not `127.0.0.1:8788`: the redirect URI
+Locally, always open the site as `http://localhost:8787`, not `127.0.0.1:8787`: the redirect URI
 and the sign-in cookies are tied to the exact host name.
 
 If signing in with your school account shows "Access blocked: ... admin has restricted", your
@@ -57,20 +61,23 @@ Any email you add must be the address of the Google account that signs in. A for
 only works if a Google account was created with it. While the Google app is in Testing mode, also
 add each teacher as a test user in Google Cloud Console.
 
-Production: this project manages plain variables through `wrangler.toml`, so the dashboard only
-accepts **Secrets**. Add all four as Secrets: Cloudflare dashboard > Workers & Pages > walkermath >
-Settings > Variables and Secrets > Add > type **Secret**. Or from the command line, one at a time
-(it prompts for the value):
+Production: add all four as Secrets on the **Worker** named walkermath: Cloudflare dashboard >
+Workers & Pages > walkermath (the Worker, not the old Pages project) > Settings > Variables and
+Secrets > Add > type **Secret**. Or from the command line, one at a time (it prompts for the value):
 
 ```sh
-npx wrangler pages secret put GOOGLE_CLIENT_ID     --project-name walkermath
-npx wrangler pages secret put GOOGLE_CLIENT_SECRET --project-name walkermath
-npx wrangler pages secret put ADMIN_EMAIL          --project-name walkermath
-npx wrangler pages secret put AUTH_SECRET          --project-name walkermath
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+npx wrangler secret put ADMIN_EMAIL
+npx wrangler secret put AUTH_SECRET
 ```
 
-Use a **different** `AUTH_SECRET` from the local one. Never change it once students have cards:
-every PIN is keyed with it.
+`PROFANITY_BLOCKLIST` (optional, extra blocked words for leaderboard names) goes in the same way if
+the Pages project had it.
+
+Use a **different** `AUTH_SECRET` from the local one, and when moving from Pages to the Worker use
+the **same** production value Pages had. Never change it once students have cards: every PIN is
+keyed with it.
 
 ## 3. Database tables
 
@@ -79,7 +86,7 @@ Eight migrations, applied in order. They only add tables or columns (`leaderboar
 name" just means it's already applied).
 
 ```sh
-# local (the database wrangler pages dev uses)
+# local (the database wrangler dev uses)
 npx wrangler d1 execute walkermath-leaderboards --local --file schema.sql   # the leaderboard table (fresh local copy only; safe to re-run)
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0001_teachers_classes.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0002_allowed_teachers.sql
@@ -107,28 +114,23 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0008_r
 
 ## 4. Try it locally
 
-Two terminals from Phase 4 on: the live room (a separate Worker) and the site.
+One terminal: build the site, then run the Worker (the site, the API and the live rooms together).
 
 ```sh
-# terminal 1: the live room (leave it running)
-cd live-worker
-npm install        # first time only
-npx wrangler dev
-
-# terminal 2: the site
 npm run build
-npx wrangler pages dev dist
+npx wrangler dev          # http://localhost:8787
 ```
 
-`wrangler pages dev` finds the room Worker from terminal 1 by name (`walkermath-live`). Without it,
-everything works except live lessons, which say "the live room is not available".
+(`npm run start` does both.) After changing code, stop it, build again and restart. The local
+database is the one the migrations above were run on; if the site acts as if it's empty after the
+move from Pages, run the migrations again (`0001`-`0003` and `0008` are safe to repeat).
 
 Teachers and classes:
 
-1. <http://localhost:8788/teach>: sign in with the `ADMIN_EMAIL` account.
+1. <http://localhost:8787/teach>: sign in with the `ADMIN_EMAIL` account.
 2. **[teachers]**: add your sandbox Gmail with "sandbox" ticked.
 3. **[classes]**: create a class, make a few cards, print or download them (PINs are shown only then).
-4. In a **private window**: <http://localhost:8788/class>, enter the class code, then an alias and PIN.
+4. In a **private window**: <http://localhost:8787/class>, enter the class code, then an alias and PIN.
 5. Back in [classes]: the roster shows 1 signed-in device. Try **new PIN**, **retire**, **new code**, **archive**.
 
 Lesson builder (the Phase 3 gate):
@@ -162,7 +164,7 @@ The slide renderer needs packages added to `package.json` (`unified`, `remark-*`
 including the new `rehype-sanitize`): run `npm install` once and commit the updated
 `package-lock.json`, or the Cloudflare build will fail.
 
-Live lessons (the Phase 4a gate; both terminals running):
+Live lessons (the Phase 4a gate):
 
 1. Schedule a delivery for **today** (lesson tile > when), with the bell a few minutes from now. On
    [lessons], "coming up" shows **[start]**: it opens the control panel. Click **[start lesson
@@ -179,8 +181,8 @@ Live lessons (the Phase 4a gate; both terminals running):
    always waits for **[end lesson]**.
 5. Close the student window: within a few seconds the alias turns grey with a red ○ under "here
    now" (a Chromebook that just sleeps takes up to about a minute). Reopen /class/live: it reconnects,
-   turns green and catches up. Stop terminal 1 for a few seconds: both screens show "reconnecting"
-   and recover when it's back.
+   turns green and catches up. Stop `wrangler dev` for a few seconds: both screens show
+   "reconnecting" and recover when it's back.
 6. **[end lesson]**: students see "the lesson is over"; the delivery can't be started again.
 7. Once every delivery of a lesson is over, its tile on [lessons] gets a **/!\\**: click it to
    archive the lesson or dismiss the prompt (dismissing is remembered in this browser only; it comes back after the next delivery finishes).
@@ -231,7 +233,34 @@ where you wrote it). The lesson builder says when a slide is shrunk below 85%.
 Tests (no install needed): `npm run test:lessons` (API, against a stand-in database),
 `npm run test:pacing` (the pacing engine), `npm run test:slides` (cutting notes into slides),
 `npm run test:room` (the live room's clock and commands), `npm run test:answers` (what students
-hand in, and marking against the key) and `npm run test:ink` (strokes, the eraser, simplifying).
+hand in, and marking against the key), `npm run test:ink` (strokes, the eraser, simplifying) and
+`npm run test:router` (every `/api` route is wired up).
+
+## 5. Production: moving walkermath.com from Pages to the Worker
+
+Once, when this branch is ready to merge. The database doesn't move (the Worker uses the same D1
+database). Live rooms start fresh, so don't do it during a lesson; finished lessons are in the
+database and are kept.
+
+1. **Database:** run any migrations production doesn't have yet, with `--remote` (section 3).
+2. **Secrets:** create the Worker's secrets (section 2), with the same production values the Pages
+   project has, `AUTH_SECRET` above all.
+3. **Free the domain:** Cloudflare dashboard > Workers & Pages > the walkermath **Pages** project >
+   Custom domains > remove `walkermath.com` (and `www.walkermath.com` if it's there). The site is
+   down from here until step 4 finishes, a minute or two.
+4. **Deploy:** `npm run deploy` (builds, then `wrangler deploy`). `wrangler.toml` attaches
+   `walkermath.com` to the Worker. If the site also answered on `www`, add
+   `{ pattern = "www.walkermath.com", custom_domain = true }` to `routes` first.
+5. **Check:** walkermath.com loads, the Coliseum leaderboard posts, /teach signs in, /live-test says
+   "WebSocket OK".
+6. **Auto-deploy:** Workers & Pages > walkermath (the Worker) > Settings > Builds > connect the
+   GitHub repository. Production branch `master`; build command `npm run build`; deploy command
+   `npx wrangler deploy`. Then pushes to master deploy as they did with Pages.
+7. **Clean up:** delete the walkermath Pages project, and the `walkermath-live` Worker (its job moved
+   into this one).
+
+If anything goes wrong at step 5: remove the domain from the Worker (Settings > Domains & Routes) and
+add it back to the Pages project; nothing in the database changed.
 
 ## What's stored
 

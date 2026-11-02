@@ -36,7 +36,7 @@ function makeD1() {
   };
 }
 
-const ORIGIN = 'http://localhost:8788';
+const ORIGIN = 'http://localhost:8787';
 const env = {
   DB: makeD1(),
   AUTH_SECRET: 'test-secret-'.repeat(4),
