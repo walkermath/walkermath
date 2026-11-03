@@ -20,6 +20,7 @@ import * as classLessonOne from '../../functions/api/class/lessons/[runId].js';
 import * as classLive from '../../functions/api/class/live.js';
 import * as classLogout from '../../functions/api/class/logout.js';
 import * as classLookup from '../../functions/api/class/lookup.js';
+import * as classNotes from '../../functions/api/class/notes.js';
 import * as classMe from '../../functions/api/class/me.js';
 import * as classScore from '../../functions/api/class/score.js';
 import * as classSignin from '../../functions/api/class/signin.js';
@@ -78,6 +79,7 @@ export const ROUTES: Route[] = [
   r('/api/class/live', 'class/live.js', classLive),
   r('/api/class/logout', 'class/logout.js', classLogout),
   r('/api/class/lookup', 'class/lookup.js', classLookup),
+  r('/api/class/notes', 'class/notes.js', classNotes),
   r('/api/class/me', 'class/me.js', classMe),
   r('/api/class/score', 'class/score.js', classScore),
   r('/api/class/signin', 'class/signin.js', classSignin),

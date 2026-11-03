@@ -106,6 +106,7 @@ const runAnswersR = await load('functions/api/teach/runs/[runId]/answers.js');
 const classLive = await load('functions/api/class/live.js');
 const classLessonsR = await load('functions/api/class/lessons/index.js');
 const classLessonOneR = await load('functions/api/class/lessons/[runId].js');
+const notesR = await load('functions/api/class/notes.js');
 
 /* ---------- a stand-in for the LessonRoom Durable Object (same state machine, no sockets) ---------- */
 const room = await load('src/lib/lesson/room.ts');
@@ -801,6 +802,25 @@ console.log('live lessons');
   assert.equal((await lookBack(sc, next.id)).status, 404, 'not before it has been taught');
   assert.equal((await lookBack(sc, 'nope')).status, 404);
   ok('only students of the class, only finished lessons, only their own answers');
+
+  // Personal notes: private to the student, during the lesson or after.
+  const note = (cookie, b) => call(notesR, 'POST', req('/api/class/notes', { method: 'POST', body: b, cookie }), {}, classMw);
+  assert.equal((await note(sc, { runId: run.id, moduleId: bell.id, text: 'remember: 2+2 is 4' })).status, 200);
+  assert.equal((await note(sc, { runId: run.id, moduleId: l.modules[1].id, text: 'gcd = biggest shared factor' })).status, 200);
+  assert.equal((await note(sc, { runId: run.id, moduleId: 'nope', text: 'x' })).status, 404);
+  assert.equal((await note(sc, { runId: next.id, moduleId: bell.id, text: 'x' })).status, 404, 'not on a lesson that has not happened');
+  assert.equal((await note(sc, { runId: run.id, moduleId: bell.id, text: 'x'.repeat(4001) })).status, 400);
+  assert.equal((await note(null, { runId: run.id, moduleId: bell.id, text: 'x' })).status, 401);
+  const readNotes = async (cookie) => (await body(await call(notesR, 'GET', req(`/api/class/notes?run=${run.id}`, { cookie }), {}, classMw))).notes;
+  assert.deepEqual(await readNotes(sc), { [bell.id]: 'remember: 2+2 is 4', [l.modules[1].id]: 'gcd = biggest shared factor' });
+  assert.deepEqual(await readNotes(sc2), {}, "a classmate never sees someone else's notes");
+  assert.equal((await note(sc, { runId: run.id, moduleId: l.modules[1].id, text: '  ' })).status, 200);
+  assert.deepEqual(Object.keys(await readNotes(sc)), [bell.id], 'an emptied note is removed');
+  assert.deepEqual((await body(await lookBack(sc))).lesson.notes, { [bell.id]: 'remember: 2+2 is 4' }, 'notes show when looking back');
+  const teacherSees = JSON.stringify(await body(await call(runAnswersR, 'GET', T(`/api/teach/runs/${run.id}/answers`), { runId: run.id }, teachMw)));
+  const repAgain = JSON.stringify(await body(await ask(want)));
+  assert.ok(!teacherSees.includes('remember') && !repAgain.includes('remember'), 'not on the control panel or in reports');
+  ok('personal notes: saved per module, private to the student, kept after the lesson');
 }
 
 console.log('coliseum in lessons');

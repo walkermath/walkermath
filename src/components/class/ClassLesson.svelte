@@ -10,6 +10,7 @@
   import type { InkStore } from '../../lib/lesson/inkStore.svelte.ts';
   import type { Page, RoomModule } from '../../lib/lesson/room.ts';
   import LiveModule from '../live/LiveModule.svelte';
+  import PersonalNote from '../live/PersonalNote.svelte';
   import { niceDate } from '../teach/ui.ts';
 
   type Lesson = {
@@ -20,6 +21,7 @@
     answers: Record<string, Answers>;
     marks: Record<string, Record<string, boolean | null>>;
     scores: Record<string, { best: number; plays: number }>;
+    notes: Record<string, string>;
   };
 
   let lesson = $state<Lesson | null>(null);
@@ -61,7 +63,7 @@
     const score = lesson?.scores[m.id];
     if (score) return `best ${score.best}`;
     const spec = answerSpec(m);
-    if (!spec) return '';
+    if (!spec) return lesson?.notes[m.id]?.trim() ? '✎' : '';
     return isAnswered(spec, lesson?.answers[m.id]) ? '✓' : '–';
   }
 
@@ -143,6 +145,11 @@
             answers={lesson.answers[current.module.id] ?? {}}
             editable={false}
             marks={lesson.marks[current.module.id]}
+          />
+          <PersonalNote
+            runId={lesson.run.id}
+            moduleId={current.module.id}
+            bind:text={() => lesson!.notes[current!.module.id] ?? '', (v) => (lesson!.notes[current!.module.id] = v)}
           />
         {/key}
         <div class="flex justify-between text-sm pt-2">

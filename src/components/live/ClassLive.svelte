@@ -15,6 +15,7 @@
   import { clockAt, connectLive, countdown, type LiveConnection, type LiveLesson, type Transport } from '../../lib/lesson/liveClient.ts';
   import LiveModule, { type SaveState } from './LiveModule.svelte';
   import PageView from './PageView.svelte';
+  import PersonalNote from './PersonalNote.svelte';
 
   let runId = $state('');
   let lesson = $state<LiveLesson | null>(null);
@@ -47,6 +48,7 @@
     ink.fetcher = (ids) => conn?.inkGet(ids);
     timer = setInterval(() => (now = conn?.now() ?? Date.now()), 250);
     loadMine();
+    loadNotes();
     addEventListener('beforeunload', warnUnsaved);
     document.addEventListener('visibilitychange', flushIfHidden);
   });
@@ -59,6 +61,18 @@
       document.removeEventListener('visibilitychange', flushIfHidden);
     }
   });
+
+  /* ---------------- personal notes ---------------- */
+
+  let notes = $state<Record<string, string>>({});
+  async function loadNotes() {
+    try {
+      const res = await fetch(`/api/class/notes?run=${encodeURIComponent(runId)}`, { credentials: 'same-origin', cache: 'no-store' });
+      if (res.ok) notes = (await res.json()).notes ?? {};
+    } catch {
+      // notes are a convenience; the lesson goes on without them
+    }
+  }
 
   /* ---------------- answers ---------------- */
 
@@ -381,6 +395,7 @@
             saveState={saves[current.id] ?? ''}
             onanswer={(a, flush) => current && edit(current.id, a, flush)}
           />
+          <PersonalNote {runId} moduleId={current.id} bind:text={() => notes[current!.id] ?? '', (v) => (notes[current!.id] = v)} />
         {/key}
       </main>
     {/if}

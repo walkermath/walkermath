@@ -8,6 +8,7 @@
 import { isCorrect, type Answers } from '../lesson/answers.ts';
 import { pagesOf, type Page, type RoomModule } from '../lesson/room.ts';
 import { roomModules } from './live.ts';
+import { studentNotes } from './notes.ts';
 import type { Student } from './sessions.ts';
 import { runSnapshot, studentAnswers } from './submissions.ts';
 
@@ -68,6 +69,8 @@ export interface PastLesson {
   marks: Record<string, Record<string, boolean | null>>;
   /** This student's best game score, by module id. */
   scores: Record<string, { best: number; plays: number }>;
+  /** This student's personal notes, by module id. */
+  notes: Record<string, string>;
 }
 
 /** One finished delivery of the student's own class, or null. */
@@ -83,7 +86,7 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
   const pageOrder = parse(run.timing_json, null)?.pageOrder ?? null;
   const pages = modules.map((_, i) => pagesOf({ pageOrder } as any, modules, i));
 
-  const [inkRows, answersByModule, scoreRows] = await Promise.all([
+  const [inkRows, answersByModule, scoreRows, notes] = await Promise.all([
     db.prepare('SELECT page_id, strokes_json FROM run_ink WHERE run_id = ?1 ORDER BY page_id, part').bind(run.id).all(),
     studentAnswers(db, run.id, s.aliasId),
     db
@@ -92,7 +95,8 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
           WHERE run_id = ?1 AND alias_id = ?2 AND module_id IS NOT NULL GROUP BY module_id`
       )
       .bind(run.id, s.aliasId)
-      .all()
+      .all(),
+    studentNotes(db, run.id, s.aliasId)
   ]);
 
   const shown = new Set(pages.flat().map((p) => p.id));
@@ -125,6 +129,7 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
     ink,
     answers,
     marks,
-    scores
+    scores,
+    notes
   };
 }

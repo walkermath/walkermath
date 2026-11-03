@@ -83,8 +83,8 @@ new value in a password manager, and don't change it again after students have c
 
 ## 3. Database tables
 
-Nine migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
-`0001`-`0003`, `0008` and `0009` are safe to run twice; `0004`-`0007` are not (SQLite can't add a column twice: "duplicate column
+Ten migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
+`0001`-`0003` and `0008`-`0010` are safe to run twice; `0004`-`0007` are not (SQLite can't add a column twice: "duplicate column
 name" just means it's already applied).
 
 ```sh
@@ -99,6 +99,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0006_l
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0007_submissions.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0008_run_ink.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0009_run_joins.sql
+npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0010_student_notes.sql
 
 # production (once each, when you're ready to deploy): the same commands with --remote
 ```
@@ -115,6 +116,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0009_r
 | `0007_submissions.sql` | students' answers in live lessons; which delivery a game score belongs to; each delivery's final timing |
 | `0008_run_ink.sql` | what you wrote on each page of a delivery, kept when it ends |
 | `0009_run_joins.sql` | when each student first joined a delivery (the reports' Joined column) |
+| `0010_student_notes.sql` | students' personal notes on a lesson (private to each student) |
 
 ## 4. Try it locally
 
@@ -127,7 +129,7 @@ npx wrangler dev          # http://localhost:8787
 
 (`npm run start` does both.) After changing code, stop it, build again and restart. The local
 database is the one the migrations above were run on; if the site acts as if it's empty after the
-move from Pages, run the migrations again (`0001`-`0003`, `0008` and `0009` are safe to repeat).
+move from Pages, run the migrations again (`0001`-`0003` and `0008`-`0010` are safe to repeat).
 
 Teachers and classes:
 
@@ -277,6 +279,10 @@ student who answered.
    never shown, and nothing can be changed.
 4. Sign in as a classmate who missed the lesson: the pages and ink are all there, with no answers.
 5. When a live lesson ends, the student's screen offers **[look back at this lesson]**.
+6. Personal notes (run `0010_student_notes.sql` first): in a live lesson, **[+ personal note]**
+   under any module opens a box that saves as the student types. It's there again when they look
+   back (✎ in the list), and they can keep editing it. Another student, and your control panel and
+   reports, never see it.
 
 Math questions (Phase 5, step 3). Needs a bellwork or exit ticket with questions.
 
