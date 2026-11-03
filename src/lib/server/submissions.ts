@@ -103,7 +103,7 @@ export interface CollectModule {
   title: string;
   kind: CollectKind;
   /** Questions with their keys (teacher only). */
-  questions?: { id: string; kind: string; text: string; choices: string[]; answer: string; match?: string; sort?: unknown }[];
+  questions?: { id: string; kind: string; text: string; choices: string[]; answer: string; match?: string; sort?: unknown; grid?: any }[];
 }
 
 export interface AnswerRow {
@@ -150,7 +150,8 @@ export async function runAnswers(db: any, run: LiveRun): Promise<{ modules: Coll
         choices: q.choices ?? [],
         answer: q.answer ?? '',
         match: q.match === 'any' ? 'any' : 'form',
-        ...(q.sort ? { sort: q.sort } : {})
+        ...(q.sort ? { sort: q.sort } : {}),
+        ...(q.grid ? { grid: q.grid } : {})
       }));
       keys.set(m.id, entry.questions);
     }

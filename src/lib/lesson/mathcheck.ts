@@ -772,3 +772,45 @@ export function readMath(input: string): { ok: true; text: string; latex: string
     return { ok: false, error: "I can't read that." };
   }
 }
+
+/* ---------------- one simplified term ---------------- */
+
+/**
+ * true for a single simplified term: "-8x", "2x^2", "40", "x/3", "-x". false for anything with a
+ * sum, a product written out ("x*(-8)", "(2x)(5)", "2·3x"), a repeated letter ("x x"), ±, or that
+ * can't be read. Used where the value alone isn't enough, like the cells of an area model.
+ */
+export function isTerm(input: string): boolean {
+  let toks: Tok[];
+  let alts: Node[];
+  try {
+    toks = tokenize(input);
+    alts = parseAll(input);
+  } catch {
+    return false;
+  }
+  if (alts.length !== 1 || toks.some((t) => t.k === 'op' && ['(', ')', '*', '±'].includes(t.v))) return false;
+  let numbers = 0;
+  let divisors = 0;
+  const letters = new Set<string>();
+  const factors = (n: Node): boolean => {
+    if (n.t === 'mul') return n.xs.every(factors);
+    if (n.t === 'n') {
+      if (n.v.n === -1n && n.v.d === 1n) return true; // a minus sign
+      numbers++;
+      return true;
+    }
+    if (n.t === 'v' || (n.t === 'pow' && n.b.t === 'v' && n.e.t === 'n')) {
+      const name = n.t === 'v' ? n.name : (n.b as { name: string }).name;
+      if (letters.has(name)) return false;
+      letters.add(name);
+      return true;
+    }
+    if (n.t === 'pow' && n.b.t === 'n' && n.e.t === 'n' && n.e.v.n === -1n && n.e.v.d === 1n) {
+      divisors++;
+      return true;
+    }
+    return false;
+  };
+  return factors(alts[0]) && numbers <= 1 && divisors <= 1;
+}

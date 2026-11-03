@@ -26,7 +26,7 @@ function keyLine(q: any): string {
 function gridTable(q: any): string[] {
   const g = q.grid;
   if (!g?.cells?.length) return [];
-  const cell = (c: any) => (c.blank ? '___' : String(c.text ?? '').replace(/\|/g, '\\|') || ' ');
+  const cell = (c: any) => (c.blank ? (c.group ? `___ (${c.group})` : '___') : String(c.text ?? '').replace(/\|/g, '\\|') || ' ');
   const [head, ...rest] = g.cells as any[][];
   return [
     `| ${head.map(cell).join(' | ')} |`,
@@ -59,7 +59,7 @@ export function lessonToMarkdown(lesson: any): string {
         if (q.kind === 'grid') out.push(...gridTable(q), '');
         if (q.kind === 'sort' && q.sort) out.push(`Groups: ${q.sort.groups.join(' · ')}`, '', ...q.sort.cards.map((c: string) => `- ${c}`), '');
         const key = keyLine(q);
-        const how = q.kind === 'math' || q.kind === 'grid' ? (q.match === 'any' ? ' (any equivalent form)' : ' (same form, any order)') : '';
+        const how = q.kind === 'grid' && q.grid?.check === 'area' ? ' (area model: multiplies out to this)' : q.kind === 'math' || q.kind === 'grid' ? (q.match === 'any' ? ' (any equivalent form)' : ' (same form, any order)') : '';
         if (key) out.push(`> Answer: ${key}${how}`, '');
       });
     } else if (m.type === 'notes') {

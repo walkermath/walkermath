@@ -315,6 +315,13 @@ Grid questions (area models, tables of values).
    Fill some in: the control panel shows "x^2 | 5x | _ | 10", and the question is right only when
    every keyed blank is right.
 4. Reports show the same "a | b | _ | d" text, and the Questions sheet marks it.
+5. **Any-order groups:** under a blank's key, pick "any order: A" on two blanks (say the -8x and -5x
+   cells). As a student, put the answers in either cell: still right. The same answer twice is not.
+6. **Area model:** set "mark it by" to "area model". The per-blank keys go away; type one key,
+   x^2 - 13x + 40 (or (x-8)(x-5)). Blank the headers too. As a student, try x | -8 on top and
+   x | -5 down the side, then the other way round, and -8 before x: all right. Try x·(-8) in a
+   cell (not simplified: wrong), a cell that isn't its row times its column (wrong), and
+   (2x-3)(x+5) with the top as x | -3 and the side as 2x | 5 (cells consistent, wrong product: wrong).
 
 Looking back (Phase 5b). Needs a delivery you have ended, with a board added in class and a
 student who answered.

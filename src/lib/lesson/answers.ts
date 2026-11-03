@@ -133,12 +133,12 @@ export function toNumber(s: string): number {
 }
 
 /** true / false against the question's key, or null when there is no key (or no answer to judge). */
-export function isCorrect(q: { kind: string; answer: string; match?: string }, answer: string | undefined): boolean | null {
+export function isCorrect(q: { kind: string; answer: string; match?: string; grid?: Grid }, answer: string | undefined): boolean | null {
   if (!q.answer) return null;
   if (answer === undefined || answer.trim() === '') return null;
   if (q.kind === 'choice') return answer === q.answer;
   if (q.kind === 'sort') return sortCorrect(q.answer, answer);
-  if (q.kind === 'grid') return gridCorrect(q.answer, answer, q.match === 'any' ? 'any' : 'form');
+  if (q.kind === 'grid') return gridCorrect(q.answer, answer, q.match === 'any' ? 'any' : 'form', q.grid);
   if (q.kind === 'math') return checkMath(q.answer, answer, q.match === 'any' ? 'any' : 'form');
   if (q.kind === 'number') {
     const a = toNumber(answer);

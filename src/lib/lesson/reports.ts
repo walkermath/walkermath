@@ -16,7 +16,7 @@
 // Rows are student aliases, never names. A blank cell means nothing was handed in.
 
 import { answerSpec, isAnswered, isCorrect, toNumber, type Answers } from './answers.ts';
-import { gridText } from './grid.ts';
+import { gridText, type Grid } from './grid.ts';
 import { sortText, type SortSpec } from './sort.ts';
 
 export type ItemKind = 'joined' | 'responses' | 'results' | 'coliseum';
@@ -54,6 +54,8 @@ export interface ReportQuestion {
   match?: string;
   /** Card sorts: the groups and cards, to write placements as words. */
   sort?: SortSpec;
+  /** Grid questions: the table (how it is marked: groups, area model). */
+  grid?: Grid;
 }
 
 const KIND_LABEL: Record<ItemKind, string> = {
@@ -79,7 +81,8 @@ export function moduleQuestions(m: ReportModule): ReportQuestion[] {
     choices: q.choices ?? [],
     answer: String(keys.get(q.id)?.answer ?? ''),
     match: keys.get(q.id)?.match === 'any' ? 'any' : 'form',
-    ...((q as any).sort ? { sort: (q as any).sort } : {})
+    ...((q as any).sort ? { sort: (q as any).sort } : {}),
+    ...((q as any).grid ? { grid: (q as any).grid } : {})
   }));
 }
 
