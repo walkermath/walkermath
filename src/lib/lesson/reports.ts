@@ -6,14 +6,18 @@
 //
 // Each module reports whatever it collects, from its answer spec (answers.ts): a module that takes
 // answers has Responses, one with keyed questions also has Results, a Coliseum activity has its
-// best score. A module that collects nothing is listed but can't be picked. Activities that start
-// taking input join in by declaring an answer spec; nothing here lists module types by name.
+// best score. A module that collects nothing (Notes, a Turn & Talk, a question set with no
+// questions) isn't listed. Activities that start taking input join in by declaring an answer spec;
+// nothing here lists module types by name.
+//
+// Order, in the picker and in the sheets: Joined, then the bellwork, then the exit ticket (the
+// columns a teacher reaches for most), then everything else in lesson order.
 //
 // Rows are student aliases, never names. A blank cell means nothing was handed in.
 
 import { answerSpec, isAnswered, isCorrect, toNumber, type Answers } from './answers.ts';
 
-export type ItemKind = 'joined' | 'responses' | 'results' | 'coliseum' | 'none';
+export type ItemKind = 'joined' | 'responses' | 'results' | 'coliseum';
 
 /** A module as the run's snapshot holds it (answer keys included; Notes content left out). */
 export interface ReportModule {
@@ -32,8 +36,10 @@ export interface ReportItem {
   module: string;
   /** What the picker's column says: "Bellwork · Results" */
   label: string;
-  /** false: the module collects nothing (shown greyed out) */
+  /** Always true; kept so the picker can tell a lesson that has an item from one that doesn't. */
   available: boolean;
+  /** Sort order: 0 Joined, 1 bellwork, 2 exit ticket, 3 everything else. */
+  rank: number;
 }
 
 export interface ReportQuestion {
@@ -48,11 +54,10 @@ const KIND_LABEL: Record<ItemKind, string> = {
   joined: 'Joined',
   responses: 'Responses',
   results: 'Results',
-  coliseum: 'Coliseum',
-  none: ''
+  coliseum: 'Coliseum'
 };
 
-export const JOINED: ReportItem = { key: 'joined', moduleId: '', kind: 'joined', module: '', label: 'Joined', available: true };
+export const JOINED: ReportItem = { key: 'joined', moduleId: '', kind: 'joined', module: '', label: 'Joined', available: true, rank: 0 };
 
 const isColiseum = (m: ReportModule) => m.type === 'activity' && m.config?.category === 'coliseum' && !!m.config?.coliseumId;
 
@@ -70,30 +75,38 @@ export function moduleQuestions(m: ReportModule): ReportQuestion[] {
   }));
 }
 
-/** What one delivered lesson can report, in module order, Joined first. */
+/** Where a module's columns go: bellwork first, exit ticket next, the rest after, in lesson order. */
+export const moduleRank = (m: ReportModule): number =>
+  m.config?.category === 'bellwork' ? 1 : m.config?.category === 'exit-ticket' ? 2 : 3;
+
+/** What one delivered lesson can report: Joined, bellwork, exit ticket, then the rest in lesson order. */
 export function reportItems(modules: ReportModule[]): ReportItem[] {
-  const items: ReportItem[] = [JOINED];
+  const items: ReportItem[] = [];
   for (const m of modules) {
     const title = m.title || 'Untitled';
-    const item = (kind: ItemKind, available = true): ReportItem => ({
+    const rank = moduleRank(m);
+    const item = (kind: ItemKind): ReportItem => ({
       key: `${m.id}:${kind}`,
       moduleId: m.id,
       kind,
       module: title,
-      label: kind === 'none' ? title : `${title} · ${KIND_LABEL[kind]}`,
-      available
+      label: `${title} · ${KIND_LABEL[kind]}`,
+      available: true,
+      rank
     });
-    const spec = answerSpec(m);
-    if (spec) {
+    if (answerSpec(m)) {
       items.push(item('responses'));
       if (moduleQuestions(m).some((q) => q.answer !== '')) items.push(item('results'));
     } else if (isColiseum(m)) {
       items.push(item('coliseum'));
-    } else {
-      items.push(item('none', false));
     }
   }
-  return items;
+  return [JOINED, ...sortByRank(items)];
+}
+
+/** Stable sort by rank (keeps lesson order within a rank). */
+export function sortByRank<T extends { rank: number }>(list: T[]): T[] {
+  return list.map((v, i) => [v, i] as const).sort((a, b) => a[0].rank - b[0].rank || a[1] - b[1]).map(([v]) => v);
 }
 
 /* ---------------- building a report ---------------- */

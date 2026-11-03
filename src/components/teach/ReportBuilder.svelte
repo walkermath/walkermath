@@ -6,10 +6,11 @@
   import { onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
   import type { Breakdown, Cell, ItemKind } from '../../lib/lesson/reports.ts';
+  import { sortByRank } from '../../lib/lesson/reports.ts';
   import { CSV_TYPE, XLSX_TYPE, download, toCsv, toXlsx } from '../../lib/reports/files.ts';
   import { btn, btnMain, field, heading, label, niceDate, panel, todayIso } from './ui.ts';
 
-  type Item = { key: string; moduleId: string; kind: ItemKind; module: string; label: string; available: boolean };
+  type Item = { key: string; moduleId: string; kind: ItemKind; module: string; label: string; available: boolean; rank: number };
   type RunRow = { runId: string; classId: string; className: string; period: string; date: string; startTime: string };
   type Lesson = {
     lessonId: string;
@@ -86,9 +87,10 @@
   /* ---- the grid: one column per item label, across lessons ---- */
 
   const columns = $derived.by(() => {
-    const seen = new Map<string, { id: string; label: string }>();
-    for (const l of lessons) for (const i of l.items) if (!seen.has(i.label.toLowerCase())) seen.set(i.label.toLowerCase(), { id: i.label.toLowerCase(), label: i.label });
-    return [...seen.values()];
+    // Joined, then bellwork, then exit ticket, then the rest, each in the order first seen.
+    const seen = new Map<string, { id: string; label: string; rank: number }>();
+    for (const l of lessons) for (const i of l.items) if (!seen.has(i.label.toLowerCase())) seen.set(i.label.toLowerCase(), { id: i.label.toLowerCase(), label: i.label, rank: i.rank });
+    return sortByRank([...seen.values()]);
   });
 
   const itemAt = (l: Lesson, colId: string) => l.items.find((i) => i.label.toLowerCase() === colId);
@@ -206,7 +208,7 @@
   {:else if lessons.length}
     <section class="{panel} space-y-3">
       <h3 class={heading}>// deliveries and columns</h3>
-      <p class="text-xs {label}">open a lesson to pick its periods. greyed columns collect nothing from students.</p>
+      <p class="text-xs {label}">open a lesson to pick its periods. a dash means that lesson doesn't have the column.</p>
       <div class="overflow-x-auto">
         <table class="text-xs border-collapse">
           <thead>
@@ -262,7 +264,7 @@
                         onchange={(e) => ((picks[l.lessonId] ??= {})[it.key] = (e.currentTarget as HTMLInputElement).checked)}
                       />
                     {:else if it}
-                      <span class="opacity-40" title="collects nothing">–</span>
+                      <span class="opacity-40" title="not in this lesson">–</span>
                     {/if}
                   </td>
                 {/each}

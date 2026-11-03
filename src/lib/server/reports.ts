@@ -6,7 +6,7 @@
 // Only finished deliveries are reported. Each run's modules come from its own snapshot (the
 // lesson as it was taught), read without the Notes slides so a term of lessons stays small.
 
-import { reportItems, moduleQuestions, type ReportData, type ReportItem, type ReportModule, type ReportRun } from '../lesson/reports.ts';
+import { reportItems, moduleQuestions, sortByRank, type ReportData, type ReportItem, type ReportModule, type ReportRun } from '../lesson/reports.ts';
 
 export const REPORT_LIMITS = { runs: 300, days: 400, questions: 500 } as const;
 
@@ -101,7 +101,7 @@ export async function reportOptions(db: any, teacherId: string, from: string, to
       if (qs.length) l.mods.set(m.id, { moduleId: m.id, title: m.title, questions: qs.map((q) => ({ id: q.id, text: q.text, keyed: q.answer !== '' })) });
     }
   }
-  return [...lessons.values()].map(({ seen, mods, ...l }) => ({ ...l, items: [...seen.values()], modules: [...mods.values()] }));
+  return [...lessons.values()].map(({ seen, mods, ...l }) => ({ ...l, items: sortByRank([...seen.values()]), modules: [...mods.values()] }));
 }
 
 /** Everything buildReport needs for these runs, or null if any isn't this teacher's finished delivery. */

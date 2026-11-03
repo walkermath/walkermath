@@ -11,6 +11,7 @@ const bell = {
   type: 'prompt',
   title: 'Bellwork',
   config: {
+    category: 'bellwork',
     questions: [
       { id: 'q1', kind: 'number', text: 'What is 3 + 4?', choices: [], answer: '7' },
       { id: 'q2', kind: 'choice', text: 'Which is prime?', choices: ['4', '6', '7'], answer: '2' },
@@ -21,7 +22,7 @@ const bell = {
 const notes = { id: 'm-notes', type: 'notes', title: 'Notes', config: {} };
 const talk = { id: 'm-talk', type: 'activity', title: 'Turn & Talk', config: {} };
 const game = { id: 'm-game', type: 'activity', title: 'Coliseum Practice', config: { category: 'coliseum', coliseumId: 'gcd-racer' } };
-const exit = { id: 'm-exit', type: 'independent', title: 'Exit Ticket', config: { response: 'short' } };
+const exit = { id: 'm-exit', type: 'independent', title: 'Exit Ticket', config: { category: 'exit-ticket', response: 'short' } };
 const modules = [bell, notes, talk, game, exit];
 
 const run = (id, classId, className, period, date = '2026-11-02') => ({
@@ -53,20 +54,19 @@ const data = {
 const allItems = reportItems(modules).filter((i) => i.available).map((i) => i.key);
 const req = (over = {}) => ({ runIds: ['r3', 'r4'], items: { L1: allItems }, breakdown: 'aggregate', questions: [], timeZone: 'America/Chicago', ...over });
 
-test('items: each module reports what it collects; one that collects nothing is listed, greyed', () => {
+test('items: each module reports what it collects; Joined, bellwork, exit ticket first; nothing for a module that collects nothing', () => {
   const items = reportItems(modules);
-  assert.deepEqual(
-    items.map((i) => [i.label, i.available]),
-    [
-      ['Joined', true],
-      ['Bellwork · Responses', true],
-      ['Bellwork · Results', true],
-      ['Notes', false],
-      ['Turn & Talk', false],
-      ['Coliseum Practice · Coliseum', true],
-      ['Exit Ticket · Responses', true]
-    ]
-  );
+  assert.deepEqual(items.map((i) => i.label), [
+    'Joined',
+    'Bellwork · Responses',
+    'Bellwork · Results',
+    'Exit Ticket · Responses',
+    'Coliseum Practice · Coliseum'
+  ]);
+  // Bellwork and exit ticket come first wherever they sit in the lesson.
+  assert.deepEqual(reportItems([game, exit, bell]).map((i) => i.module), ['', 'Bellwork', 'Bellwork', 'Exit Ticket', 'Coliseum Practice']);
+  // An empty bellwork (no questions yet) has nothing to report.
+  assert.deepEqual(reportItems([{ ...bell, config: { category: 'bellwork', questions: [] } }]).map((i) => i.label), ['Joined']);
   // An activity that starts collecting answers joins in by itself.
   const tap = reportItems([{ ...talk, config: { doneTap: true } }]);
   assert.deepEqual(tap.map((i) => i.label), ['Joined', 'Turn & Talk · Responses']);
@@ -76,7 +76,8 @@ test('aggregate: one sheet, every student of both periods, blank where nothing w
   const [sheet, ...rest] = buildReport(data, req());
   assert.equal(rest.length, 0);
   assert.equal(sheet.name, 'All');
-  assert.deepEqual(sheet.columns.slice(0, 3), ['Class', 'Period', 'Alias']);
+  assert.deepEqual(sheet.columns.slice(0, 4), ['Class', 'Period', 'Alias', '4-12 Imaginary Numbers · Joined']);
+  assert.ok(sheet.columns.findIndex((c) => c.includes('Exit Ticket')) < sheet.columns.findIndex((c) => c.includes('Best score')), 'exit ticket before the rest');
   const col = (h) => sheet.columns.findIndex((c) => c.includes(h));
   const row = (alias) => sheet.rows.find((r) => r[2] === alias);
   assert.deepEqual(sheet.rows.map((r) => r[2]), ['AlphaOwl17', 'VectorFox42', 'DeltaLynx33'], 'by period, then alias; retired and other classes left out');

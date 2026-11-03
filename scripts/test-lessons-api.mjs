@@ -730,9 +730,9 @@ console.log('live lessons');
   assert.equal(opts.lessons.length, 1);
   assert.deepEqual(opts.lessons[0].runs.map((r) => [r.runId, r.period]), [[run.id, 'P3']]);
   assert.deepEqual(
-    opts.lessons[0].items.map((i) => [i.label, i.available]),
-    [['Joined', true], ['Bellwork · Responses', true], ['Bellwork · Results', true], ['GCD race · Coliseum', true], ['Exit ticket', false]],
-    'an exit ticket with no questions yet collects nothing: listed, greyed'
+    opts.lessons[0].items.map((i) => i.label),
+    ['Joined', 'Bellwork · Responses', 'Bellwork · Results', 'GCD race · Coliseum'],
+    'an exit ticket with no questions yet collects nothing, so it is left out'
   );
   assert.deepEqual(opts.lessons[0].modules.map((m) => m.questions.map((q) => [q.text, q.keyed])), [[['2 + 2?', true]]]);
   assert.equal((await call(reportOptionsR, 'GET', T('/api/teach/reports/options?from=2026-02-01&to=2025-01-01'), {}, teachMw)).status, 400);
