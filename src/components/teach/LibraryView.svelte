@@ -5,6 +5,7 @@
   import { onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
   import { gridText } from '../../lib/lesson/grid.ts';
+  import { sortText } from '../../lib/lesson/sort.ts';
   import { MODULE_TYPES } from '../../lib/lesson/modules.ts';
   import { mmss } from '../../lib/lesson/time.ts';
   import { btn, btnMain, field, heading, label, panel } from './ui.ts';
@@ -72,7 +73,7 @@
 
   const day = (ms: number) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const keyOf = (q: any) =>
-    !q.answer ? '' : q.kind === 'choice' ? String.fromCharCode(65 + Number(q.answer)) : q.kind === 'grid' ? gridText(q.answer) : q.answer;
+    !q.answer ? '' : q.kind === 'choice' ? String.fromCharCode(65 + Number(q.answer)) : q.kind === 'grid' ? gridText(q.answer) : q.kind === 'sort' ? sortText(q.sort, q.answer) : q.answer;
 </script>
 
 <div class="space-y-4 text-xs">

@@ -8,6 +8,7 @@
 
 import { cleanGrid, newGrid, type Grid } from './grid.ts';
 import { readMath, type MathMatch } from './mathcheck.ts';
+import { cleanSort, newSort, type SortSpec } from './sort.ts';
 import { splitSlides } from './slides.ts';
 import { STEP_SEC } from './time.ts';
 
@@ -53,7 +54,7 @@ export interface Link {
   url: string;
 }
 
-export type QuestionKind = 'text' | 'number' | 'choice' | 'math' | 'grid';
+export type QuestionKind = 'text' | 'number' | 'choice' | 'math' | 'grid' | 'sort';
 
 export interface Question {
   id: string;
@@ -67,6 +68,8 @@ export interface Question {
   match?: MathMatch;
   /** Grid questions: the table with its given cells and blanks (keys are in `answer`, see grid.ts). */
   grid?: Grid;
+  /** Card sort questions: the groups and cards (the key, each card's group, is in `answer`; see sort.ts). */
+  sort?: SortSpec;
 }
 
 /** What a question set is for. Picking one gives the module its starting title (and, for the two
@@ -317,7 +320,8 @@ export const newQuestion = (kind: QuestionKind = 'text'): Question => ({
   choices: kind === 'choice' ? ['', ''] : [],
   answer: '',
   ...(kind === 'math' || kind === 'grid' ? { match: 'form' as const } : {}),
-  ...(kind === 'grid' ? { grid: newGrid() } : {})
+  ...(kind === 'grid' ? { grid: newGrid() } : {}),
+  ...(kind === 'sort' ? { sort: newSort() } : {})
 });
 
 export const DEFAULT_LESSON_SEC = 50 * 60;
@@ -399,12 +403,19 @@ function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | st
       if (qs.length > LIMITS.questions) return `${where}: at most ${LIMITS.questions} questions.`;
       const questions: Question[] = [];
       for (const [i, q] of qs.entries()) {
-        const kind: QuestionKind = ['text', 'number', 'choice', 'math', 'grid'].includes(q?.kind) ? q.kind : 'text';
+        const kind: QuestionKind = ['text', 'number', 'choice', 'math', 'grid', 'sort'].includes(q?.kind) ? q.kind : 'text';
         const text = cleanText(q?.text, LIMITS.text);
         if (!text) return `${where}: question ${i + 1} is empty.`;
         let choices: string[] = [];
-        let answer = kind === 'grid' ? '' : cleanLine(q?.answer, LIMITS.answer);
+        let answer = kind === 'grid' || kind === 'sort' ? '' : cleanLine(q?.answer, LIMITS.answer);
         let grid: Grid | undefined;
+        let sort: SortSpec | undefined;
+        if (kind === 'sort') {
+          const so = cleanSort(q?.sort, q?.answer);
+          if (typeof so === 'string') return `${where}: question ${i + 1}: ${so}`;
+          sort = so.sort;
+          answer = so.answer;
+        }
         if (kind === 'grid') {
           const g = cleanGrid(q?.grid, q?.answer);
           if (typeof g === 'string') return `${where}: question ${i + 1}: ${g}`;
@@ -432,7 +443,8 @@ function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | st
           choices,
           answer,
           ...(kind === 'math' || kind === 'grid' ? { match: q?.match === 'any' ? ('any' as const) : ('form' as const) } : {}),
-          ...(grid ? { grid } : {})
+          ...(grid ? { grid } : {}),
+          ...(sort ? { sort } : {})
         });
       }
       return { category: isPromptCategory(c.category) ? c.category : 'other', questions };

@@ -4,12 +4,13 @@
 <!-- come from the delivery's own copy of the lesson, so they match what students saw. -->
 <script lang="ts">
   import { gridText } from '../../lib/lesson/grid.ts';
+  import { sortText } from '../../lib/lesson/sort.ts';
   import { onDestroy, onMount } from 'svelte';
   import type { RoomModule, RoomState, Spotlight } from '../../lib/lesson/room.ts';
   import type { RosterRow } from '../../lib/lesson/liveClient.ts';
   import { heading, label, panel } from '../teach/ui.ts';
 
-  type Q = { id: string; kind: string; text: string; choices: string[]; answer: string };
+  type Q = { id: string; kind: string; text: string; choices: string[]; answer: string; sort?: any };
   type CollectModule = { id: string; title: string; kind: 'questions' | 'short' | 'tap' | 'coliseum'; questions?: Q[] };
   type Row = { moduleId: string; aliasId: string; alias: string; answers: Record<string, string>; correct: Record<string, boolean | null>; updatedAt: number };
   type Score = { moduleId: string; aliasId: string; alias: string; best: number; plays: number };
@@ -99,6 +100,7 @@
     if (v === undefined || v.trim() === '') return '';
     if (q.kind === 'choice') return `${letter(Number(v))}. ${q.choices[Number(v)] ?? ''}`;
     if (q.kind === 'grid') return gridText(v);
+    if (q.kind === 'sort') return sortText(q.sort, v);
     return v;
   }
   function tally(q: Q) {
@@ -106,7 +108,7 @@
     const right = answered.filter((r) => r.correct[q.id] === true).length;
     return { answered: answered.length, right, keyed: !!q.answer };
   }
-  const keyText = (q: Q) => (q.kind === 'choice' && q.answer !== '' ? `${letter(Number(q.answer))}` : q.kind === 'grid' ? gridText(q.answer) : q.answer);
+  const keyText = (q: Q) => (q.kind === 'choice' && q.answer !== '' ? `${letter(Number(q.answer))}` : q.kind === 'grid' ? gridText(q.answer) : q.kind === 'sort' ? sortText(q.sort, q.answer) : q.answer);
   /** A question's answers as bars: each choice, or the most common answers (alike ones together). */
   function pollOf(q: Q, qi: number): Spotlight {
     const answered = mRows.map((r) => r.answers[q.id] ?? '').filter((v) => v.trim() !== '');

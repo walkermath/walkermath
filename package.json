@@ -23,7 +23,8 @@
     "test:reports": "node --experimental-strip-types --no-warnings --test scripts/test-reports.mjs",
     "test:math": "node --experimental-strip-types --no-warnings --test scripts/test-mathcheck.mjs",
     "test:grid": "node --experimental-strip-types --no-warnings --test scripts/test-grid.mjs",
-    "test:export": "node --experimental-strip-types --no-warnings --test scripts/test-export.mjs"
+    "test:export": "node --experimental-strip-types --no-warnings --test scripts/test-export.mjs",
+    "test:sort": "node --experimental-strip-types --no-warnings --test scripts/test-sort.mjs"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.1",

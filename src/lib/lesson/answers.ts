@@ -11,6 +11,7 @@
 
 import { blankPositions, cleanGridAnswer, gridCorrect, type Grid } from './grid.ts';
 import { checkMath, MATH_MAX } from './mathcheck.ts';
+import { cleanSortAnswer, sortCorrect, type SortSpec } from './sort.ts';
 import { answersOpen, type RoomModule, type RoomState } from './room.ts';
 
 export const ANSWER_LIMITS = {
@@ -24,7 +25,7 @@ export const ANSWER_LIMITS = {
 export type Answers = Record<string, string>;
 
 export type AnswerSpec =
-  | { kind: 'questions'; questions: { id: string; kind: 'text' | 'number' | 'choice' | 'math' | 'grid'; text: string; choices: string[]; grid?: Grid }[] }
+  | { kind: 'questions'; questions: { id: string; kind: 'text' | 'number' | 'choice' | 'math' | 'grid' | 'sort'; text: string; choices: string[]; grid?: Grid; sort?: SortSpec }[] }
   | { kind: 'short' }
   | { kind: 'tap' };
 
@@ -82,6 +83,10 @@ export function cleanAnswers(spec: AnswerSpec, input: unknown): Answers | string
     if (q.kind === 'choice') {
       if (v !== '' && !(/^\d{1,2}$/.test(v) && Number(v) < q.choices.length)) return 'Invalid answers.';
       out[k] = v;
+    } else if (q.kind === 'sort') {
+      const so = cleanSortAnswer(v, q.sort);
+      if (so === null) return 'Invalid answers.';
+      out[k] = so;
     } else if (q.kind === 'grid') {
       const g = cleanGridAnswer(v, q.grid ? blankPositions(q.grid).length : 0);
       if (g === null) return 'Invalid answers.';
@@ -132,6 +137,7 @@ export function isCorrect(q: { kind: string; answer: string; match?: string }, a
   if (!q.answer) return null;
   if (answer === undefined || answer.trim() === '') return null;
   if (q.kind === 'choice') return answer === q.answer;
+  if (q.kind === 'sort') return sortCorrect(q.answer, answer);
   if (q.kind === 'grid') return gridCorrect(q.answer, answer, q.match === 'any' ? 'any' : 'form');
   if (q.kind === 'math') return checkMath(q.answer, answer, q.match === 'any' ? 'any' : 'form');
   if (q.kind === 'number') {

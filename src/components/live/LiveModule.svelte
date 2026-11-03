@@ -16,6 +16,7 @@
   import { renderMarkdown } from '../../lib/lesson/markdown.ts';
   import { GRID_BLANK_MAX, blankPositions, joinList, parseList } from '../../lib/lesson/grid.ts';
   import MathInput from './MathInput.svelte';
+  import SortQuestion from './SortQuestion.svelte';
   import PageView from './PageView.svelte';
 
   let {
@@ -245,6 +246,15 @@
                 </li>
               {/each}
             </ul>
+          {:else if q.kind === 'sort' && q.sort}
+            <SortQuestion
+              spec={q.sort}
+              value={mine[q.id] ?? ''}
+              {student}
+              {editable}
+              label="Question {i + 1}"
+              onchange={(v) => set(q.id, v, true)}
+            />
           {:else if q.kind === 'grid' && q.grid}
             {@const vals = parseList(mine[q.id] ?? '')}
             {@const blanks = blankPositions(q.grid)}

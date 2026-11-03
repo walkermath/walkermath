@@ -5,6 +5,7 @@
 // are included: an export is the teacher's own copy.
 
 import { gridText } from './grid.ts';
+import { sortText } from './sort.ts';
 import { MODULE_TYPES } from './modules.ts';
 
 export const EXPORT_FENCE = 'walkermath-lesson';
@@ -18,6 +19,7 @@ function keyLine(q: any): string {
   if (!q.answer) return '';
   if (q.kind === 'choice') return `${letter(Number(q.answer))}. ${q.choices?.[Number(q.answer)] ?? ''}`;
   if (q.kind === 'grid') return gridText(q.answer);
+  if (q.kind === 'sort') return sortText(q.sort, q.answer);
   return q.answer;
 }
 
@@ -55,6 +57,7 @@ export function lessonToMarkdown(lesson: any): string {
         out.push(`**Q${qi + 1}.** ${q.text}`, '');
         if (q.kind === 'choice') out.push(...q.choices.map((ch: string, ci: number) => `- ${letter(ci)}. ${ch}`), '');
         if (q.kind === 'grid') out.push(...gridTable(q), '');
+        if (q.kind === 'sort' && q.sort) out.push(`Groups: ${q.sort.groups.join(' · ')}`, '', ...q.sort.cards.map((c: string) => `- ${c}`), '');
         const key = keyLine(q);
         const how = q.kind === 'math' || q.kind === 'grid' ? (q.match === 'any' ? ' (any equivalent form)' : ' (same form, any order)') : '';
         if (key) out.push(`> Answer: ${key}${how}`, '');

@@ -22,6 +22,7 @@
   import { floorOf, capOf } from '../../lib/lesson/pacing.ts';
   import { GRID_MAX, GRID_TEXT_MAX, blankPositions, joinList, newGrid, parseList, reshape } from '../../lib/lesson/grid.ts';
   import { readMath } from '../../lib/lesson/mathcheck.ts';
+  import { SORT_LIMITS, newSort } from '../../lib/lesson/sort.ts';
   import { mmss } from '../../lib/lesson/time.ts';
   import MmssInput from './MmssInput.svelte';
   import NotesEditor from './NotesEditor.svelte';
@@ -131,6 +132,8 @@
     else delete q.match;
     if (kind === 'grid') q.grid = newGrid();
     else delete q.grid;
+    if (kind === 'sort') q.sort = newSort();
+    else delete q.sort;
     if (kind === 'choice' && q.choices.length < 2) q.choices = ['', ''];
   }
   /* grid questions: keys live in q.answer as a list, one per blank (see grid.ts) */
@@ -144,6 +147,34 @@
     const r = reshape(q.grid!, parseList(q.answer), change);
     q.grid = r.grid;
     q.answer = joinList(r.keys);
+  }
+  /* card sorts: the key is each card's group number, in card order (see sort.ts) */
+  const sortKeys = (q: Question) => {
+    const keys = parseList(q.answer);
+    while (keys.length < q.sort!.cards.length) keys.push('');
+    return keys.slice(0, q.sort!.cards.length);
+  };
+  function setSortKey(q: Question, card: number, group: string) {
+    const keys = sortKeys(q);
+    keys[card] = group;
+    q.answer = joinList(keys);
+  }
+  function addCard(q: Question) {
+    const keys = sortKeys(q);
+    q.sort!.cards.push('');
+    q.answer = joinList([...keys, '']);
+  }
+  function removeCard(q: Question, card: number) {
+    const keys = sortKeys(q);
+    q.sort!.cards.splice(card, 1);
+    keys.splice(card, 1);
+    q.answer = joinList(keys);
+  }
+  function removeGroup(q: Question, group: number) {
+    // Cards keyed to this group lose their key; later groups move up one.
+    const keys = sortKeys(q).map((k) => (k === '' || Number(k) === group ? '' : Number(k) > group ? String(Number(k) - 1) : k));
+    q.sort!.groups.splice(group, 1);
+    q.answer = joinList(keys);
   }
   function moveQuestion(qi: number, to: number) {
     const qs: Question[] = module.config.questions;
@@ -286,6 +317,7 @@
               <option value="number">number</option>
               <option value="math">math (algebra)</option>
               <option value="grid">grid (table / area model)</option>
+              <option value="sort">card sort / matching</option>
               <option value="choice">multiple choice</option>
             </select>
             <span class="flex-1"></span>
@@ -321,6 +353,53 @@
                   <button type="button" class="hover:text-[var(--accent)] cursor-pointer {label}" onclick={() => (q.answer = '')}>[no answer key]</button>
                 {/if}
               </div>
+            </div>
+          {:else if q.kind === 'sort' && q.sort}
+            {@const keys = sortKeys(q)}
+            <div class="space-y-3">
+              <div class="space-y-1">
+                <div class={label}>groups (students put each card in one)</div>
+                {#each q.sort.groups as _, gi}
+                  <div class="flex items-center gap-2">
+                    <input class="{field} p-1" bind:value={q.sort.groups[gi]} maxlength={SORT_LIMITS.group} placeholder="Group {gi + 1}" />
+                    {#if q.sort.groups.length > 2}
+                      <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => removeGroup(q, gi)} aria-label="Remove group">[x]</button>
+                    {/if}
+                  </div>
+                {/each}
+                {#if q.sort.groups.length < SORT_LIMITS.groups}
+                  <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => q.sort!.groups.push('')}>[+ group]</button>
+                {/if}
+              </div>
+              <div class="space-y-1">
+                <div class={label}>cards, and the group each belongs in (the key; students never see it)</div>
+                {#each q.sort.cards as _, ci}
+                  <div class="flex flex-wrap items-center gap-2">
+                    <input class="{field} p-1 flex-1 min-w-40" bind:value={q.sort.cards[ci]} maxlength={SORT_LIMITS.card} placeholder="Card {ci + 1} (use $...$ for math)" />
+                    <select
+                      class="{field} w-44 p-1"
+                      value={keys[ci]}
+                      onchange={(e) => setSortKey(q, ci, (e.currentTarget as HTMLSelectElement).value)}
+                      aria-label="Group for card {ci + 1}"
+                    >
+                      <option value="">no key</option>
+                      {#each q.sort.groups as g, gi}
+                        <option value={String(gi)}>{g || `Group ${gi + 1}`}</option>
+                      {/each}
+                    </select>
+                    {#if q.sort.cards.length > 2}
+                      <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => removeCard(q, ci)} aria-label="Remove card">[x]</button>
+                    {/if}
+                  </div>
+                {/each}
+                {#if q.sort.cards.length < SORT_LIMITS.cards}
+                  <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => addCard(q)}>[+ card]</button>
+                {/if}
+              </div>
+              <p class="text-xs {label}">
+                // students drag each card into a group, or tap a card and then a group. for matching, make one group per answer and one card for each.
+                the question is right when every keyed card is in its group.
+              </p>
             </div>
           {:else if q.kind === 'grid' && q.grid}
             {@const keys = parseList(q.answer)}
@@ -442,6 +521,7 @@
           <button type="button" class={btn} onclick={() => addQuestion('number')}>[+ number]</button>
           <button type="button" class={btn} onclick={() => addQuestion('math')}>[+ math]</button>
           <button type="button" class={btn} onclick={() => addQuestion('grid')}>[+ grid]</button>
+          <button type="button" class={btn} onclick={() => addQuestion('sort')}>[+ card sort]</button>
           <button type="button" class={btn} onclick={() => addQuestion('choice')}>[+ multiple choice]</button>
         </div>
       {/if}

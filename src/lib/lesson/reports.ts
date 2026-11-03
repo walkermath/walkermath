@@ -17,6 +17,7 @@
 
 import { answerSpec, isAnswered, isCorrect, toNumber, type Answers } from './answers.ts';
 import { gridText } from './grid.ts';
+import { sortText, type SortSpec } from './sort.ts';
 
 export type ItemKind = 'joined' | 'responses' | 'results' | 'coliseum';
 
@@ -51,6 +52,8 @@ export interface ReportQuestion {
   answer: string;
   /** Math questions: 'form' or 'any' (see mathcheck.ts). */
   match?: string;
+  /** Card sorts: the groups and cards, to write placements as words. */
+  sort?: SortSpec;
 }
 
 const KIND_LABEL: Record<ItemKind, string> = {
@@ -75,7 +78,8 @@ export function moduleQuestions(m: ReportModule): ReportQuestion[] {
     text: q.text ?? '',
     choices: q.choices ?? [],
     answer: String(keys.get(q.id)?.answer ?? ''),
-    match: keys.get(q.id)?.match === 'any' ? 'any' : 'form'
+    match: keys.get(q.id)?.match === 'any' ? 'any' : 'form',
+    ...((q as any).sort ? { sort: (q as any).sort } : {})
   }));
 }
 
@@ -183,6 +187,7 @@ const runOrder = (a: ReportRun, b: ReportRun) => (a.date + a.startTime).localeCo
 export function answerText(q: ReportQuestion, a: string | undefined): string | null {
   if (a === undefined || a.trim() === '') return null;
   if (q.kind === 'grid') return gridText(a);
+  if (q.kind === 'sort') return sortText(q.sort, a);
   if (q.kind === 'choice') {
     const i = Number(a);
     return Number.isInteger(i) && q.choices[i] !== undefined ? `${String.fromCharCode(65 + i)}. ${q.choices[i]}` : a;

@@ -283,6 +283,16 @@ In class extras.
 3. **Math input:** a math question's box has symbol buttons (x², √, a⁄b, ±, π, ≤ ...) that type
    at the cursor, and shows the answer typeset ("we read: ...") as they type.
 
+Card sorts and matching.
+
+1. In a question set choose **[+ card sort]**. It starts with two groups (Linear / Not linear) and
+   four equation cards. Name the groups, write the cards ($...$ works), and pick each card's group
+   as its key. For matching, make one group per answer and one card for each.
+2. As a student, drag a card into a group, or tap a card and then tap a group (that's the way on
+   a touchscreen). Tap a placed card to move it; tap the cards area to put it back.
+3. The control panel shows "card → group | ..." for each student, and the question is right when
+   every keyed card is in its group. [results → screen] shows the most common sorts.
+
 Sharing lessons (run `0011_library.sql` first).
 
 1. In a lesson, **[export .md]** downloads it as a Markdown file: readable anywhere (questions,
@@ -346,7 +356,7 @@ hand in, and marking against the key), `npm run test:ink` (strokes, the eraser, 
 `npm run test:router` (every `/api` route is wired up) and `npm run test:pseudonym` (names and
 how sign-in reads a typed alias) and `npm run test:reports` (report sheets and the .xlsx/.csv files) and `npm run test:math` (the
 algebra answer checker) and `npm run test:grid` (grid questions) and `npm run test:export` (lesson
-Markdown files).
+Markdown files) and `npm run test:sort` (card sorts).
 
 ## 5. Production: moving walkermath.com from Pages to the Worker
 
