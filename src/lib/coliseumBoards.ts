@@ -79,6 +79,10 @@ export const GAMES: Record<string, GameDef> = {
     levels: 3,
     levelNames: { 1: 'basic', 2: 'standard', 3: 'crazy' },
     variants: [{ id: 'typed', label: 'typed answers' }]
+  },
+  'factor-out-gcf': {
+    levels: 3,
+    levelNames: { 1: 'numbers', 2: 'with x', 3: 'three terms' }
   }
 };
 

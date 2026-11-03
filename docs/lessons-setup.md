@@ -323,6 +323,17 @@ Grid questions (area models, tables of values).
    cell (not simplified: wrong), a cell that isn't its row times its column (wrong), and
    (2x-3)(x+5) with the top as x | -3 and the side as 2x | 5 (cells consistent, wrong product: wrong).
 
+factorOutTheGCF (a Coliseum challenge).
+
+1. Open `/coliseum/factor-out-gcf`. Pick a level (1 numbers, 2 with x, 3 three terms) and [sprint].
+2. Type answers like 3x(x+2); the x², ( ) and y buttons type at the cursor and "we read" shows it
+   typeset. Any order counts: (x+2)3x, 3x(2+x).
+3. Try x(3x+6) (equal, but "not the GREATEST common factor"), 3x^2+6x ("nothing was factored out")
+   and 3x(x+3) ("doesn't multiply back"): each costs 3 points and shows the right answer. Something
+   unreadable like 3x(x+ isn't counted.
+4. In a lesson, add a Coliseum Practice activity and pick factorOutTheGCF; scores land in the
+   control panel and reports like the other games.
+
 Looking back (Phase 5b). Needs a delivery you have ended, with a board added in class and a
 student who answered.
 
@@ -363,7 +374,7 @@ hand in, and marking against the key), `npm run test:ink` (strokes, the eraser, 
 `npm run test:router` (every `/api` route is wired up) and `npm run test:pseudonym` (names and
 how sign-in reads a typed alias) and `npm run test:reports` (report sheets and the .xlsx/.csv files) and `npm run test:math` (the
 algebra answer checker) and `npm run test:grid` (grid questions) and `npm run test:export` (lesson
-Markdown files) and `npm run test:sort` (card sorts).
+Markdown files) and `npm run test:sort` (card sorts) and `npm run test:gcf` (factorOutTheGCF).
 
 ## 5. Production: moving walkermath.com from Pages to the Worker
 
