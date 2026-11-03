@@ -144,7 +144,7 @@
         <input
           class="{field} uppercase"
           bind:value={passcode}
-          placeholder="SLOPE-318"
+          placeholder="FOX42"
           autocomplete="off"
           autocapitalize="characters"
           spellcheck="false"
@@ -166,7 +166,7 @@
       </div>
       <label class="block space-y-2">
         <span class="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">// your alias (from your card)</span>
-        <input class={field} bind:value={alias} placeholder="VectorFoxK7M2" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="24" required />
+        <input class={field} bind:value={alias} placeholder="VectorFox42" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="24" required />
       </label>
       <label class="block space-y-2">
         <span class="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">// your PIN</span>

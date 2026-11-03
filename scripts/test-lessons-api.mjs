@@ -290,7 +290,7 @@ let cls, aliases;
   cls = (await body(res)).class;
   assert.equal(cls.name, 'Algebra II');
   assert.equal(cls.period, 'P3');
-  assert.match(cls.passcode, /^[A-Z]{2,8}-\d{3}$/);
+  assert.match(cls.passcode, /^[A-Z]{2,7}\d{2}$/);
   ok(`class created with code ${cls.passcode}`);
 
   const made = await call(aliasesR, 'POST', T(`/api/teach/classes/${cls.id}/aliases`, { method: 'POST', body: { count: 30 } }), { classId: cls.id }, teachMw);
@@ -320,7 +320,7 @@ let studentCookie;
   const S = (path, opts = {}) => req(path, { cookie: jar.student, ...opts });
   const wrongCode = await call(lookup, 'POST', S('/api/class/lookup', { method: 'POST', body: { passcode: 'NOPE-000' } }), {}, classMw);
   assert.equal(wrongCode.status, 404);
-  const typed = cls.passcode.toLowerCase().replace('-', ' ');
+  const typed = cls.passcode.toLowerCase().replace(/(\d+)$/, ' $1');
   const found = await call(lookup, 'POST', S('/api/class/lookup', { method: 'POST', body: { passcode: typed } }), {}, classMw);
   assert.equal(found.status, 200);
   assert.deepEqual((await body(found)).class, { name: 'Algebra II', period: 'P3', test: false });

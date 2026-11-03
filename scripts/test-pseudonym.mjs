@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ADJECTIVES, BANNED_TAILS, NOUNS, TAILS, generateAlias, isValidAlias } from '../src/lib/pseudonym.ts';
-import { aliasTailVariant, normalizeAliasInput } from '../src/lib/classroom.ts';
+import { aliasTailVariant, generatePasscode, normalizeAliasInput, normalizePasscode } from '../src/lib/classroom.ts';
 
 test('word lists: 80 each, letters only, at most 7, no repeats, no word inside another list', () => {
   assert.equal(ADJECTIVES.length, 80);
@@ -62,4 +62,18 @@ test('sign-in reads a typed alias: case and spaces ignored, O and l/I in the 2-d
   assert.equal(aliasTailVariant('vectorfox42'), null, 'nothing to fix');
   assert.equal(aliasTailVariant('vectorfoxk7m2'), null, 'old tails are left alone');
   assert.equal(aliasTailVariant(normalizeAliasInput('VectorFoxK7ML')), null, 'an old tail ending in L is left alone');
+});
+
+test('class codes: an alias noun + 2 digits; typed any way; older 3-digit codes still read', () => {
+  const nouns = new Set(NOUNS.map((n) => n.toUpperCase()));
+  for (let i = 0; i < 3000; i++) {
+    const c = generatePasscode();
+    const m = /^([A-Z]+)(\d{2})$/.exec(c);
+    assert.ok(m && nouns.has(m[1]) && TAILS.includes(m[2]), c);
+    assert.equal(normalizePasscode(c), c, 'a generated code reads back as itself');
+  }
+  for (const typed of ['fox42', 'Fox 42', ' FOX-42 ', 'fox  42']) assert.equal(normalizePasscode(typed), 'FOX42', typed);
+  assert.equal(normalizePasscode('slope 318'), 'SLOPE-318', 'older codes keep their form');
+  assert.equal(normalizePasscode('Slope-318'), 'SLOPE-318');
+  for (const bad of ['fox', 'fox4', 'fox4242', '42', 'vector fox 42', '', null, 7]) assert.equal(normalizePasscode(bad), '', String(bad));
 });

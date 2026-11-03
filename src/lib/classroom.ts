@@ -2,6 +2,8 @@
 // Class-level rules shared by the browser and the /api handlers: periods, bell times,
 // class passcodes and student PINs. No storage, no network.
 
+import { NOUNS, TAILS } from './pseudonym.ts';
+
 /** Same period codes the leaderboard uses. */
 export const PERIODS = ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9'] as const;
 export type Period = (typeof PERIODS)[number];
@@ -27,15 +29,10 @@ export function cleanClassName(v: unknown): string {
 
 /* ---------------- class passcodes ---------------- */
 
-// Short math words, written on the board as e.g. "TAPE-472". The passcode is a shared gate for a
-// class, not a personal secret: each student's PIN is what protects their alias.
-const PASSCODE_WORDS = [
-  'ANGLE', 'AREA', 'AXIS', 'BASE', 'CHORD', 'CONE', 'CUBE', 'CURVE', 'DIGIT', 'EDGE',
-  'FACE', 'GRAPH', 'GRID', 'HEXA', 'LIMIT', 'LINE', 'LOGIC', 'MEAN', 'MEDIAN', 'MODE',
-  'NODE', 'ORBIT', 'PATH', 'PLANE', 'POINT', 'POWER', 'PRIME', 'PRISM', 'PROOF', 'RANGE',
-  'RATIO', 'RAY', 'ROOT', 'SET', 'SIDE', 'SLOPE', 'SOLID', 'SPHERE', 'SQUARE', 'SUM',
-  'TAPE', 'TERM', 'TILE', 'UNIT', 'VALUE', 'VERTEX', 'WIDTH', 'ZERO'
-] as const;
+// Class codes are one of the alias nouns plus a 2-digit number, written on the board as e.g.
+// "FOX42" (80 nouns x 86 numbers = 6,880 codes; more words or a third digit can be added later).
+// The code is a shared gate for a class, not a personal secret: each student's PIN is what
+// protects their alias. Codes issued before Nov 2026 look like "SLOPE-318" and keep working.
 
 function randInt(n: number): number {
   const buf = new Uint32Array(1);
@@ -43,16 +40,20 @@ function randInt(n: number): number {
   return buf[0] % n;
 }
 
-/** e.g. 'SLOPE-318' (48 words x 900 numbers). */
+/** e.g. 'FOX42'. Same noun list and number rules as aliases (no 69, 14, 18, 88). */
 export function generatePasscode(): string {
-  return `${PASSCODE_WORDS[randInt(PASSCODE_WORDS.length)]}-${100 + randInt(900)}`;
+  return `${NOUNS[randInt(NOUNS.length)].toUpperCase()}${TAILS[randInt(TAILS.length)]}`;
 }
 
-/** Accepts 'slope 318', 'Slope-318', ' SLOPE318 ' and returns 'SLOPE-318'; '' if not a passcode shape. */
+/**
+ * Accepts 'fox 42', 'Fox-42', ' FOX42 ' and returns 'FOX42'; an older 3-digit code such as
+ * 'slope 318' returns 'SLOPE-318'. '' if not a class-code shape.
+ */
 export function normalizePasscode(v: unknown): string {
   if (typeof v !== 'string') return '';
-  const m = v.toUpperCase().replace(/\s+/g, '').match(/^([A-Z]{2,8})-?(\d{3})$/);
-  return m ? `${m[1]}-${m[2]}` : '';
+  const m = v.toUpperCase().replace(/\s+/g, '').match(/^([A-Z]{2,8})-?(\d{2,3})$/);
+  if (!m) return '';
+  return m[2].length === 3 ? `${m[1]}-${m[2]}` : `${m[1]}${m[2]}`;
 }
 
 /* ---------------- student PINs ---------------- */
