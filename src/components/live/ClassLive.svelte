@@ -41,6 +41,7 @@
         if (t === 'socket' && transport !== 'socket') ink.resync(); // changes may have been missed
         transport = t;
       },
+      onHand: (on) => (hand = on),
       onGone: (status, message) =>
         (gone = status === 404 ? "This lesson isn't running for your class right now." : message),
       ...inkHandlers(ink)
@@ -61,6 +62,21 @@
       document.removeEventListener('visibilitychange', flushIfHidden);
     }
   });
+
+  /* ---------------- "I'm stuck" ---------------- */
+
+  let hand = $state(false);
+  let handBusy = $state(false);
+  async function toggleHand() {
+    handBusy = true;
+    try {
+      await conn?.hand(!hand);
+    } catch {
+      // the button stays as it was; they can tap again
+    } finally {
+      handBusy = false;
+    }
+  }
 
   /* ---------------- personal notes ---------------- */
 
@@ -331,6 +347,18 @@
           <span class="tabular-nums">{countdown(Math.max(lessonLeft, 0))} left</span>
         </div>
       </section>
+
+      <button
+        type="button"
+        class="w-full px-3 py-2 rounded-md border-2 text-sm font-bold cursor-pointer disabled:opacity-60 {hand
+          ? 'border-[var(--warn)] text-[var(--warn)] bg-[var(--warn)]/10'
+          : 'border-[var(--line)] hover:border-[var(--accent)] hover:text-[var(--accent)]'}"
+        aria-pressed={hand}
+        disabled={handBusy}
+        onclick={toggleHand}
+      >
+        {hand ? "✋ your teacher knows you're stuck · tap to put it down" : "[✋ I'm stuck]"}
+      </button>
 
       {#if lesson.resources.length}
         <details class="rounded-md border border-[var(--line)] bg-[var(--bg-surface)] text-xs">

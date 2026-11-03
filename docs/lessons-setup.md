@@ -268,6 +268,14 @@ Reports (Phase 5a, step 2). Finish at least one delivery with some answers first
 6. Check a blank cell means nothing was handed in, 0 means answered and wrong, and Joined says
    "not recorded" for lessons taught before `0009_run_joins.sql`.
 
+In class extras.
+
+1. **I'm stuck:** a student taps **[✋ I'm stuck]** under the clocks. On your control panel a
+   "✋ stuck" box lists them, longest waiting first, with how long; **[helped]** puts the hand down
+   (their screen updates too). Their name also shows ✋ in "here now".
+2. **Math input:** a math question's box has symbol buttons (x², √, a⁄b, ±, π, ≤ ...) that type
+   at the cursor, and shows the answer typeset ("we read: ...") as they type.
+
 Looking back (Phase 5b). Needs a delivery you have ended, with a board added in class and a
 student who answered.
 

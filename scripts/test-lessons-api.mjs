@@ -146,6 +146,15 @@ env.LESSON_ROOM = {
         return Response.json({ ok: true });
       }
       if (u.pathname === '/inkdump') return Response.json({ pages: r.ink ?? {} });
+      if (u.pathname === '/hand') {
+        const b = JSON.parse(init.body);
+        r.hands ??= {};
+        const id = h.get('X-Role') === 'student' ? h.get('X-Who') : b.aliasId;
+        if (h.get('X-Role') === 'teacher' && b.on) return Response.json({ error: 'Forbidden' }, { status: 403 });
+        if (b.on) r.hands[id] = Date.now();
+        else delete r.hands[id];
+        return Response.json({ hand: !!b.on });
+      }
       if (u.pathname === '/cmd') {
         if (h.get('X-Role') !== 'teacher') return Response.json({ error: 'Forbidden' }, { status: 403 });
         const c = room.parseCommand(JSON.parse(init.body).cmd);
@@ -694,6 +703,18 @@ console.log('live lessons');
   assert.deepEqual(seenInk.pages[board], [stroke]);
   assert.equal((await body(await call(liveR, 'GET', S(`/api/live/${run.id}`), { runId: run.id }))).state.onBoard, true, "the activity's scratch board is up");
   ok("the teacher's ink reaches students through the room; only the teacher can write");
+
+  // "I'm stuck": a student's own hand, through the live route; the teacher lowers it.
+  const handPost = (cookie, b) => call(liveR, 'POST', req(`/api/live/${run.id}`, { method: 'POST', body: b, cookie }), { runId: run.id });
+  const up = await handPost(sc, { hand: true, aliasId: 'someone-else' });
+  assert.equal(up.status, 200);
+  const aliasRow = env.DB.sql.prepare('SELECT id FROM student_aliases WHERE alias = ?').get(a.alias);
+  assert.deepEqual(Object.keys(rooms.get(`run:${run.id}`).hands), [aliasRow.id], "a student can only raise their own hand");
+  assert.equal((await handPost(sc, { cmd: { type: 'next' } })).status, 404, 'students still cannot send commands');
+  assert.equal((await handPost(jar.teacher, { hand: false, aliasId: aliasRow.id })).status, 200);
+  assert.deepEqual(rooms.get(`run:${run.id}`).hands, {}, 'the teacher lowers it');
+  assert.equal((await handPost(null, { hand: true })).status, 404, 'anonymous');
+  ok("I'm stuck: students raise their own hand; the teacher lowers it");
 
   assert.equal((await A({ moduleId: bell.id, answers: { [qid]: '44' } })).status, 200, 'the last keystrokes land in the grace period');
   rooms.get(`run:${run.id}`).state.closedAt[0] = Date.now() - 60_000; // ...and a minute later

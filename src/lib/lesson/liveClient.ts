@@ -17,7 +17,7 @@ import type { InkOp, Stroke } from './ink.ts';
 export type Link = { label: string; url: string };
 export type LiveLesson = { title: string; resources: Link[]; modules: RoomModule[] };
 /** `here: false` = was in this lesson earlier and has left (closed the tab, lost wifi). */
-export type RosterRow = { aliasId: string; alias: string; devices: number; here: boolean };
+export type RosterRow = { aliasId: string; alias: string; devices: number; here: boolean; hand?: number | null };
 export type Transport = 'connecting' | 'socket' | 'polling' | 'offline';
 
 export interface LiveHandlers {
@@ -33,6 +33,8 @@ export interface LiveHandlers {
   onInkPages?: (pages: Record<string, Stroke[]>, rev: Record<string, number>) => void;
   /** Slow mode: every page's counter, so changed pages can be fetched. */
   onInkRev?: (rev: Record<string, number>) => void;
+  /** Students: their "I'm stuck" hand went up or down (from this device, another, or the teacher). */
+  onHand?: (on: boolean) => void;
 }
 
 export interface LiveConnection {
@@ -43,6 +45,8 @@ export interface LiveConnection {
   inkGet: (pageIds: string[]) => void;
   /** The teacher's ink. A stroke still being drawn is only sent over a socket (slow mode sends finished strokes). */
   sendInk: (op: InkOp) => Promise<void>;
+  /** "I'm stuck": a student's own hand up or down; the teacher passes an alias id to lower theirs. */
+  hand: (on: boolean, aliasId?: string) => Promise<void>;
   close: () => void;
 }
 
@@ -93,6 +97,7 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
       }
       if (data.lesson) h.onLesson(data.lesson);
       if (data.students) h.onRoster?.(data.students);
+      if (typeof data.hand === 'boolean') h.onHand?.(data.hand);
       takeState(data.state, data.serverNow);
       if (data.inkRev) h.onInkRev?.(data.inkRev);
       return true;
@@ -145,6 +150,7 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
       if (msg.type === 'lesson') h.onLesson(msg.lesson);
       else if (msg.type === 'state') takeState(msg.state, msg.serverNow);
       else if (msg.type === 'roster') h.onRoster?.(msg.students);
+      else if (msg.type === 'hand') h.onHand?.(!!msg.on);
       else if (msg.type === 'ink') h.onInk?.(msg.op, msg.rev);
       else if (msg.type === 'inkPages') h.onInkPages?.(msg.pages ?? {}, msg.rev ?? {});
     };
@@ -230,6 +236,17 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
         credentials: 'same-origin'
       });
       if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as any).error || `Request failed (${res.status}).`);
+    },
+    async hand(on, aliasId) {
+      const res = await fetch(base, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hand: on, ...(aliasId ? { aliasId } : {}) }),
+        credentials: 'same-origin'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
+      if (!aliasId) h.onHand?.(!!data.hand);
     },
     close: stop
   };

@@ -6,6 +6,7 @@
 //   GET ?ink=<pageId>,<pageId>    -> { pages: { pageId: strokes }, rev }   ink, for slow mode
 //   POST { cmd }                  -> { state, serverNow }   teacher only (next, back, adjust...)
 //   POST { ink }                  -> { ok, rev }            teacher only: a pen stroke, erase or clear (slow mode)
+//   POST { hand, aliasId? }       -> { hand }               "I'm stuck": a student's own hand; the teacher lowers anyone's
 //
 // Who is connecting is checked here, from the session cookie, and passed to the room as
 // headers. Only those headers are forwarded: the room never sees cookies, IPs or anything else.
@@ -53,9 +54,19 @@ export async function onRequestPost({ request, env, params }) {
   if (!env.LESSON_ROOM) return fail('The live room is not available.', 503);
   if (request.headers.get('Origin') !== new URL(request.url).origin) return fail('Bad origin.', 403);
   const w = await who(env, request, params.runId);
-  if (!w || w.role !== 'teacher') return fail('Not found.', 404);
-  const body = await readJson(request, 400_000); // a page of strokes put back by undo can be large
+  if (!w) return fail('Not found.', 404);
+  const body = await readJson(request, w.role === 'teacher' ? 400_000 : 1000); // a page of strokes put back by undo can be large
   if (!body) return fail('Invalid request.');
+  // "I'm stuck": students raise or lower their own hand; the teacher lowers anyone's.
+  if ('hand' in body) {
+    const res = await roomStub(env, w.run.id).fetch('https://room.internal/hand', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...w.headers },
+      body: JSON.stringify({ on: body.hand === true, aliasId: w.role === 'teacher' ? body.aliasId : undefined })
+    });
+    return new Response(res.body, { status: res.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  }
+  if (w.role !== 'teacher') return fail('Not found.', 404);
   if (body.ink) {
     const res = await roomStub(env, w.run.id).fetch('https://room.internal/ink', {
       method: 'POST',

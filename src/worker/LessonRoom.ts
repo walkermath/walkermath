@@ -52,7 +52,8 @@ const STORAGE_BATCH = 128;
 
 type Role = 'teacher' | 'student' | 'test';
 type Who = { role: Role; who: string; name: string; at?: number };
-type RosterRow = { aliasId: string; alias: string; devices: number; here: boolean };
+/** `hand`: when the student tapped "I'm stuck" (epoch ms), or null. */
+type RosterRow = { aliasId: string; alias: string; devices: number; here: boolean; hand: number | null };
 type Link = { label: string; url: string };
 /** What every device gets once: the title, the lesson's Resources links and the student-safe modules. */
 type Lesson = { title: string; resources: Link[]; modules: RoomModule[] };
@@ -78,6 +79,8 @@ export class LessonRoom extends DurableObject<Env> {
   private lesson: Lesson | null = null;
   /** Every student seen in this lesson (alias id -> alias), so the roster can show who left. */
   private seen: Map<string, string> | null = null;
+  /** "I'm stuck": alias id -> when the hand went up. Kept in storage under 'hands'. */
+  private hands: Map<string, number> | null = null;
   /** Students in slow mode: alias id -> last poll (in memory; polling keeps the room awake). */
   private polled = new Map<string, { alias: string; at: number }>();
   /** Ink by page, read from storage when first needed (each stroke is its own key: k:<page>:<stroke>). */
@@ -133,6 +136,26 @@ export class LessonRoom extends DurableObject<Env> {
     return this.seen;
   }
 
+  private async loadHands(): Promise<Map<string, number>> {
+    if (!this.hands) this.hands = new Map(Object.entries((await this.ctx.storage.get<Record<string, number>>('hands')) ?? {}));
+    return this.hands;
+  }
+
+  /** A student's "I'm stuck" goes up or down (the student, or the teacher clearing it). */
+  private async setHand(aliasId: string, on: boolean) {
+    const hands = await this.loadHands();
+    if (on === hands.has(aliasId)) return;
+    if (on) hands.set(aliasId, Date.now());
+    else hands.delete(aliasId);
+    await this.ctx.storage.put('hands', Object.fromEntries(hands));
+    this.broadcast(await this.rosterMsg(), 'teacher');
+    // Every device of that student shows the change (the teacher may have cleared it).
+    const msg = JSON.stringify({ type: 'hand', on });
+    for (const ws of this.ctx.getWebSockets('student')) {
+      if ((ws.deserializeAttachment() as Who | null)?.who === aliasId) this.send(ws, msg);
+    }
+  }
+
   /** Remembers a student the first time they turn up, so they stay on the roster (greyed) after leaving. */
   private async markSeen(aliasId: string, alias: string) {
     const seen = await this.loadSeen();
@@ -173,7 +196,8 @@ export class LessonRoom extends DurableObject<Env> {
   private async roster(closing?: WebSocket): Promise<RosterRow[]> {
     const now = Date.now();
     const rows = new Map<string, RosterRow>();
-    for (const [aliasId, alias] of await this.loadSeen()) rows.set(aliasId, { aliasId, alias, devices: 0, here: false });
+    const hands = await this.loadHands();
+    for (const [aliasId, alias] of await this.loadSeen()) rows.set(aliasId, { aliasId, alias, devices: 0, here: false, hand: hands.get(aliasId) ?? null });
     for (const ws of this.ctx.getWebSockets('student')) {
       if (ws === closing) continue;
       const a = ws.deserializeAttachment() as Who | null;
@@ -186,7 +210,7 @@ export class LessonRoom extends DurableObject<Env> {
         }
         continue;
       }
-      const row = rows.get(a.who) ?? { aliasId: a.who, alias: a.name, devices: 0, here: false };
+      const row = rows.get(a.who) ?? { aliasId: a.who, alias: a.name, devices: 0, here: false, hand: hands.get(a.who) ?? null };
       row.devices++;
       row.here = true;
       rows.set(a.who, row);
@@ -196,7 +220,7 @@ export class LessonRoom extends DurableObject<Env> {
         this.polled.delete(aliasId);
         continue;
       }
-      const row = rows.get(aliasId) ?? { aliasId, alias: p.alias, devices: 0, here: false };
+      const row = rows.get(aliasId) ?? { aliasId, alias: p.alias, devices: 0, here: false, hand: hands.get(aliasId) ?? null };
       row.devices = Math.max(row.devices, 1);
       row.here = true;
       rows.set(aliasId, row);
@@ -364,6 +388,7 @@ export class LessonRoom extends DurableObject<Env> {
       this.send(server, this.stateMsg(loaded.state));
       if (who.role === 'teacher') this.send(server, await this.rosterMsg());
       else {
+        if ((await this.loadHands()).has(who.who)) this.send(server, JSON.stringify({ type: 'hand', on: true }));
         await this.markSeen(who.who, who.name);
         this.broadcast(await this.rosterMsg(), 'teacher');
       }
@@ -411,8 +436,26 @@ export class LessonRoom extends DurableObject<Env> {
         serverNow: Date.now(),
         inkRev: await this.loadRev(),
         ...(url.searchParams.get('full') === '1' ? { lesson: loaded.lesson } : {}),
-        ...(who.role === 'teacher' ? { students: await this.roster() } : {})
+        ...(who.role === 'teacher' ? { students: await this.roster() } : {}),
+        ...(who.role === 'student' ? { hand: (await this.loadHands()).has(who.who) } : {})
       });
+    }
+
+    // "I'm stuck": a student raises or lowers their own hand; the teacher can lower anyone's.
+    if (request.method === 'POST' && url.pathname === '/hand') {
+      const loaded = await this.load();
+      if (!loaded || loaded.state.status !== 'live') return json({ error: 'Not started' }, 409);
+      const body = (await request.json().catch(() => null)) as { on?: unknown; aliasId?: unknown } | null;
+      const on = body?.on === true;
+      if (who.role === 'student' && who.who) {
+        await this.setHand(who.who, on);
+        return json({ hand: on });
+      }
+      if (who.role === 'teacher' && !on && typeof body?.aliasId === 'string') {
+        await this.setHand(body.aliasId.slice(0, 64), false);
+        return json({ hand: false });
+      }
+      return json({ error: 'Forbidden' }, 403);
     }
 
     // Ink over plain HTTP: slow-mode devices fetch pages whose counter moved; a slow-mode teacher writes.

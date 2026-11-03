@@ -135,6 +135,15 @@
   const starts = $derived(rs ? moduleStarts(rs, now) : []);
   const plannedEnd = $derived(rs ? finishesAt(rs, now) : 0);
   const here = $derived(students.filter((s) => s.here));
+  /** Students with "I'm stuck" up, longest waiting first. */
+  const hands = $derived(students.filter((s) => s.hand).sort((a, b) => (a.hand ?? 0) - (b.hand ?? 0)));
+  async function lowerHand(aliasId: string) {
+    try {
+      await conn?.hand(false, aliasId);
+    } catch {
+      // the next roster shows it still up
+    }
+  }
   const gone = $derived(students.filter((s) => !s.here));
   const pages = $derived(lesson && rs ? pagesOf(rs, lesson.modules, rs.index) : []);
   const pageCount = $derived(current?.type === 'notes' ? pages.length : 0);
@@ -333,6 +342,21 @@
             </div>
           </section>
 
+          {#if hands.length}
+            <section class="{panel} space-y-2 border-[var(--warn)]">
+              <div class="{heading} text-[var(--warn)]">// ✋ stuck ({hands.length})</div>
+              <ul class="space-y-1 text-sm">
+                {#each hands as s (s.aliasId)}
+                  <li class="flex items-center gap-2">
+                    <span class="font-bold flex-1">{s.alias}</span>
+                    <span class="text-xs {label}">{Math.max(0, Math.round((now - (s.hand ?? now)) / 60000))} min</span>
+                    <button type="button" class="text-xs hover:text-[var(--accent)] cursor-pointer" onclick={() => lowerHand(s.aliasId)}>[helped]</button>
+                  </li>
+                {/each}
+              </ul>
+            </section>
+          {/if}
+
           <section class="{panel} space-y-2">
             <div class={heading}>// here now ({here.length}{gone.length ? ` · ${gone.length} left` : ''})</div>
             {#if students.length === 0}
@@ -344,7 +368,7 @@
                     class="px-1.5 py-0.5 rounded border border-[var(--line)] {s.here ? '' : label}"
                     title={s.here ? `${s.devices} device${s.devices === 1 ? '' : 's'}` : 'left the lesson (closed the page or lost connection)'}
                   >
-                    <span class={s.here ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}>{s.here ? '●' : '○'}</span> {s.alias}
+                    <span class={s.here ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}>{s.here ? '●' : '○'}</span> {s.alias}{s.hand ? ' ✋' : ''}
                   </li>
                 {/each}
               </ul>
