@@ -13,8 +13,8 @@
   import type { Page, RoomModule } from '../../lib/lesson/room.ts';
   import type { InkStore } from '../../lib/lesson/inkStore.svelte.ts';
   import { ANSWER_LIMITS, answerSpec, isAnswered, type Answers } from '../../lib/lesson/answers.ts';
-  import { readMath } from '../../lib/lesson/mathcheck.ts';
   import { renderMarkdown } from '../../lib/lesson/markdown.ts';
+  import MathInput from './MathInput.svelte';
   import PageView from './PageView.svelte';
 
   let {
@@ -251,24 +251,15 @@
                 onchange={(e) => set(q.id, e.currentTarget.value, true)}
               />
             {:else if q.kind === 'math'}
-              <input
-                type="text"
-                autocomplete="off"
-                autocapitalize="off"
-                spellcheck="false"
-                class={field}
-                aria-label="Answer to question {i + 1}"
-                placeholder={editable ? 'type it like (x+2)(x+5) or x=7' : ''}
+              <MathInput
+                ariaLabel="Answer to question {i + 1}"
+                placeholder={editable ? 'type it like (x+2)(x+5) or x=7, or use the buttons' : ''}
                 maxlength={ANSWER_LIMITS.math}
                 value={mine[q.id] ?? ''}
                 disabled={!editable}
-                oninput={(e) => set(q.id, e.currentTarget.value, false)}
-                onchange={(e) => set(q.id, e.currentTarget.value, true)}
+                oninput={(v) => set(q.id, v, false)}
+                onchange={(v) => set(q.id, v, true)}
               />
-              {#if editable && (mine[q.id] ?? '').trim()}
-                {@const read = readMath(mine[q.id] ?? '')}
-                <p class="text-xs {read.ok ? label : 'text-[var(--bad)]'}">{read.ok ? `we read: ${read.text}` : read.error}</p>
-              {/if}
             {:else}
               <textarea
                 rows="2"

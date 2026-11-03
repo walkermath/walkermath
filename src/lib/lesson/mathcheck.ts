@@ -691,10 +691,82 @@ function show(n: Node, level: 0 | 1 | 2 = 0): string {
   }
 }
 
+/* The same reading as LaTeX, for a typeset preview (KaTeX). Fractions stack, powers rise. */
+
+function texQ(v: Q): string {
+  const s = fmtQ(v);
+  return s.includes('/') ? `\\frac{${v.n}}{${v.d}}` : s;
+}
+
+function tex(n: Node, level: 0 | 1 | 2 = 0): string {
+  const paren = (s: string) => `\\left(${s}\\right)`;
+  switch (n.t) {
+    case 'n':
+      return texQ(n.v);
+    case 'v':
+      return n.name === 'pi' ? '\\pi' : n.name;
+    case 'add': {
+      const terms: Node[] = [];
+      const flat = (x: Node) => (x.t === 'add' ? x.xs.forEach(flat) : terms.push(x));
+      flat(n);
+      const out = terms
+        .map((t, i) => {
+          const r = tex(t, 0);
+          return i === 0 ? r : r.startsWith('-') ? ` - ${r.slice(1)}` : ` + ${r}`;
+        })
+        .join('');
+      return level >= 1 ? paren(out) : out;
+    }
+    case 'mul': {
+      const fs: Node[] = [];
+      const flat = (x: Node) => (x.t === 'mul' ? x.xs.forEach(flat) : fs.push(x));
+      flat(n);
+      const isInv = (f: Node): f is Extract<Node, { t: 'pow' }> => f.t === 'pow' && f.e.t === 'n' && qIs(f.e.v, -1);
+      let top = fs.filter((f) => !isInv(f));
+      const bottom = fs.filter(isInv).map((f) => f.b);
+      let sign = '';
+      if (top.length > 1 && top[0].t === 'n' && qIs(top[0].v, -1)) {
+        sign = '-';
+        top = top.slice(1);
+      }
+      if (top.length > 1) top = top.filter((f) => !(f.t === 'n' && qIs(f.v, 1)));
+      let out = '';
+      for (const f of top) {
+        const s = tex(f, 1);
+        const dot = (/\d$/.test(out) && /^[\d.]/.test(s)) || (/[A-Za-z}]$/.test(out) && /^\d/.test(s));
+        out += (out && dot ? ' \\cdot ' : out ? ' ' : '') + s;
+      }
+      if (bottom.length) {
+        // A fraction bar groups by itself: no brackets round a lone numerator or denominator.
+        const num = top.length === 1 ? tex(top[0], 0) : out || '1';
+        const den = bottom.length === 1 ? tex(bottom[0], 0) : bottom.map((x) => tex(x, 1)).join(' ');
+        return `${sign}\\frac{${num}}{${den}}`;
+      }
+      return sign + out;
+    }
+    case 'pow': {
+      if (n.e.t === 'n' && qIs(n.e.v, -1)) return `\\frac{1}{${tex(n.b, 0)}}`;
+      const base = n.b.t === 'n' && !fmtQ(n.b.v).includes('/') ? tex(n.b) : n.b.t === 'v' || n.b.t === 'fn' ? tex(n.b) : paren(tex(n.b, 0));
+      return `${base}^{${tex(n.e, 0)}}`;
+    }
+    case 'fn':
+      return n.f === 'sqrt' ? `\\sqrt{${tex(n.x, 0)}}` : `\\left|${tex(n.x, 0)}\\right|`;
+    case 'pm':
+      return `\\pm ${tex(n.x, 1)}`;
+    case 'tuple':
+      return paren(n.xs.map((x) => tex(x, 0)).join(', '));
+    case 'rel': {
+      const op = { '=': '=', '<': '<', '>': '>', '<=': '\\le', '>=': '\\ge' }[n.op];
+      return `${tex(n.l, 0)} ${op} ${tex(n.r, 0)}`;
+    }
+  }
+}
+
 /** How a typed answer is understood, for a live preview, or why it can't be read. */
-export function readMath(input: string): { ok: true; text: string } | { ok: false; error: string } {
+export function readMath(input: string): { ok: true; text: string; latex: string } | { ok: false; error: string } {
   try {
-    return { ok: true, text: parseAll(input).map((a) => show(a)).join('   or   ') };
+    const alts = parseAll(input);
+    return { ok: true, text: alts.map((a) => show(a)).join('   or   '), latex: alts.map((a) => tex(a)).join('\\quad\\text{or}\\quad ') };
   } catch (e) {
     if (e instanceof ReadError) return { ok: false, error: e.message };
     return { ok: false, error: "I can't read that." };

@@ -193,3 +193,20 @@ test('readMath: the preview of how an answer was understood', () => {
   assert.match(text(''), /^ERR Nothing/);
   assert.match(text('x'.repeat(300)), /^ERR Keep it under/);
 });
+
+test('readMath: LaTeX for the typeset preview', () => {
+  const latex = (s) => {
+    const r = readMath(s);
+    return r.ok ? r.latex : `ERR ${r.error}`;
+  };
+  assert.equal(latex('(x+5)(x+2)'), '\\left(x + 5\\right) \\left(x + 2\\right)');
+  assert.equal(latex('x^2+7x+10'), 'x^{2} + 7 x + 10');
+  assert.equal(latex('3/4'), '\\frac{3}{4}');
+  assert.equal(latex('(x+1)/(x-2)'), '\\frac{x + 1}{x - 2}');
+  assert.equal(latex('2x/3'), '\\frac{2 x}{3}');
+  assert.equal(latex('sqrt(8)'), '\\sqrt{8}');
+  assert.equal(latex('x>=3'), 'x \\ge 3');
+  assert.equal(latex('x=±3'), 'x = \\pm 3');
+  assert.equal(latex('x=3 or x=-3'), 'x = 3\\quad\\text{or}\\quad x = -3');
+  assert.equal(latex('2*3'), '2 \\cdot 3');
+});
