@@ -15,6 +15,7 @@
   import { connectLive, countdown, type LiveConnection, type LiveLesson, type Transport } from '../../lib/lesson/liveClient.ts';
   import Board from './Board.svelte';
   import LiveModule from './LiveModule.svelte';
+  import SpotlightView from './SpotlightView.svelte';
 
   type Run = { id: string; lessonTitle: string; className: string; period: string; status: 'scheduled' | 'live' | 'ended' };
   /** One undo step on this device: strokes it added (undo removes them), or removed (undo puts them back). */
@@ -275,7 +276,14 @@
     </header>
 
     <!-- the page (or the module, when no board is up) -->
-    <main class="flex-1 min-h-0 flex items-center justify-center p-2 overflow-hidden">
+    <main class="relative flex-1 min-h-0 flex items-center justify-center p-2 overflow-hidden">
+      {#if rs.spotlight}
+        <!-- a poll's results or one answer, put up from the control panel -->
+        <div class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 p-8 bg-[var(--bg-primary)]">
+          <SpotlightView spot={rs.spotlight} />
+          <button type="button" class="{tool} {toolOff}" onclick={() => send({ type: 'spotlight', spot: null })}>[hide]</button>
+        </div>
+      {/if}
       {#if page}
         <div style="width: min(100%, calc((100vh - 8.5rem) * 16 / 9))">
           {#key page.id}

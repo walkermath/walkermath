@@ -273,7 +273,12 @@ In class extras.
 1. **I'm stuck:** a student taps **[✋ I'm stuck]** under the clocks. On your control panel a
    "✋ stuck" box lists them, longest waiting first, with how long; **[helped]** puts the hand down
    (their screen updates too). Their name also shows ✋ in "here now".
-2. **Math input:** a math question's box has symbol buttons (x², √, a⁄b, ±, π, ≤ ...) that type
+2. **On the projector:** in the control panel's answers box, **[results → screen]** under a
+   question puts its tally on the presenter (each choice, or the most common answers, alike ones
+   together). Click any one answer to show it big, typeset if it's math, with no name.
+   **[hide]** (control panel or presenter) takes it down; moving to the next module does too.
+   A quick poll or confidence check is a multiple-choice question with no key.
+3. **Math input:** a math question's box has symbol buttons (x², √, a⁄b, ±, π, ≤ ...) that type
    at the cursor, and shows the answer typeset ("we read: ...") as they type.
 
 Grid questions (area models, tables of values).

@@ -292,7 +292,7 @@
               </section>
             {/if}
 
-            <AnswersPanel runId={run.id} modules={lesson.modules} {rs} {students} />
+            <AnswersPanel runId={run.id} modules={lesson.modules} {rs} {students} onspotlight={(spot) => send({ type: 'spotlight', spot })} />
 
             <section class="{panel} space-y-2">
               <div class={heading}>// what students see</div>

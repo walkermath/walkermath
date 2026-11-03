@@ -69,9 +69,36 @@ export interface RoomState {
   pageOrder: (string[] | null)[];
   /** The current module (not Notes) has its board up instead of its own content. */
   onBoard: boolean;
+  /** On the projector over the page: a poll's results or one student's answer (never a name). Cleared on moving on. */
+  spotlight?: Spotlight | null;
   /** From the latest re-plan: how far the floors run past the bell, and time nothing can absorb. */
   overSec: number;
   spareSec: number;
+}
+
+/** What the teacher can put on the projector from the answers box. */
+export type Spotlight =
+  | { kind: 'tally'; title: string; bars: { label: string; count: number }[] }
+  | { kind: 'answer'; title: string; text: string; math: boolean };
+
+export const SPOTLIGHT_LIMITS = { title: 120, label: 80, bars: 12, text: 1000, count: 1000 } as const;
+
+const str = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').slice(0, max) : '');
+
+/** A spotlight from the control panel, checked (null = clear it); undefined if it isn't one. */
+export function parseSpotlight(v: any): Spotlight | null | undefined {
+  if (v === null) return null;
+  if (!v || typeof v !== 'object') return undefined;
+  const title = str(v.title, SPOTLIGHT_LIMITS.title);
+  if (v.kind === 'tally' && Array.isArray(v.bars) && v.bars.length >= 1 && v.bars.length <= SPOTLIGHT_LIMITS.bars) {
+    const bars = v.bars.map((b: any) => ({ label: str(b?.label, SPOTLIGHT_LIMITS.label), count: Number(b?.count) }));
+    if (!bars.every((b: any) => Number.isInteger(b.count) && b.count >= 0 && b.count <= SPOTLIGHT_LIMITS.count)) return undefined;
+    return { kind: 'tally', title, bars };
+  }
+  if (v.kind === 'answer' && typeof v.text === 'string' && v.text.trim()) {
+    return { kind: 'answer', title, text: str(v.text, SPOTLIGHT_LIMITS.text), math: v.math === true };
+  }
+  return undefined;
 }
 
 export type Command =
@@ -84,6 +111,7 @@ export type Command =
   | { type: 'page'; page: number }
   | { type: 'addBoard'; id: string }
   | { type: 'board'; on: boolean }
+  | { type: 'spotlight'; spot: Spotlight | null }
   | { type: 'end' };
 
 /** Pages a module can have (40 slides plus the blackboards added in class). */
@@ -259,7 +287,8 @@ function enter(s: RoomState, modules: RoomModule[], index: number, now: number):
     // A module whose time already ran out stays at 0:00 and waits.
     holding: !!s.done[index],
     page: s.pages[index] ?? 0,
-    onBoard: false
+    onBoard: false,
+    spotlight: null
   };
   if (base.holding) return replanRest(base, modules, now);
   return fit(base, modules, index, sec(s.endsAt - now));
@@ -346,6 +375,10 @@ export function parseCommand(v: any): Command | null {
       return typeof v.id === 'string' && BOARD_ID.test(v.id) ? { type: 'addBoard', id: v.id } : null;
     case 'board':
       return typeof v.on === 'boolean' ? { type: 'board', on: v.on } : null;
+    case 'spotlight': {
+      const spot = parseSpotlight(v.spot);
+      return spot === undefined ? null : { type: 'spotlight', spot };
+    }
     default:
       return null;
   }
@@ -436,8 +469,12 @@ export function apply(s: RoomState, modules: RoomModule[], cmd: Command, now: nu
       next = { ...s, onBoard: cmd.on };
       break;
     }
+    case 'spotlight':
+      if (cmd.spot === null && !s.spotlight) break;
+      next = { ...s, spotlight: cmd.spot };
+      break;
     case 'end':
-      next = { ...close(s, now), status: 'ended', endedAt: now, holding: false, pausedAt: null };
+      next = { ...close(s, now), status: 'ended', endedAt: now, holding: false, pausedAt: null, spotlight: null };
       break;
   }
   return next === s ? s : { ...next, version: s.version + 1 };

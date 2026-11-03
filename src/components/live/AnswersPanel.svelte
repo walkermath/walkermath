@@ -5,7 +5,7 @@
 <script lang="ts">
   import { gridText } from '../../lib/lesson/grid.ts';
   import { onDestroy, onMount } from 'svelte';
-  import type { RoomModule, RoomState } from '../../lib/lesson/room.ts';
+  import type { RoomModule, RoomState, Spotlight } from '../../lib/lesson/room.ts';
   import type { RosterRow } from '../../lib/lesson/liveClient.ts';
   import { heading, label, panel } from '../teach/ui.ts';
 
@@ -18,8 +18,16 @@
     runId,
     modules,
     rs,
-    students
-  }: { runId: string; modules: RoomModule[]; rs: RoomState; students: RosterRow[] } = $props();
+    students,
+    onspotlight
+  }: {
+    runId: string;
+    modules: RoomModule[];
+    rs: RoomState;
+    students: RosterRow[];
+    /** Put a poll's results or one answer on the projector (null hides it). */
+    onspotlight?: (spot: Spotlight | null) => void;
+  } = $props();
 
   let collect = $state<CollectModule[]>([]);
   let rows = $state<Row[]>([]);
@@ -99,6 +107,30 @@
     return { answered: answered.length, right, keyed: !!q.answer };
   }
   const keyText = (q: Q) => (q.kind === 'choice' && q.answer !== '' ? `${letter(Number(q.answer))}` : q.kind === 'grid' ? gridText(q.answer) : q.answer);
+  /** A question's answers as bars: each choice, or the most common answers (alike ones together). */
+  function pollOf(q: Q, qi: number): Spotlight {
+    const answered = mRows.map((r) => r.answers[q.id] ?? '').filter((v) => v.trim() !== '');
+    let bars: { label: string; count: number }[];
+    if (q.kind === 'choice') {
+      bars = q.choices.map((c, i) => ({ label: `${letter(i)}. ${c}`, count: answered.filter((v) => v === String(i)).length }));
+    } else {
+      const groups = new Map<string, { label: string; count: number }>();
+      for (const v of answered) {
+        const text = shownAnswer(q, v);
+        const k = text.trim().toLowerCase().replace(/\s+/g, '');
+        const g = groups.get(k) ?? { label: text.trim(), count: 0 };
+        g.count++;
+        groups.set(k, g);
+      }
+      const sorted = [...groups.values()].sort((a, b) => b.count - a.count);
+      bars = sorted.slice(0, 7);
+      const rest = sorted.slice(7).reduce((n, g) => n + g.count, 0);
+      if (rest) bars.push({ label: 'other answers', count: rest });
+    }
+    return { kind: 'tally', title: `Q${qi + 1}`, bars };
+  }
+  const showAnswer = (title: string, text: string, math: boolean) => onspotlight?.({ kind: 'answer', title, text, math });
+
   const cellCls = (v: boolean | null | undefined) =>
     v === true ? 'text-[var(--ok)]' : v === false ? 'text-[var(--bad)]' : '';
 </script>
@@ -121,6 +153,14 @@
       </label>
       {#if error}<span class="text-[var(--warn)]">// {error}</span>{/if}
     </div>
+    {#if rs.spotlight && onspotlight}
+      <p class="text-[var(--accent)]">
+        // on the projector: {rs.spotlight.kind === 'tally' ? `${rs.spotlight.title} results` : `an answer to ${rs.spotlight.title}`}
+        <button type="button" class="underline hover:text-[var(--accent)] cursor-pointer" onclick={() => onspotlight(null)}>[hide]</button>
+      </p>
+    {:else if onspotlight && shown && shown.kind !== 'tap' && shown.kind !== 'coliseum'}
+      <p class={label}>// click an answer to show it on the projector (no name), or [results → screen] for a question's tally.</p>
+    {/if}
 
     {#if !shown}
       <p class={label}>// the live module doesn't collect anything. pick one above to see its answers.</p>
@@ -137,6 +177,9 @@
                   <div class={label}>
                     {#if t.keyed}{t.right}/{t.answered} right · key {keyText(q)}{:else}{t.answered} in · no key{/if}
                   </div>
+                  {#if onspotlight && t.answered}
+                    <button type="button" class="underline hover:text-[var(--accent)] cursor-pointer" onclick={() => onspotlight(pollOf(q, qi))}>[results → screen]</button>
+                  {/if}
                 </th>
               {/each}
             </tr>
@@ -146,10 +189,17 @@
               {@const r = rowOf(p.aliasId)}
               <tr class="border-b border-[var(--line)] align-top">
                 <td class="py-1 pr-3 whitespace-nowrap {p.here ? '' : label}">{p.alias}</td>
-                {#each shown.questions as q (q.id)}
+                {#each shown.questions as q, qi (q.id)}
                   {@const v = shownAnswer(q, r?.answers[q.id])}
                   <td class="py-1 pr-3 max-w-[14rem] {cellCls(r?.correct[q.id])}" title={v}>
-                    {#if v}
+                    {#if v && onspotlight}
+                      <button
+                        type="button"
+                        class="text-left line-clamp-2 break-words hover:underline cursor-pointer"
+                        title="Show this answer on the projector (no name)"
+                        onclick={() => showAnswer(`Q${qi + 1}`, v, q.kind === 'math')}
+                      >{r?.correct[q.id] === true ? '✓ ' : r?.correct[q.id] === false ? '✗ ' : ''}{v}</button>
+                    {:else if v}
                       <span class="line-clamp-2 break-words">{r?.correct[q.id] === true ? '✓ ' : r?.correct[q.id] === false ? '✗ ' : ''}{v}</span>
                     {:else}
                       <span class={label}>-</span>
@@ -168,7 +218,14 @@
           {@const v = rowOf(p.aliasId)?.answers.short ?? ''}
           <li class="grid grid-cols-[9rem_minmax(0,1fr)] gap-3">
             <span class={p.here ? '' : label}>{p.alias}</span>
-            {#if v.trim()}<span class="whitespace-pre-wrap break-words">{v}</span>{:else}<span class={label}>-</span>{/if}
+            {#if v.trim()}
+              <span class="whitespace-pre-wrap break-words">
+                {v}
+                {#if onspotlight}
+                  <button type="button" class="ml-1 underline hover:text-[var(--accent)] cursor-pointer" onclick={() => showAnswer(shown?.title ?? "", v, false)}>[show]</button>
+                {/if}
+              </span>
+            {:else}<span class={label}>-</span>{/if}
           </li>
         {/each}
       </ul>

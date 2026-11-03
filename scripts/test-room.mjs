@@ -294,3 +294,32 @@ test('countdown text', async () => {
   assert.equal(countdown(-30_500), '-0:30');
   assert.equal(countdown(3_600_000), '60:00');
 });
+
+test('spotlight: the teacher puts a poll result or one answer on the projector; moving on clears it', () => {
+  const mods = [
+    { id: 'a', type: 'prompt', title: 'A', plannedSec: 300, pacing: 'flex', minSec: null, onTimeUp: 'auto', collects: true, config: {} },
+    { id: 'b', type: 'notes', title: 'B', plannedSec: 300, pacing: 'flex', minSec: null, onTimeUp: 'auto', collects: false, config: { slides: [] } }
+  ];
+  const t0 = Date.now();
+  let s = startRoom('r', mods, t0 + 3600_000, t0);
+  const tally = parseCommand({ type: 'spotlight', spot: { kind: 'tally', title: 'Q1', bars: [{ label: 'A. 4', count: 3 }, { label: 'B. 5', count: 1 }] } });
+  assert.ok(tally);
+  s = apply(s, mods, tally, t0 + 1000);
+  assert.deepEqual(s.spotlight.bars.map((b) => b.count), [3, 1]);
+  const ans = parseCommand({ type: 'spotlight', spot: { kind: 'answer', title: 'Q1', text: '(x+2)(x+5)', math: true } });
+  s = apply(s, mods, ans, t0 + 2000);
+  assert.equal(s.spotlight.text, '(x+2)(x+5)');
+  s = apply(s, mods, { type: 'next' }, t0 + 3000);
+  assert.equal(s.spotlight, null, 'moving on clears it');
+  s = apply(s, mods, ans, t0 + 4000);
+  s = apply(s, mods, parseCommand({ type: 'spotlight', spot: null }), t0 + 5000);
+  assert.equal(s.spotlight, null, 'hide');
+  for (const bad of [
+    { kind: 'tally', title: 'x', bars: [] },
+    { kind: 'tally', title: 'x', bars: [{ label: 'a', count: -1 }] },
+    { kind: 'tally', title: 'x', bars: Array.from({ length: 13 }, () => ({ label: 'a', count: 1 })) },
+    { kind: 'answer', title: 'x', text: '  ' },
+    { kind: 'alias', title: 'x' },
+    'hello'
+  ]) assert.equal(parseCommand({ type: 'spotlight', spot: bad }), null, JSON.stringify(bad));
+});
