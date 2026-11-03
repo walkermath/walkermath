@@ -6,6 +6,7 @@
 // Answer keys live only in a module's private part. splitModule() separates them before storage
 // and publicModule() is the only shape that will ever be sent to students.
 
+import { cleanGrid, newGrid, type Grid } from './grid.ts';
 import { readMath, type MathMatch } from './mathcheck.ts';
 import { splitSlides } from './slides.ts';
 import { STEP_SEC } from './time.ts';
@@ -52,7 +53,7 @@ export interface Link {
   url: string;
 }
 
-export type QuestionKind = 'text' | 'number' | 'choice' | 'math';
+export type QuestionKind = 'text' | 'number' | 'choice' | 'math' | 'grid';
 
 export interface Question {
   id: string;
@@ -62,8 +63,10 @@ export interface Question {
   choices: string[];
   /** Optional answer key: text, a number as text, algebra as typed, or the correct choice's index as text. Private. */
   answer: string;
-  /** Math questions only: 'form' = same form, any order (default); 'any' = any equivalent form. */
+  /** Math and grid questions: 'form' = same form, any order (default); 'any' = any equivalent form. */
   match?: MathMatch;
+  /** Grid questions: the table with its given cells and blanks (keys are in `answer`, see grid.ts). */
+  grid?: Grid;
 }
 
 /** What a question set is for. Picking one gives the module its starting title (and, for the two
@@ -313,7 +316,8 @@ export const newQuestion = (kind: QuestionKind = 'text'): Question => ({
   text: '',
   choices: kind === 'choice' ? ['', ''] : [],
   answer: '',
-  ...(kind === 'math' ? { match: 'form' as const } : {})
+  ...(kind === 'math' || kind === 'grid' ? { match: 'form' as const } : {}),
+  ...(kind === 'grid' ? { grid: newGrid() } : {})
 });
 
 export const DEFAULT_LESSON_SEC = 50 * 60;
@@ -395,11 +399,18 @@ function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | st
       if (qs.length > LIMITS.questions) return `${where}: at most ${LIMITS.questions} questions.`;
       const questions: Question[] = [];
       for (const [i, q] of qs.entries()) {
-        const kind: QuestionKind = ['text', 'number', 'choice', 'math'].includes(q?.kind) ? q.kind : 'text';
+        const kind: QuestionKind = ['text', 'number', 'choice', 'math', 'grid'].includes(q?.kind) ? q.kind : 'text';
         const text = cleanText(q?.text, LIMITS.text);
         if (!text) return `${where}: question ${i + 1} is empty.`;
         let choices: string[] = [];
-        let answer = cleanLine(q?.answer, LIMITS.answer);
+        let answer = kind === 'grid' ? '' : cleanLine(q?.answer, LIMITS.answer);
+        let grid: Grid | undefined;
+        if (kind === 'grid') {
+          const g = cleanGrid(q?.grid, q?.answer);
+          if (typeof g === 'string') return `${where}: question ${i + 1}: ${g}`;
+          grid = g.grid;
+          answer = g.answer;
+        }
         if (kind === 'choice') {
           choices = (Array.isArray(q?.choices) ? q.choices : []).map((x: unknown) => cleanLine(x, LIMITS.choice)).filter(Boolean);
           if (choices.length < 2 || choices.length > LIMITS.choices) {
@@ -420,7 +431,8 @@ function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | st
           text,
           choices,
           answer,
-          ...(kind === 'math' ? { match: q?.match === 'any' ? ('any' as const) : ('form' as const) } : {})
+          ...(kind === 'math' || kind === 'grid' ? { match: q?.match === 'any' ? ('any' as const) : ('form' as const) } : {}),
+          ...(grid ? { grid } : {})
         });
       }
       return { category: isPromptCategory(c.category) ? c.category : 'other', questions };

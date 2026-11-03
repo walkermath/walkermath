@@ -276,6 +276,17 @@ In class extras.
 2. **Math input:** a math question's box has symbol buttons (x², √, a⁄b, ±, π, ≤ ...) that type
    at the cursor, and shows the answer typeset ("we read: ...") as they type.
 
+Grid questions (area models, tables of values).
+
+1. In a question set choose **[+ grid]**. It starts as a 2 x 2 area model for x² + 7x + 10: the
+   header row and column are given ($x$, $+5$, $x$, $+2$) and the four areas are blank (shaded).
+2. Type a key in each blank (x^2, 5x, 2x, 10). **[make blank]** / **[make given]** switches a cell;
+   rows and columns go up to 8. Given cells take $...$ math.
+3. As a student, each blank is a small math box (its symbol buttons appear while it has focus).
+   Fill some in: the control panel shows "x^2 | 5x | _ | 10", and the question is right only when
+   every keyed blank is right.
+4. Reports show the same "a | b | _ | d" text, and the Questions sheet marks it.
+
 Looking back (Phase 5b). Needs a delivery you have ended, with a board added in class and a
 student who answered.
 
@@ -315,7 +326,7 @@ Tests (no install needed): `npm run test:lessons` (API, against a stand-in datab
 hand in, and marking against the key), `npm run test:ink` (strokes, the eraser, simplifying) and
 `npm run test:router` (every `/api` route is wired up) and `npm run test:pseudonym` (names and
 how sign-in reads a typed alias) and `npm run test:reports` (report sheets and the .xlsx/.csv files) and `npm run test:math` (the
-algebra answer checker).
+algebra answer checker) and `npm run test:grid` (grid questions).
 
 ## 5. Production: moving walkermath.com from Pages to the Worker
 

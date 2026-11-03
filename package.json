@@ -21,7 +21,8 @@
     "test:router": "node --experimental-strip-types --no-warnings --test scripts/test-router.mjs",
     "test:pseudonym": "node --experimental-strip-types --no-warnings --test scripts/test-pseudonym.mjs",
     "test:reports": "node --experimental-strip-types --no-warnings --test scripts/test-reports.mjs",
-    "test:math": "node --experimental-strip-types --no-warnings --test scripts/test-mathcheck.mjs"
+    "test:math": "node --experimental-strip-types --no-warnings --test scripts/test-mathcheck.mjs",
+    "test:grid": "node --experimental-strip-types --no-warnings --test scripts/test-grid.mjs"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.1",

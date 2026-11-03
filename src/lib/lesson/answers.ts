@@ -9,6 +9,7 @@
 //   tap        an activity's or independent work's "done" button: { done: '1' }
 // Answers are stored as { key: text }. Choice answers are the chosen index as text ('0', '1', ...).
 
+import { blankPositions, cleanGridAnswer, gridCorrect, type Grid } from './grid.ts';
 import { checkMath, MATH_MAX } from './mathcheck.ts';
 import { answersOpen, type RoomModule, type RoomState } from './room.ts';
 
@@ -23,7 +24,7 @@ export const ANSWER_LIMITS = {
 export type Answers = Record<string, string>;
 
 export type AnswerSpec =
-  | { kind: 'questions'; questions: { id: string; kind: 'text' | 'number' | 'choice' | 'math'; text: string; choices: string[] }[] }
+  | { kind: 'questions'; questions: { id: string; kind: 'text' | 'number' | 'choice' | 'math' | 'grid'; text: string; choices: string[]; grid?: Grid }[] }
   | { kind: 'short' }
   | { kind: 'tap' };
 
@@ -81,6 +82,10 @@ export function cleanAnswers(spec: AnswerSpec, input: unknown): Answers | string
     if (q.kind === 'choice') {
       if (v !== '' && !(/^\d{1,2}$/.test(v) && Number(v) < q.choices.length)) return 'Invalid answers.';
       out[k] = v;
+    } else if (q.kind === 'grid') {
+      const g = cleanGridAnswer(v, q.grid ? blankPositions(q.grid).length : 0);
+      if (g === null) return 'Invalid answers.';
+      out[k] = g;
     } else {
       const max = q.kind === 'number' ? ANSWER_LIMITS.number : q.kind === 'math' ? ANSWER_LIMITS.math : ANSWER_LIMITS.text;
       if (v.length > max) return `Keep each answer under ${max} characters.`;
@@ -127,6 +132,7 @@ export function isCorrect(q: { kind: string; answer: string; match?: string }, a
   if (!q.answer) return null;
   if (answer === undefined || answer.trim() === '') return null;
   if (q.kind === 'choice') return answer === q.answer;
+  if (q.kind === 'grid') return gridCorrect(q.answer, answer, q.match === 'any' ? 'any' : 'form');
   if (q.kind === 'math') return checkMath(q.answer, answer, q.match === 'any' ? 'any' : 'form');
   if (q.kind === 'number') {
     const a = toNumber(answer);

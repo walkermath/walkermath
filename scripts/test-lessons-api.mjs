@@ -460,7 +460,12 @@ console.log('lessons');
   const spec = [
     { id: uuid(), type: 'prompt', title: 'Bellwork', plannedSec: 360, pacing: 'flex', minSec: null, onTimeUp: 'auto', teacherNotes: 'Walk the room; watch for sign errors.',
       config: { category: 'bellwork', questions: [{ id: q1, kind: 'number', text: 'Solve 2x + 3 = 11', choices: [], answer: '4' },
-                            { id: uuid(), kind: 'choice', text: 'Which is linear?', choices: ['y = x^2', 'y = 3x', ''], answer: '1' }] } },
+                            { id: uuid(), kind: 'choice', text: 'Which is linear?', choices: ['y = x^2', 'y = 3x', ''], answer: '1' },
+                            { id: uuid(), kind: 'grid', text: 'Finish the area model', choices: [], match: 'form', answer: JSON.stringify(['x^2', '5x', '2x', '10']),
+                              grid: { rows: 3, cols: 3, headerRow: true, headerCol: true, cells: [
+                                [{ text: '×', blank: false }, { text: '$x$', blank: false }, { text: '$+5$', blank: false }],
+                                [{ text: '$x$', blank: false }, { text: 'leak?', blank: true }, { text: '', blank: true }],
+                                [{ text: '$+2$', blank: false }, { text: '', blank: true }, { text: '', blank: true }]] } }] } },
     { id: uuid(), type: 'notes', title: 'Notes', plannedSec: 600, pacing: 'flex', minSec: 480, onTimeUp: 'auto',
       config: { source: 'note', noteId: 'equations', markdown: '', revealSections: true } },
     { id: uuid(), type: 'activity', title: 'Learning activity 1', plannedSec: 360, pacing: 'flex', minSec: null, onTimeUp: 'auto',
@@ -485,6 +490,7 @@ console.log('lessons');
     [{ modules: [{ ...spec[2], config: { links: [{ url: 'javascript:alert(1)' }] } }] }, 'bad link'],
     [{ modules: [{ ...spec[0], config: { questions: [{ kind: 'text', text: '' }] } }] }, 'empty question'],
     [{ modules: [{ ...spec[0], config: { questions: [{ kind: 'math', text: 'Factor', answer: '(x+5' }] } }] }, 'a math answer key that cannot be read'],
+    [{ modules: [{ ...spec[0], config: { questions: [{ kind: 'grid', text: 'Table', grid: { rows: 1, cols: 2, cells: [[{ text: 'a' }, { text: 'b' }]] } }] } }] }, 'a grid with no blanks'],
     [{ modules: [spec[0], spec[0]] }, 'duplicate module id'],
     [{ resources: [{ label: 'x', url: 'javascript:alert(1)' }] }, 'bad resource link'],
     [{ resources: Array.from({ length: 11 }, () => ({ label: 'a', url: 'https://a.example' })) }, 'too many resources'],
@@ -503,6 +509,12 @@ console.log('lessons');
   assert.deepEqual(lesson.modules.map((m) => m.plannedSec).reduce((a, b) => a + b), 2880);
   assert.equal(lesson.modules[0].config.questions[0].answer, '4');
   assert.deepEqual(lesson.modules[0].config.questions[1].choices, ['y = x^2', 'y = 3x']);
+  const gq = lesson.modules[0].config.questions[2];
+  assert.equal(gq.kind, 'grid');
+  assert.deepEqual(JSON.parse(gq.answer), ['x^2', '5x', '2x', '10'], 'grid keys kept, in reading order');
+  assert.equal(gq.grid.cells[1][1].text, '', 'a blank never carries text');
+  const stored = env.DB.sql.prepare('SELECT config_json FROM lesson_modules WHERE id = ?').get(lesson.modules[0].id);
+  assert.ok(stored && !stored.config_json.includes('5x'), "grid keys are stored with the private keys, not in the students' config");
   assert.equal(lesson.modules[2].config.links[0].label, 'walkermath.com');
   assert.equal(lesson.modules[5].minSec, null); // locked modules have no floor
   assert.equal(lesson.topic, 'Two-step equations');

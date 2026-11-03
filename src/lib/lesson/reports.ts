@@ -16,6 +16,7 @@
 // Rows are student aliases, never names. A blank cell means nothing was handed in.
 
 import { answerSpec, isAnswered, isCorrect, toNumber, type Answers } from './answers.ts';
+import { gridText } from './grid.ts';
 
 export type ItemKind = 'joined' | 'responses' | 'results' | 'coliseum';
 
@@ -181,6 +182,7 @@ const runOrder = (a: ReportRun, b: ReportRun) => (a.date + a.startTime).localeCo
 /** A choice answer ('1') as its text ('B. x = 3'); other answers as typed. */
 export function answerText(q: ReportQuestion, a: string | undefined): string | null {
   if (a === undefined || a.trim() === '') return null;
+  if (q.kind === 'grid') return gridText(a);
   if (q.kind === 'choice') {
     const i = Number(a);
     return Number.isInteger(i) && q.choices[i] !== undefined ? `${String.fromCharCode(65 + i)}. ${q.choices[i]}` : a;

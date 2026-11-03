@@ -14,6 +14,7 @@
   import type { InkStore } from '../../lib/lesson/inkStore.svelte.ts';
   import { ANSWER_LIMITS, answerSpec, isAnswered, type Answers } from '../../lib/lesson/answers.ts';
   import { renderMarkdown } from '../../lib/lesson/markdown.ts';
+  import { GRID_BLANK_MAX, blankPositions, joinList, parseList } from '../../lib/lesson/grid.ts';
   import MathInput from './MathInput.svelte';
   import PageView from './PageView.svelte';
 
@@ -71,6 +72,15 @@
     if (!editable) return;
     onanswer?.({ ...mine, [key]: value }, flush);
   };
+
+  /** One blank of a grid question; the question's answer is the list of all its blanks. */
+  const setBlank = (qid: string, count: number, k: number, value: string, flush: boolean) => {
+    const list = parseList(mine[qid] ?? '');
+    while (list.length < count) list.push('');
+    list[k] = value;
+    set(qid, joinList(list), flush);
+  };
+  const isHeader = (g: { headerRow: boolean; headerCol: boolean }, r: number, c: number) => (g.headerRow && r === 0) || (g.headerCol && c === 0);
 
   /* Notes: students follow the teacher's page until they flip away; [back to live] returns. */
   const home = $derived(Math.min(livePage, Math.max(0, pages.length - 1)));
@@ -235,6 +245,45 @@
                 </li>
               {/each}
             </ul>
+          {:else if q.kind === 'grid' && q.grid}
+            {@const vals = parseList(mine[q.id] ?? '')}
+            {@const blanks = blankPositions(q.grid)}
+            <div class="overflow-x-auto">
+              <table class="border-collapse">
+                <tbody>
+                  {#each q.grid.cells as row, r}
+                    <tr>
+                      {#each row as cell, c}
+                        {@const k = blanks.findIndex(([br, bc]) => br === r && bc === c)}
+                        <td
+                          class="border-2 border-[var(--line)] p-1 min-w-24 h-14 text-center align-middle {isHeader(q.grid, r, c)
+                            ? 'bg-[var(--well)] font-bold'
+                            : ''}"
+                        >
+                          {#if cell.blank}
+                            {#if student}
+                              <MathInput
+                                compact
+                                ariaLabel="Question {i + 1}, row {r + 1}, column {c + 1}"
+                                maxlength={GRID_BLANK_MAX}
+                                value={vals[k] ?? ''}
+                                disabled={!editable}
+                                oninput={(v) => setBlank(q.id, blanks.length, k, v, false)}
+                                onchange={(v) => setBlank(q.id, blanks.length, k, v, true)}
+                              />
+                            {:else}
+                              <span class={label}>?</span>
+                            {/if}
+                          {:else}
+                            <span class="grid-cell">{@html renderMarkdown(cell.text)}</span>
+                          {/if}
+                        </td>
+                      {/each}
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
           {:else if student}
             {#if q.kind === 'number'}
               <input
@@ -324,3 +373,9 @@
     {/if}
   {/if}
 </div>
+
+<style>
+  .grid-cell :global(p) {
+    margin: 0;
+  }
+</style>

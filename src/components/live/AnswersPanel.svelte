@@ -3,6 +3,7 @@
 <!-- key. Follows the live module unless you pick another; refreshes every few seconds. Your keys -->
 <!-- come from the delivery's own copy of the lesson, so they match what students saw. -->
 <script lang="ts">
+  import { gridText } from '../../lib/lesson/grid.ts';
   import { onDestroy, onMount } from 'svelte';
   import type { RoomModule, RoomState } from '../../lib/lesson/room.ts';
   import type { RosterRow } from '../../lib/lesson/liveClient.ts';
@@ -89,6 +90,7 @@
   function shownAnswer(q: Q, v: string | undefined): string {
     if (v === undefined || v.trim() === '') return '';
     if (q.kind === 'choice') return `${letter(Number(v))}. ${q.choices[Number(v)] ?? ''}`;
+    if (q.kind === 'grid') return gridText(v);
     return v;
   }
   function tally(q: Q) {
@@ -96,7 +98,7 @@
     const right = answered.filter((r) => r.correct[q.id] === true).length;
     return { answered: answered.length, right, keyed: !!q.answer };
   }
-  const keyText = (q: Q) => (q.kind === 'choice' && q.answer !== '' ? `${letter(Number(q.answer))}` : q.answer);
+  const keyText = (q: Q) => (q.kind === 'choice' && q.answer !== '' ? `${letter(Number(q.answer))}` : q.kind === 'grid' ? gridText(q.answer) : q.answer);
   const cellCls = (v: boolean | null | undefined) =>
     v === true ? 'text-[var(--ok)]' : v === false ? 'text-[var(--bad)]' : '';
 </script>

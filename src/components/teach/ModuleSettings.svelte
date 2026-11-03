@@ -20,6 +20,7 @@
     type QuestionKind
   } from '../../lib/lesson/modules.ts';
   import { floorOf, capOf } from '../../lib/lesson/pacing.ts';
+  import { GRID_MAX, GRID_TEXT_MAX, blankPositions, joinList, newGrid, parseList, reshape } from '../../lib/lesson/grid.ts';
   import { readMath } from '../../lib/lesson/mathcheck.ts';
   import { mmss } from '../../lib/lesson/time.ts';
   import MmssInput from './MmssInput.svelte';
@@ -126,9 +127,23 @@
     const q: Question = module.config.questions[qi];
     q.kind = kind;
     q.answer = '';
-    if (kind === 'math') q.match = 'form';
+    if (kind === 'math' || kind === 'grid') q.match = 'form';
     else delete q.match;
+    if (kind === 'grid') q.grid = newGrid();
+    else delete q.grid;
     if (kind === 'choice' && q.choices.length < 2) q.choices = ['', ''];
+  }
+  /* grid questions: keys live in q.answer as a list, one per blank (see grid.ts) */
+  function setGridKey(q: Question, k: number, v: string) {
+    const keys = parseList(q.answer);
+    while (keys.length < blankPositions(q.grid!).length) keys.push('');
+    keys[k] = v;
+    q.answer = joinList(keys);
+  }
+  function reshapeGrid(q: Question, change: { rows?: number; cols?: number; toggle?: [number, number] }) {
+    const r = reshape(q.grid!, parseList(q.answer), change);
+    q.grid = r.grid;
+    q.answer = joinList(r.keys);
   }
   function moveQuestion(qi: number, to: number) {
     const qs: Question[] = module.config.questions;
@@ -270,6 +285,7 @@
               <option value="text">short text</option>
               <option value="number">number</option>
               <option value="math">math (algebra)</option>
+              <option value="grid">grid (table / area model)</option>
               <option value="choice">multiple choice</option>
             </select>
             <span class="flex-1"></span>
@@ -305,6 +321,82 @@
                   <button type="button" class="hover:text-[var(--accent)] cursor-pointer {label}" onclick={() => (q.answer = '')}>[no answer key]</button>
                 {/if}
               </div>
+            </div>
+          {:else if q.kind === 'grid' && q.grid}
+            {@const keys = parseList(q.answer)}
+            {@const blanks = blankPositions(q.grid)}
+            <div class="space-y-2">
+              <div class="flex flex-wrap items-center gap-3 text-xs">
+                <label class="flex items-center gap-1">
+                  <span class={label}>rows</span>
+                  <input class="{field} w-16 p-1" type="number" min="1" max={GRID_MAX} value={q.grid.rows} onchange={(e) => reshapeGrid(q, { rows: Number(e.currentTarget.value) })} />
+                </label>
+                <label class="flex items-center gap-1">
+                  <span class={label}>columns</span>
+                  <input class="{field} w-16 p-1" type="number" min="1" max={GRID_MAX} value={q.grid.cols} onchange={(e) => reshapeGrid(q, { cols: Number(e.currentTarget.value) })} />
+                </label>
+                <label class="flex items-center gap-1"><input type="checkbox" bind:checked={q.grid.headerRow} /> first row is a header</label>
+                <label class="flex items-center gap-1"><input type="checkbox" bind:checked={q.grid.headerCol} /> first column is a header</label>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="border-collapse">
+                  <tbody>
+                    {#each q.grid.cells as row, r}
+                      <tr>
+                        {#each row as cell, c}
+                          {@const k = blanks.findIndex(([br, bc]) => br === r && bc === c)}
+                          <td
+                            class="border border-[var(--line)] p-1 align-top {cell.blank
+                              ? 'bg-[var(--accent)]/10'
+                              : (q.grid.headerRow && r === 0) || (q.grid.headerCol && c === 0)
+                                ? 'bg-[var(--well)]'
+                                : ''}"
+                          >
+                            {#if cell.blank}
+                              <input
+                                class="{field} p-1 w-28"
+                                value={keys[k] ?? ''}
+                                placeholder="key (optional)"
+                                autocomplete="off"
+                                spellcheck="false"
+                                aria-label="Answer key, row {r + 1}, column {c + 1}"
+                                oninput={(e) => setGridKey(q, k, e.currentTarget.value)}
+                              />
+                            {:else}
+                              <input
+                                class="{field} p-1 w-28"
+                                bind:value={cell.text}
+                                maxlength={GRID_TEXT_MAX}
+                                placeholder="given"
+                                aria-label="Given, row {r + 1}, column {c + 1}"
+                              />
+                            {/if}
+                            <button type="button" class="block text-xs {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => reshapeGrid(q, { toggle: [r, c] })}>
+                              {cell.blank ? '[make given]' : '[make blank]'}
+                            </button>
+                          </td>
+                        {/each}
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+              {#each keys as k, ki}
+                {#if k.trim() && !readMath(k).ok}
+                  <p class="text-xs text-[var(--bad)]">blank {ki + 1}: {(readMath(k) as { error: string }).error}</p>
+                {/if}
+              {/each}
+              <label class="flex flex-wrap items-center gap-2">
+                <span class={label}>count as correct</span>
+                <select class="{field} w-64 p-1" bind:value={q.match}>
+                  <option value="form">same form, any order</option>
+                  <option value="any">any equivalent form</option>
+                </select>
+              </label>
+              <p class="text-xs {label}">
+                // shaded blanks are what students fill in; type a key in each to have it marked (checked like a math answer, students never see
+                it). given cells can use $...$ for math, like $x^2$ or $+5$. the question is right when every keyed blank is right.
+              </p>
             </div>
           {:else if q.kind === 'math'}
             <div class="space-y-1">
@@ -349,6 +441,7 @@
           <button type="button" class={btn} onclick={() => addQuestion('text')}>[+ short text]</button>
           <button type="button" class={btn} onclick={() => addQuestion('number')}>[+ number]</button>
           <button type="button" class={btn} onclick={() => addQuestion('math')}>[+ math]</button>
+          <button type="button" class={btn} onclick={() => addQuestion('grid')}>[+ grid]</button>
           <button type="button" class={btn} onclick={() => addQuestion('choice')}>[+ multiple choice]</button>
         </div>
       {/if}
