@@ -4,6 +4,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
   import { PIN_LENGTH } from '../../lib/classroom.ts';
+  import { niceDate } from '../teach/ui.ts';
 
   type Student = { alias: string; className: string; period: string; teacher: string; test: boolean };
   type ClassInfo = { name: string; period: string; test: boolean };
@@ -25,19 +26,39 @@
   async function checkLive() {
     if (!student) return;
     try {
-      live = (await api<{ runs: { id: string; lessonTitle: string }[] }>('/api/class/live')).runs;
+      const runs = (await api<{ runs: { id: string; lessonTitle: string }[] }>('/api/class/live')).runs;
+      // A lesson starting or ending changes the lists below too.
+      if (runs.map((r) => r.id).join() !== live.map((r) => r.id).join()) loadLessons();
+      live = runs;
     } catch {
       // try again on the next tick
     }
   }
+
+  /* The class's lessons: finished ones to look back at, and what's coming up. */
+  type LessonItem = { runId: string; title: string; date: string; startTime: string };
+  let lessons = $state<{ past: LessonItem[]; upcoming: LessonItem[] } | null>(null);
+  async function loadLessons() {
+    try {
+      lessons = await api<{ past: LessonItem[]; upcoming: LessonItem[] }>('/api/class/lessons');
+    } catch {
+      // the list is a convenience; the live button above still works
+    }
+  }
+  const time = (hhmm: string) => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  };
   $effect(() => {
     if (student && !liveTimer) {
       checkLive();
+      loadLessons();
       liveTimer = setInterval(checkLive, 5000);
     } else if (!student && liveTimer) {
       clearInterval(liveTimer);
       liveTimer = null;
       live = [];
+      lessons = null;
     }
   });
   onDestroy(() => liveTimer && clearInterval(liveTimer));
@@ -133,6 +154,34 @@
         <p class="text-sm">No live lesson right now. When your teacher starts one, it will show up here.</p>
       {/if}
     </section>
+    {#if lessons && (lessons.upcoming.length || lessons.past.length)}
+      <section class="p-6 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md space-y-4">
+        {#if lessons.upcoming.length}
+          <div class="space-y-2">
+            <div class="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">// coming up</div>
+            <ul class="space-y-1 text-sm">
+              {#each lessons.upcoming as l (l.runId)}
+                <li><span class="text-[var(--text-muted)]">{niceDate(l.date)} · {time(l.startTime)}</span> {l.title}</li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
+        {#if lessons.past.length}
+          <div class="space-y-2">
+            <div class="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">// past lessons</div>
+            <ul class="space-y-1 text-sm">
+              {#each lessons.past as l (l.runId)}
+                <li>
+                  <a class="underline hover:text-[var(--accent)]" href="/class/lesson?run={encodeURIComponent(l.runId)}">{l.title}</a>
+                  <span class="text-[var(--text-muted)]">· {niceDate(l.date)}</span>
+                </li>
+              {/each}
+            </ul>
+            <p class="text-xs text-[var(--text-muted)]">// the notes and boards from class, and your own answers.</p>
+          </div>
+        {/if}
+      </section>
+    {/if}
     <p class="text-xs text-[var(--text-muted)]">
       not you?
       <button type="button" class="underline hover:text-[var(--accent)] cursor-pointer" onclick={switchStudent} disabled={busy}>switch student</button>

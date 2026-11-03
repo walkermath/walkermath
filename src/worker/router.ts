@@ -15,6 +15,8 @@ import * as authLogout from '../../functions/api/auth/logout.js';
 import * as classMw from '../../functions/api/class/_middleware.js';
 import * as classAnswers from '../../functions/api/class/answers.js';
 import * as classBoardName from '../../functions/api/class/board-name.js';
+import * as classLessons from '../../functions/api/class/lessons/index.js';
+import * as classLessonOne from '../../functions/api/class/lessons/[runId].js';
 import * as classLive from '../../functions/api/class/live.js';
 import * as classLogout from '../../functions/api/class/logout.js';
 import * as classLookup from '../../functions/api/class/lookup.js';
@@ -71,6 +73,8 @@ export const ROUTES: Route[] = [
 
   r('/api/class/answers', 'class/answers.js', classAnswers),
   r('/api/class/board-name', 'class/board-name.js', classBoardName),
+  r('/api/class/lessons', 'class/lessons/index.js', classLessons),
+  r('/api/class/lessons/:runId', 'class/lessons/[runId].js', classLessonOne),
   r('/api/class/live', 'class/live.js', classLive),
   r('/api/class/logout', 'class/logout.js', classLogout),
   r('/api/class/lookup', 'class/lookup.js', classLookup),

@@ -30,6 +30,7 @@
     answers,
     editable = false,
     saveState = '',
+    marks,
     onanswer
   }: {
     module: RoomModule;
@@ -53,6 +54,8 @@
     /** The module is open: the student can change their answers. */
     editable?: boolean;
     saveState?: SaveState;
+    /** Looking back at a finished lesson: right (true), not right (false) or not marked (null), by question id. */
+    marks?: Record<string, boolean | null>;
     /** A change to the answers; `flush` = save now (a choice picked, a field left) rather than after a pause in typing. */
     onanswer?: (answers: Answers, flush: boolean) => void;
   } = $props();
@@ -195,7 +198,14 @@
     <ol class="space-y-3">
       {#each c.questions ?? [] as q, i (q.id)}
         <li class="p-4 rounded border border-[var(--line)] bg-[var(--bg-surface)] space-y-2">
-          <div class="font-bold">Q{i + 1}</div>
+          <div class="font-bold">
+            Q{i + 1}
+            {#if marks?.[q.id] === true}
+              <span class="ml-2 text-sm text-[var(--ok)]">✓ right</span>
+            {:else if marks?.[q.id] === false}
+              <span class="ml-2 text-sm text-[var(--bad)]">✗ not right</span>
+            {/if}
+          </div>
           <div class="slide-text">{@html renderMarkdown(q.text)}</div>
           {#if q.kind === 'choice'}
             <ul class="space-y-1" role={student ? 'radiogroup' : undefined}>

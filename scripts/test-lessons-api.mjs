@@ -104,6 +104,8 @@ const liveR = await load('functions/api/live/[runId].js');
 const answersR = await load('functions/api/class/answers.js');
 const runAnswersR = await load('functions/api/teach/runs/[runId]/answers.js');
 const classLive = await load('functions/api/class/live.js');
+const classLessonsR = await load('functions/api/class/lessons/index.js');
+const classLessonOneR = await load('functions/api/class/lessons/[runId].js');
 
 /* ---------- a stand-in for the LessonRoom Durable Object (same state machine, no sockets) ---------- */
 const room = await load('src/lib/lesson/room.ts');
@@ -765,6 +767,40 @@ console.log('live lessons');
   assert.equal((await ask({ ...want, runIds: [] })).status, 400);
   assert.equal((await ask({ ...want, items: {}, questions: [] })).status, 400, 'nothing picked');
   ok('reports are scoped to the teacher and checked');
+
+  // Phase 5b: the student looks back at the lesson.
+  const later = new Date(Date.now() + 3 * 86400_000).toISOString().slice(0, 10);
+  const next = (await body(await call(runsIdx, 'POST', T(`/api/teach/lessons/${l.id}/runs`, { method: 'POST', body: { classId: cls.id, date: later, startTime: '13:00', endTime: '13:50' } }), { lessonId: l.id }, teachMw))).runs.find((r) => r.date === later);
+  const list = await body(await call(classLessonsR, 'GET', S('/api/class/lessons'), {}, classMw));
+  assert.deepEqual(list.past.find((p) => p.runId === run.id), { runId: run.id, title: 'Live test', date: day, startTime: '13:00' });
+  assert.ok(list.upcoming.some((u) => u.runId === next.id && u.title === 'Live test'), 'what is coming up: a title and a time');
+  assert.ok(!list.upcoming.some((u) => u.runId === run.id) && !list.past.some((p) => p.runId === next.id));
+  ok("a student's lessons: finished ones to look back at, scheduled ones as a title and time");
+
+  const lookBack = (cookie, id = run.id) => call(classLessonOneR, 'GET', req(`/api/class/lessons/${id}`, { cookie }), { runId: id }, classMw);
+  const backRes = await lookBack(sc);
+  assert.equal(backRes.status, 200);
+  const past = (await body(backRes)).lesson;
+  assert.equal(past.run.title, 'Live test');
+  assert.equal(past.modules.length, 3);
+  assert.deepEqual(past.modules[1].pages.map((p) => [p.id, p.added]), [[board, true]], 'the board added in class is there');
+  assert.deepEqual(past.ink[board], [stroke], 'with its ink');
+  assert.deepEqual(past.answers[bell.id], { [qid]: '44' });
+  assert.deepEqual(past.marks[bell.id], { [qid]: false }, 'marked against the run’s key');
+  assert.deepEqual(past.scores[l.modules[1].id], { best: 15, plays: 2 });
+  const sent = JSON.stringify(past);
+  assert.ok(!sent.includes('"answer"') && !sent.includes('watch row 3') && !sent.includes('teacherNotes'), 'no answer keys or private notes');
+  ok('a past lesson: its pages and boards with ink, and the student’s own answers, marks and game scores');
+
+  const b2 = aliases[8];
+  const sc2 = cookieOf(await call(signin, 'POST', req('/api/class/signin', { method: 'POST', body: { passcode: cls.passcode, alias: b2.alias, pin: b2.pin } }), {}, classMw), '__Host-wm_student');
+  const theirs = (await body(await lookBack(sc2))).lesson;
+  assert.deepEqual([theirs.answers, theirs.marks, theirs.scores], [{}, {}, {}], 'a classmate sees the lesson, not these answers');
+  assert.deepEqual(theirs.ink[board], [stroke], 'an absent student still sees the boards');
+  assert.equal((await lookBack(null)).status, 401);
+  assert.equal((await lookBack(sc, next.id)).status, 404, 'not before it has been taught');
+  assert.equal((await lookBack(sc, 'nope')).status, 404);
+  ok('only students of the class, only finished lessons, only their own answers');
 }
 
 console.log('coliseum in lessons');

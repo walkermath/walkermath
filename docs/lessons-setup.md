@@ -266,6 +266,18 @@ Reports (Phase 5a, step 2). Finish at least one delivery with some answers first
 6. Check a blank cell means nothing was handed in, 0 means answered and wrong, and Joined says
    "not recorded" for lessons taught before `0009_run_joins.sql`.
 
+Looking back (Phase 5b). Needs a delivery you have ended, with a board added in class and a
+student who answered.
+
+1. As the student, open <http://localhost:8787/class>. Under **// past lessons** the ended lesson
+   is listed; under **// coming up** the next scheduled ones show a date, time and title only.
+2. Open the past lesson. The left side lists every part of the lesson (✓ = handed in, – = not,
+   "best N" = a game score). Notes show every page with your ink, boards added in class included.
+3. A question set shows the student's own answers with ✓ right / ✗ not right. The key itself is
+   never shown, and nothing can be changed.
+4. Sign in as a classmate who missed the lesson: the pages and ink are all there, with no answers.
+5. When a live lesson ends, the student's screen offers **[look back at this lesson]**.
+
 Math questions (Phase 5, step 3). Needs a bellwork or exit ticket with questions.
 
 1. In the lesson builder, open a question set and choose **[+ math]**. Type the key

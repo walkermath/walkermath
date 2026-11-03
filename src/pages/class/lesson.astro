@@ -1,0 +1,13 @@
+---
+// src/pages/class/lesson.astro
+// A student looking back at a finished lesson (?run=): its pages and boards, and their own answers.
+import Layout from '../../layouts/Layout.astro';
+import ClassLesson from '../../components/class/ClassLesson.svelte';
+import '../../styles/global.css';
+---
+
+<Layout title="walkerMath\class\lesson" wide>
+  <main class="py-8">
+    <ClassLesson client:only="svelte" />
+  </main>
+</Layout>

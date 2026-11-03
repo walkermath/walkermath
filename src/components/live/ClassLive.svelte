@@ -245,6 +245,10 @@
   <div class="max-w-xl mx-auto p-6 rounded border border-[var(--line)] bg-[var(--bg-surface)] space-y-3 text-sm">
     <div class="text-lg font-bold">{lesson.title}</div>
     <p>// the lesson is over. nice work.</p>
+    <p>
+      <a class="underline hover:text-[var(--accent)]" href="/class/lesson?run={encodeURIComponent(runId)}">[look back at this lesson]</a>
+      <span class={label}>// the notes, the boards and your answers (ready a moment after it ends)</span>
+    </p>
     <a class="underline hover:text-[var(--accent)]" href="/class">&lt;- [class]</a>
   </div>
 {:else}
