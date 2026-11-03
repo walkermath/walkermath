@@ -954,6 +954,14 @@ console.log('coliseum in lessons');
   assert.ok(!JSON.stringify(rows).includes(a.alias), 'the lesson alias never reaches the public board');
   const locked = await call(boardNameR, 'POST', S('/api/class/board-name', { method: 'POST', body: { reroll: true } }), {}, classMw);
   assert.equal(locked.status, 409);
+  // The public board shows the name and the result, never period, teacher, or class filters.
+  for (const q of ['', '&class_period=P3', '&teacher=WALKER', '&class_period=P9&teacher=NOBODY']) {
+    const pubBoard = await body(await call(publicBoard, 'GET', req(`/api/leaderboard?game=gcd-racer&event=60s${q}`)));
+    assert.equal(pubBoard.entries.length, 1, `period and teacher filters are ignored (${q || 'none'})`);
+    const keys = Object.keys(pubBoard.entries[0]).sort().join();
+    assert.equal(keys, 'adjusted_ms,display_name,duration_ms,level,score,tags,variant');
+    assert.ok(!/P3|WALKER/i.test(JSON.stringify(pubBoard)), 'neither value appears anywhere in the response');
+  }
   ok('a posted score goes up under the leaderboard name (period and teacher from the session); then the name is fixed');
 
   const roster = (await body(await call(classOne, 'GET', T(`/api/teach/classes/${cls.id}`), { classId: cls.id }, teachMw))).aliases;

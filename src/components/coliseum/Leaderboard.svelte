@@ -18,11 +18,8 @@
   }
   interface Row {
     display_name: string;
-    class_period: string;
-    teacher?: string;
     score: number;
     duration_ms: number;
-    created_at: string;
     level: number;
     variant: string;
     tags: string;
@@ -39,8 +36,6 @@
   let level = 'ALL';
   let variant = 'all';
   let timeframe: 'all' | 'weekly' | 'daily' = 'all';
-  let selectedTeacher = 'ALL';
-  let selectedPeriod = 'ALL';
 
   let entries: Row[] = [];
   let players = 0;
@@ -48,10 +43,6 @@
   let loading = false;
   let loaded = false;
   let error = '';
-
-  // Teachers / periods seen so far, so the dropdowns stay populated
-  let availableTeachers: string[] = [];
-  const availablePeriods = ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9'];
 
   $: games = Array.from(new Set(boards.map(b => b.game))).sort();
   $: gameEvents = boards
@@ -64,11 +55,6 @@
   $: singleLevel = level !== 'ALL' || (!!activeBand && activeBand.lo === activeBand.hi);
   $: showAdjusted = rankBy === 'time' && !!def?.raceWeights && !singleLevel;
   $: hasSettingColumn = !!def?.levels || variantOptions.length > 0;
-
-  $: {
-    const fromEntries = entries.map(e => (e.teacher || '').trim().toUpperCase()).filter(Boolean);
-    availableTeachers = Array.from(new Set([...availableTeachers, ...fromEntries])).sort();
-  }
 
   function firstEventOf(g: string): EventId {
     return boards
@@ -102,8 +88,6 @@
       if (band !== 'ALL') params.set('band', band);
       if (level !== 'ALL') params.set('level', level);
       if (variant !== 'all') params.set('variant', variant);
-      if (selectedTeacher !== 'ALL') params.set('teacher', selectedTeacher);
-      if (selectedPeriod !== 'ALL') params.set('class_period', selectedPeriod);
 
       const res = await fetch(`/api/leaderboard?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to load standings');
@@ -126,9 +110,6 @@
     band = 'ALL';
     level = 'ALL';
     variant = 'all';
-    selectedTeacher = 'ALL';
-    selectedPeriod = 'ALL';
-    availableTeachers = [];
     fetchStandings();
   }
 
@@ -253,38 +234,8 @@
       {/if}
     </div>
 
-    <!-- Class filters + timeframe -->
-    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 text-xs">
-      <div class="flex flex-wrap items-center gap-3">
-        <div class="flex items-center gap-2">
-          <span class="text-[var(--text-muted)]">teacher:</span>
-          <select
-            bind:value={selectedTeacher}
-            on:change={fetchStandings}
-            class="px-2.5 py-1 rounded border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] hover:border-[var(--accent)] focus:outline-none focus:border-[var(--accent)] transition-colors cursor-pointer uppercase"
-          >
-            <option value="ALL">ALL</option>
-            {#each availableTeachers as t}
-              <option value={t}>{t}</option>
-            {/each}
-          </select>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <span class="text-[var(--text-muted)]">period:</span>
-          <select
-            bind:value={selectedPeriod}
-            on:change={fetchStandings}
-            class="px-2.5 py-1 rounded border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] hover:border-[var(--accent)] focus:outline-none focus:border-[var(--accent)] transition-colors cursor-pointer uppercase"
-          >
-            <option value="ALL">ALL</option>
-            {#each availablePeriods as p}
-              <option value={p}>{p}</option>
-            {/each}
-          </select>
-        </div>
-      </div>
-
+    <!-- Timeframe (no class, period or teacher: the board shows only leaderboard names) -->
+    <div class="flex items-center justify-end gap-4 text-xs">
       <div class="flex items-center gap-2">
         {#each timeframes as tf}
           <button on:click={() => setTimeframe(tf)} class={chip(timeframe === tf)}>[{tf}]</button>
@@ -306,7 +257,7 @@
       <p class="text-xs text-[var(--text-muted)]">{error}</p>
     {:else if entries.length === 0}
       <p class="text-xs text-[var(--text-muted)]">
-        [!] No records for this view. Try [all] settings, a wider timeframe, or fewer class filters.
+        [!] No records for this view. Try [all] settings or a wider timeframe.
       </p>
     {:else}
       <div class="overflow-x-auto">
@@ -315,8 +266,6 @@
             <tr class="border-b border-[var(--border-color)] text-[var(--text-muted)]">
               <th class="py-2 px-3 w-12">rank</th>
               <th class="py-2 px-3">user</th>
-              <th class="py-2 px-3">period</th>
-              <th class="py-2 px-3">teacher</th>
               {#if hasSettingColumn}
                 <th class="py-2 px-3">setting</th>
               {/if}
@@ -339,8 +288,6 @@
                   #{i + 1}
                 </td>
                 <td class="py-2.5 px-3 font-bold">{row.display_name}</td>
-                <td class="py-2.5 px-3 text-[var(--text-muted)]">{row.class_period || 'open'}</td>
-                <td class="py-2.5 px-3 text-[var(--text-muted)]">{row.teacher || '—'}</td>
                 {#if hasSettingColumn}
                   <td class="py-2.5 px-3 text-[var(--text-muted)]" title={row.tags ? `types: ${row.tags}` : ''}>
                     {settingText(row)}

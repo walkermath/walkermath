@@ -22,7 +22,7 @@ function weightCase(game) {
 
 // GET /api/leaderboard?list=true
 //   -> [{ game, event, entries, players }]            which boards exist
-// GET /api/leaderboard?game=..&event=..[&band=..|&level=..][&variant=typed|tiles][&teacher=..][&class_period=..][&timeframe=..]
+// GET /api/leaderboard?game=..&event=..[&band=..|&level=..][&variant=typed|tiles][&timeframe=..]
 //   -> { rankBy, players, entries: [...] }            one row per player: their best result across the filtered strata
 // (the old ?challenge_id=gcd-racer-60s form still works; it is parsed into game + event)
 export async function onRequestGet(context) {
@@ -79,17 +79,10 @@ export async function onRequestGet(context) {
     }
   }
 
-  // --- class / time filters ---
-  const teacher = searchParams.get('teacher');
-  if (teacher && teacher !== 'ALL') {
-    where.push('UPPER(teacher) = ?');
-    params.push(teacher.toUpperCase());
-  }
-  const classPeriod = searchParams.get('class_period');
-  if (classPeriod && classPeriod !== 'ALL') {
-    where.push('UPPER(class_period) = ?');
-    params.push(classPeriod.toUpperCase());
-  }
+  // --- time filter ---
+  // Period and teacher are stored with every score (for the teacher's own analysis) but are never
+  // returned or filterable here: the public board shows a leaderboard name and a result, nothing
+  // that says which class a student is in. Exact timestamps stay private too, for the same reason.
   const timeframe = searchParams.get('timeframe') || 'all';
   if (timeframe === 'daily') where.push(`created_at >= datetime('now', '-1 day')`);
   else if (timeframe === 'weekly') where.push(`created_at >= datetime('now', '-7 days')`);
@@ -110,8 +103,7 @@ export async function onRequestGet(context) {
       SELECT *, ROW_NUMBER() OVER (PARTITION BY display_name ORDER BY ${order}) AS rn
       FROM filtered
     )
-    SELECT display_name, class_period, teacher, school_year, score, duration_ms, created_at,
-           level, variant, tags, adjusted_ms
+    SELECT display_name, score, duration_ms, level, variant, tags, adjusted_ms
     FROM ranked
     WHERE rn = 1
     ORDER BY ${order}

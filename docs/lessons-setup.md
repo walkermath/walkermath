@@ -334,6 +334,12 @@ factorOutTheGCF (a Coliseum challenge).
 4. In a lesson, add a Coliseum Practice activity and pick factorOutTheGCF; scores land in the
    control panel and reports like the other games.
 
+The public leaderboard. Open `/coliseum#leaderboards`: rows show only rank, leaderboard name,
+setting and result, with no period or teacher column and no teacher/period filters. Period and
+teacher are still saved with each score in the database (`leaderboard_entries.class_period`,
+`.teacher`) for your own analysis; the API no longer returns or filters on them, nor on exact
+timestamps (only the all / weekly / daily filter remains).
+
 The live flag. As a signed-in student with a lesson running for your class, open any site page
 (home, notes, coliseum): a "live now: <lesson> · [join]" flag sits at the bottom left and takes you
 into the lesson; it appears within about 20 seconds of you starting the lesson, and goes when it
