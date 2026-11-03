@@ -1,5 +1,6 @@
 ---
 import FloatingNav from '../components/FloatingNav.astro';
+import LiveFlag from '../components/LiveFlag.astro';
 import '../styles/global.css';
 import 'katex/dist/katex.min.css';
 
@@ -22,6 +23,7 @@ const { title, wide = false } = Astro.props;
   </head>
   <body class:list={['min-h-screen p-6 md:p-12 mx-auto', wide ? 'max-w-6xl' : 'max-w-4xl']}>
     <FloatingNav />
+    <LiveFlag />
     <slot />
   </body>
 </html>

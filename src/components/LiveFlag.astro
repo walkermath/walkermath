@@ -1,0 +1,75 @@
+---
+// src/components/LiveFlag.astro
+// A small flag that follows a signed-in student around the site while their class has a live lesson
+// they aren't in: tap it to join, or to get back after navigating away. Nothing shows for anyone
+// else (signed out, teachers, no live lesson), or on the lesson pages themselves. Uses the same
+// /api/class/live the class page does; the x hides it for that lesson until the tab is closed.
+---
+
+<div id="live-flag" class="hidden fixed bottom-4 left-4 z-40 max-w-[calc(100vw-2rem)] items-center gap-3 font-mono text-sm bg-[var(--bg-surface)] border-2 border-[var(--accent)] rounded-md shadow-lg pl-3 pr-1 py-1.5" role="status">
+  <span class="inline-block w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse shrink-0" aria-hidden="true"></span>
+  <a id="live-flag-link" href="/class" class="min-w-0 truncate hover:text-[var(--accent)]"></a>
+  <button id="live-flag-x" type="button" class="px-2 py-0.5 text-[var(--text-muted)] hover:text-[var(--accent)] cursor-pointer" aria-label="Hide this">x</button>
+</div>
+
+<script>
+  const HIDE_ON = ['/class/live', '/embed/', '/teach']; // and these pages' children
+  const HIDE_EXACT = ['/class', '/class/']; // the class page has its own join button
+  const POLL_MS = 20_000;
+  const flag = document.getElementById('live-flag');
+  const link = document.getElementById('live-flag-link') as HTMLAnchorElement | null;
+  const close = document.getElementById('live-flag-x');
+  let timer: ReturnType<typeof setInterval> | undefined;
+  let shown = '';
+
+  const dismissed = (): string[] => {
+    try {
+      return JSON.parse(sessionStorage.getItem('live-flag-hidden') || '[]');
+    } catch {
+      return [];
+    }
+  };
+
+  function hide() {
+    flag?.classList.add('hidden');
+    flag?.classList.remove('flex');
+  }
+
+  async function check() {
+    if (!flag || !link || document.visibilityState === 'hidden') return;
+    try {
+      const res = await fetch('/api/class/live', { credentials: 'same-origin', cache: 'no-store' });
+      if (res.status === 401) {
+        clearInterval(timer); // not signed in to a class: nothing to show, stop asking
+        return hide();
+      }
+      if (!res.ok) return;
+      const runs: { id: string; lessonTitle: string }[] = (await res.json()).runs ?? [];
+      const mine = runs.find((r) => !dismissed().includes(r.id));
+      if (!mine) return hide();
+      shown = mine.id;
+      link.href = `/class/live?run=${encodeURIComponent(mine.id)}`;
+      link.textContent = `live now: ${mine.lessonTitle} · [join]`;
+      flag.classList.remove('hidden');
+      flag.classList.add('flex');
+    } catch {
+      // offline: leave it as it is and try again later
+    }
+  }
+
+  const path = location.pathname;
+  if (flag && !HIDE_EXACT.includes(path) && !HIDE_ON.some((p) => path === p || path.startsWith(p.endsWith('/') ? p : p + '/'))) {
+    close?.addEventListener('click', () => {
+      try {
+        sessionStorage.setItem('live-flag-hidden', JSON.stringify([...dismissed(), shown]));
+      } catch {
+        // hiding just won't last
+      }
+      hide();
+    });
+    check();
+    timer = setInterval(check, POLL_MS);
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && check());
+    window.addEventListener('pageshow', (e) => e.persisted && check()); // back button
+  }
+</script>

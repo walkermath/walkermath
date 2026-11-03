@@ -334,6 +334,12 @@ factorOutTheGCF (a Coliseum challenge).
 4. In a lesson, add a Coliseum Practice activity and pick factorOutTheGCF; scores land in the
    control panel and reports like the other games.
 
+The live flag. As a signed-in student with a lesson running for your class, open any site page
+(home, notes, coliseum): a "live now: <lesson> · [join]" flag sits at the bottom left and takes you
+into the lesson; it appears within about 20 seconds of you starting the lesson, and goes when it
+ends. The x hides it for that lesson until the tab closes. It doesn't show on the live lesson,
+the class page, /teach, or for anyone signed out.
+
 Looking back (Phase 5b). Needs a delivery you have ended, with a board added in class and a
 student who answered.
 
