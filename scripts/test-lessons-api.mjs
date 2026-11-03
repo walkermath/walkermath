@@ -718,7 +718,7 @@ console.log('live lessons');
   const bell = l.modules[0];
   const qid = bell.config.questions[0].id;
   const A = (b) => call(answersR, 'POST', S('/api/class/answers', { method: 'POST', body: { runId: run.id, ...b } }), {}, classMw);
-  assert.deepEqual(await body(await call(answersR, 'GET', S(`/api/class/answers?run=${run.id}`), {}, classMw)), { answers: {} });
+  assert.deepEqual(await body(await call(answersR, 'GET', S(`/api/class/answers?run=${run.id}`), {}, classMw)), { answers: {}, marks: {} });
   assert.equal((await A({ moduleId: bell.id, answers: { [qid]: '5' } })).status, 200, 'a draft');
   const saved = await A({ moduleId: bell.id, answers: { [qid]: '4' } });
   assert.equal(saved.status, 200);
@@ -772,7 +772,11 @@ console.log('live lessons');
   ok("I'm stuck: students raise their own hand; the teacher lowers it");
 
   assert.equal((await A({ moduleId: bell.id, answers: { [qid]: '44' } })).status, 200, 'the last keystrokes land in the grace period');
+  const getMine = async () => body(await call(answersR, 'GET', S(`/api/class/answers?run=${run.id}`), {}, classMw));
+  assert.deepEqual((await getMine()).marks, {}, 'no marks while the grace period still takes answers');
   rooms.get(`run:${run.id}`).state.closedAt[0] = Date.now() - 60_000; // ...and a minute later
+  assert.equal((await getMine()).marks[bell.id][qid], false, 'once closed, the student sees the mark (44 is not 4), never the key');
+  assert.ok(!JSON.stringify(await getMine()).includes('"answer"'), 'no key in the reply');
   const late = await A({ moduleId: bell.id, answers: { [qid]: '4' } });
   assert.equal(late.status, 409);
   assert.equal((await body(late)).closed, true);

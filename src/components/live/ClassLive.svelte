@@ -9,7 +9,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { MODULE_TYPES } from '../../lib/lesson/modules.ts';
-  import { lessonLeftMs, livePage, moduleLeftMs, pagesOf, type RoomState } from '../../lib/lesson/room.ts';
+  import { ANSWER_GRACE_MS, lessonLeftMs, livePage, moduleLeftMs, pagesOf, type RoomState } from '../../lib/lesson/room.ts';
   import { InkStore, inkHandlers } from '../../lib/lesson/inkStore.svelte.ts';
   import { answerSpec, isAnswered, type Answers } from '../../lib/lesson/answers.ts';
   import { clockAt, connectLive, countdown, type LiveConnection, type LiveLesson, type Transport } from '../../lib/lesson/liveClient.ts';
@@ -94,6 +94,8 @@
 
   /** The student's answers, by module id (what's on screen; may be ahead of what's saved). */
   let mine = $state<Record<string, Answers>>({});
+  /** Right / wrong per question for modules that have closed (sent by the server only after they close). */
+  let marks = $state<Record<string, Record<string, boolean | null>>>({});
   let saves = $state<Record<string, SaveState>>({});
   const dirty = new Set<string>(); // changed since the last save started
   const inflight = new Set<string>();
@@ -109,6 +111,7 @@
       const next = { ...mine };
       for (const [id, v] of Object.entries<any>(data.answers ?? {})) if (!dirty.has(id) && !inflight.has(id)) next[id] = v.answers ?? {};
       mine = next;
+      marks = data.marks ?? {};
     } catch {
       // offline: what's on screen stays; saving retries
     }
@@ -185,6 +188,8 @@
     if (key === lastKey) return;
     lastKey = key;
     flushAll();
+    // Once a module closes (and the last keystrokes have landed), fetch how the answers were marked.
+    setTimeout(loadMine, ANSWER_GRACE_MS + 500);
     const liveId = rs && lesson?.modules[rs.index]?.id;
     if (liveId && rs && !rs.holding && saves[liveId] === 'closed') saves[liveId] = '';
   });
@@ -419,6 +424,7 @@
             {ink}
             {runId}
             answers={mine[current.id] ?? {}}
+            marks={editable(shownIndex) ? undefined : marks[current.id]}
             editable={editable(shownIndex)}
             saveState={saves[current.id] ?? ''}
             onanswer={(a, flush) => current && edit(current.id, a, flush)}

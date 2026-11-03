@@ -5,7 +5,7 @@
 // lesson afterwards never changes what a delivery collected or how it was marked.
 
 import { answerSpec, checkSubmission, isCorrect, type Answers, type AnswerSpec } from '../lesson/answers.ts';
-import type { RoomState } from '../lesson/room.ts';
+import { answersOpen, type RoomState } from '../lesson/room.ts';
 import type { Lesson } from './lessons.ts';
 import { getLiveRun, roomModules, roomStub, type LiveRun } from './live.ts';
 import type { Student } from './sessions.ts';
@@ -69,6 +69,28 @@ export async function studentAnswers(db: any, runId: string, aliasId: string): P
     .all();
   const out: Record<string, { answers: Answers; updatedAt: number }> = {};
   for (const r of results) out[r.module_id] = { answers: parse(r.answers_json, {}), updatedAt: r.updated_at };
+  return out;
+}
+
+/**
+ * Right / wrong / no key for a student's answers, for modules that have closed (time ran out or the
+ * teacher moved on, and the short grace period is over). A module still taking answers is left out,
+ * so a key is never judged against an answer the student can still change. Computed against the
+ * run's own snapshot; the keys never leave the server.
+ */
+export async function closedMarks(env: any, run: LiveRun, answers: Record<string, { answers: Answers }>, now = Date.now()): Promise<Record<string, Record<string, boolean | null>>> {
+  const lesson = await runSnapshot(env.DB, run.id);
+  const state = lesson ? await peekRoom(env, run.id) : null;
+  const out: Record<string, Record<string, boolean | null>> = {};
+  if (!lesson || !state) return out;
+  (lesson.modules as any[]).forEach((m, i) => {
+    if (m.type !== 'prompt' || !answers[m.id]) return;
+    const ran = state.closedAt?.[i] != null || !!state.done?.[i] || (state.took?.[i] ?? 0) > 0 || (i === state.index && state.holding);
+    if (!ran || answersOpen(state, i, now)) return;
+    const marks: Record<string, boolean | null> = {};
+    for (const q of m.config?.questions ?? []) marks[q.id] = isCorrect(q, answers[m.id].answers[q.id]);
+    out[m.id] = marks;
+  });
   return out;
 }
 
