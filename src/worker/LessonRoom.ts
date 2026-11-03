@@ -26,7 +26,10 @@ import {
 } from '../lib/lesson/room.ts';
 import { INK_LIMITS, PAGE_ID, applyInk, parseInkOp, type InkOp, type Stroke } from '../lib/lesson/ink.ts';
 
-export interface Env {}
+export interface Env {
+  /** D1: the room writes only run_joins (when each student first turns up). */
+  DB?: any;
+}
 
 /** Hard cap on sockets per room; a class is ~35, so this only stops abuse. */
 const MAX_SOCKETS = 200;
@@ -134,8 +137,24 @@ export class LessonRoom extends DurableObject<Env> {
   private async markSeen(aliasId: string, alias: string) {
     const seen = await this.loadSeen();
     if (!aliasId || seen.get(aliasId) === alias) return;
+    const first = !seen.has(aliasId);
     seen.set(aliasId, alias);
     await this.ctx.storage.put('seen', Object.fromEntries(seen));
+    if (first) await this.recordJoin(aliasId);
+  }
+
+  /** The reports' Joined column: the first time this student connected to this delivery. */
+  private async recordJoin(aliasId: string) {
+    const runId = this.state?.runId;
+    if (!runId || !this.env.DB) return;
+    try {
+      await this.env.DB.prepare('INSERT OR IGNORE INTO run_joins (run_id, alias_id, joined_at) VALUES (?1, ?2, ?3)')
+        .bind(runId, aliasId, Date.now())
+        .run();
+    } catch (err) {
+      // A database without migration 0009, or a blip: the lesson goes on; only the report loses a time.
+      console.error('run_joins:', (err as Error).message);
+    }
   }
 
   /** A student socket that is still there: open and pinging. */

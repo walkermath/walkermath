@@ -1,34 +1,53 @@
 // src/lib/pseudonym.ts
-// Neutral, auto-generated player aliases ("VectorFoxK7M2"). Students never type a name.
+// Neutral, auto-generated names ("VectorFox42"). Students never type a name.
 //
-// Shared by the browser (to create/store the alias) and by functions/api/leaderboard.js (to
-// verify a submitted alias really came from this generator, so nobody can POST free text).
+// Used for class aliases (printed on a student's card) and leaderboard names (handed out by the
+// server). functions/api/leaderboard.js and the tests use isValidAlias to check a name really came
+// from this generator.
 //
 // RULES FOR EDITING THE LISTS
-//   * Only ever ADD words. Removing or renaming one makes already-stored aliases fail the
-//     server check.
-//   * Keep every word at most 6 letters, letters only: alias = adjective + noun + 4-char suffix
-//     must stay within 16 characters (the server accepts /^[A-Za-z0-9]{3,16}$/).
+//   * Only ever ADD words. Removing or renaming one makes names already issued fail the check.
+//   * Letters only, at most 7 per word: adjective + noun + 2-digit tail stays within 16 characters.
+//   * Keep words neutral: no slang meanings a class would snicker at.
+//
+// Names issued before Nov 2026 have a 4-character tail of consonants and digits ("VectorFoxK7M2");
+// they stay valid. New names get a 2-digit tail.
 
 export const ADJECTIVES = [
+  // the original 40 (at most 6 letters)
   'Delta', 'Matrix', 'Vector', 'Prism', 'Cosine', 'Apex', 'Turbo', 'Factor', 'Quanta', 'Sigma', 'Ember',
   'Alpha', 'Gamma', 'Theta', 'Lambda', 'Kappa', 'Radian', 'Prime', 'Cosmic', 'Binary',
   'Cubic', 'Linear', 'Tensor', 'Vertex', 'Polar', 'Orbit', 'Photon', 'Proton', 'Laser', 'Rocket',
-  'Solar', 'Lunar', 'Nova', 'Pixel', 'Quartz', 'Sonic', 'Hyper', 'Helix', 'Zenith', 'Quark'
+  'Solar', 'Lunar', 'Nova', 'Pixel', 'Quartz', 'Sonic', 'Hyper', 'Helix', 'Zenith', 'Quark',
+  // added Nov 2026
+  'Omega', 'Epsilon', 'Zeta', 'Iota', 'Beta', 'Atomic', 'Comet', 'Nebula', 'Plasma', 'Fractal',
+  'Integer', 'Decimal', 'Radical', 'Spiral', 'Quantum', 'Neon', 'Argon', 'Cobalt', 'Copper', 'Silver',
+  'Golden', 'Crystal', 'Granite', 'Glacier', 'Arctic', 'Thunder', 'Storm', 'Rapid', 'Swift', 'Stellar',
+  'Galaxy', 'Meteor', 'Kinetic', 'Magnet', 'Vortex', 'Tangent', 'Median', 'Summit', 'Cipher', 'Axiom'
 ] as const;
 
 export const NOUNS = [
+  // the original 40 (at most 6 letters)
   'Fox', 'Hawk', 'Otter', 'Falcon', 'Bison', 'Panda', 'Lynx', 'Viper', 'Badger', 'Owl',
   'Wolf', 'Raven', 'Gecko', 'Heron', 'Koala', 'Lemur', 'Moose', 'Newt', 'Osprey', 'Puma',
   'Robin', 'Seal', 'Tiger', 'Whale', 'Yak', 'Zebra', 'Dingo', 'Eagle', 'Finch', 'Ibis',
-  'Jaguar', 'Marten', 'Orca', 'Pika', 'Quokka', 'Shark', 'Stoat', 'Swan', 'Wombat', 'Condor'
+  'Jaguar', 'Marten', 'Orca', 'Pika', 'Quokka', 'Shark', 'Stoat', 'Swan', 'Wombat', 'Condor',
+  // added Nov 2026
+  'Bluejay', 'Bobcat', 'Cheetah', 'Cobra', 'Coyote', 'Crane', 'Dolphin', 'Ferret', 'Gazelle', 'Gibbon',
+  'Hippo', 'Hyena', 'Iguana', 'Impala', 'Kestrel', 'Kiwi', 'Llama', 'Magpie', 'Manatee', 'Meerkat',
+  'Narwhal', 'Ocelot', 'Parrot', 'Pelican', 'Penguin', 'Python', 'Rabbit', 'Salmon', 'Sparrow', 'Tapir',
+  'Toucan', 'Turtle', 'Walrus', 'Weasel', 'Bear', 'Elk', 'Mantis', 'Lion', 'Jackal', 'Alpaca'
 ] as const;
 
-// No vowels, so the random tail can never spell a word. No 0/1 so it can't be misread.
-const SUFFIX_CHARS = 'BCDFGHJKLMNPQRSTVWXZ23456789';
-const SUFFIX_LEN = 4;
+/** Two-digit tails never used: 69, and the hate-symbol numbers 14, 18 and 88. */
+export const BANNED_TAILS = ['14', '18', '69', '88'] as const;
+/** 10-99 (no leading zero to misread), minus the banned ones. */
+export const TAILS: readonly string[] = Array.from({ length: 90 }, (_, i) => String(i + 10)).filter(
+  (t) => !(BANNED_TAILS as readonly string[]).includes(t)
+);
 
-export const ALIAS_STORAGE_KEY = 'coliseum_player_alias';
+/** The pre-Nov-2026 tail: 4 characters, no vowels (can't spell a word), no 0/1. Validation only. */
+const OLD_SUFFIX_CHARS = 'BCDFGHJKLMNPQRSTVWXZ23456789';
 
 /** unbiased-enough random int in [0, n) using the Web Crypto API (falls back to Math.random) */
 function randInt(n: number): number {
@@ -42,39 +61,17 @@ function randInt(n: number): number {
 }
 
 export function generateAlias(): string {
-  let tail = '';
-  for (let i = 0; i < SUFFIX_LEN; i++) tail += SUFFIX_CHARS[randInt(SUFFIX_CHARS.length)];
-  return ADJECTIVES[randInt(ADJECTIVES.length)] + NOUNS[randInt(NOUNS.length)] + tail;
+  return ADJECTIVES[randInt(ADJECTIVES.length)] + NOUNS[randInt(NOUNS.length)] + TAILS[randInt(TAILS.length)];
 }
 
-const ALIAS_RE = new RegExp(
-  `^(?:${ADJECTIVES.join('|')})(?:${NOUNS.join('|')})[${SUFFIX_CHARS}]{${SUFFIX_LEN}}$`
-);
+const WORDS = `(?:${ADJECTIVES.join('|')})(?:${NOUNS.join('|')})`;
+const NEW_RE = new RegExp(`^${WORDS}(\\d{2})$`);
+const OLD_RE = new RegExp(`^${WORDS}[${OLD_SUFFIX_CHARS}]{4}$`);
 
-/** true only for strings this generator can produce */
+/** true only for strings this generator can produce (now, or before Nov 2026) */
 export function isValidAlias(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= 16 && ALIAS_RE.test(value);
-}
-
-/* ---------------- browser-side persistence ---------------- */
-
-/** The device's alias; created and stored on first use. Safe to call during SSR (returns ''). */
-export function getAlias(): string {
-  if (typeof window === 'undefined') return '';
-  try {
-    const saved = localStorage.getItem(ALIAS_STORAGE_KEY);
-    if (isValidAlias(saved)) return saved;
-  } catch {}
-  return rerollAlias();
-}
-
-/** Replace the stored alias with a fresh one and return it. */
-export function rerollAlias(): string {
-  const next = generateAlias();
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.setItem(ALIAS_STORAGE_KEY, next);
-    } catch {}
-  }
-  return next;
+  if (typeof value !== 'string' || value.length > 16) return false;
+  const m = NEW_RE.exec(value);
+  if (m) return TAILS.includes(m[1]);
+  return OLD_RE.test(value);
 }

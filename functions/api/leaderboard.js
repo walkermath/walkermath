@@ -4,14 +4,10 @@ import {
   GAMES,
   isEventId,
   normalizeLevel,
-  normalizeTags,
   normalizeVariant,
   parseChallengeId,
   raceWeight
 } from '../../src/lib/coliseumBoards.ts';
-import { isValidAlias } from '../../src/lib/pseudonym.ts';
-import { cleanGameScore, isLessonBoardName, isProfane, upsertLeaderboardEntry } from '../../src/lib/server/leaderboard.ts';
-import { isKnownTeacher } from '../../src/lib/teachers.ts';
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
@@ -135,56 +131,9 @@ export async function onRequestGet(context) {
   }
 }
 
-// POST body: { game, event, level?, variant?, tags?, display_name, class_period, teacher, score, duration_ms }
-// (or the old { challenge_id, ... }, which is parsed into game + event)
-export async function onRequestPost(context) {
-  try {
-    const body = await context.request.json();
-    const { display_name, class_period, teacher } = body;
-    const entry = cleanGameScore(body);
-    if (typeof entry === 'string') return json({ error: entry }, 400);
-    const { game, event } = entry;
-
-    // PRIVACY: students never type a name. display_name must be an alias produced by
-    // src/lib/pseudonym.ts, and teacher must come from src/lib/teachers.ts, so free text cannot
-    // reach the database even from a hand-built request. Request headers (CF-Connecting-IP,
-    // X-Forwarded-For, User-Agent) are deliberately never read or stored here.
-    const cleanDisplay = String(display_name || '').trim();
-    const cleanPeriod = String(class_period || '').trim().toUpperCase();
-    const cleanTeacher = String(teacher || '').trim().toUpperCase();
-
-    if (!/^[A-Za-z0-9]{3,16}$/.test(cleanDisplay) || !isValidAlias(cleanDisplay)) {
-      return json({ error: 'Invalid player alias.', code: 'alias_rejected' }, 400);
-    }
-    if (!isKnownTeacher(cleanTeacher)) {
-      return json({ error: 'Unknown teacher.' }, 400);
-    }
-    if (!/^P[0-9]$/.test(cleanPeriod)) {
-      return json({ error: 'Invalid class period.' }, 400);
-    }
-
-    // Defensive layer: the alias is built from curated words, but the random tail is still
-    // screened (the client rerolls automatically on this code).
-    if (await isProfane(cleanDisplay, context.env.PROFANITY_BLOCKLIST)) {
-      return json({ error: 'Alias not accepted.', code: 'alias_rejected' }, 400);
-    }
-
-    // Lesson leaderboard names (functions/api/class/score.js) are only posted through a student's
-    // class sign-in, so the public form can't add scores under one.
-    if (await isLessonBoardName(context.env.DB, cleanDisplay)) {
-      return json({ error: 'Alias not accepted.', code: 'alias_rejected' }, 400);
-    }
-
-    const schoolYear = await upsertLeaderboardEntry(context.env.DB, {
-      ...entry,
-      displayName: cleanDisplay,
-      period: cleanPeriod,
-      teacher: cleanTeacher
-    });
-
-    return json({ success: true, schoolYear, game, event }, 201);
-  } catch (err) {
-    console.error('D1 POST Error:', err.message);
-    return json({ error: 'Failed to record entry' }, 500);
-  }
+// POST: closed. Scores post only through a student's class sign-in (functions/api/class/score.js),
+// under the leaderboard name the server hands out, so no two players can share a name and no
+// device can invent one. Rows already on the board stay.
+export async function onRequestPost() {
+  return json({ error: 'Sign in to your class to post scores.', code: 'sign_in' }, 403);
 }

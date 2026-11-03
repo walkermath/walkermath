@@ -84,15 +84,6 @@ export async function isProfane(text: string, secretList?: string): Promise<bool
   // Fallback to checking the standard blocklist
   const list = await getBlocklist(secretList);
   return list.some(word => word.length > 0 && (normalized.includes(word) || qToGVariant.includes(word)));
-} 
-
-/** Whether a name belongs to a student's lesson leaderboard name (migration 0006). */
-export async function isLessonBoardName(db: any, name: string): Promise<boolean> {
-  try {
-    return !!(await db.prepare('SELECT 1 AS hit FROM student_aliases WHERE board_name = ?1').bind(name).first());
-  } catch {
-    return false; // database without the lesson tables
-  }
 }
 
 /** A score as a game reports it, checked. Returns an error string when the payload is bad. */

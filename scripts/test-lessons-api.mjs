@@ -333,6 +333,16 @@ let studentCookie;
   assert.equal((await body(unknown)).error, (await body(wrong)).error);
   ok('unknown alias and wrong PIN give the same answer');
 
+  {
+    // A 2-digit tail typed with l for 1 and O for 0 still signs in.
+    const c = aliases[29];
+    env.DB.sql.prepare("UPDATE student_aliases SET alias = 'VectorFox10', alias_lower = 'vectorfox10' WHERE alias = ?").run(c.alias);
+    const r = await call(signin, 'POST', req('/api/class/signin', { method: 'POST', body: { passcode: cls.passcode, alias: 'Vector Fox lO', pin: c.pin } }), {}, classMw);
+    assert.equal(r.status, 200);
+    assert.equal((await body(r)).student.alias, 'VectorFox10');
+    ok('a tail typed with l for 1 and O for 0 (any case, with spaces) still signs in');
+  }
+
   const good = await call(signin, 'POST', S('/api/class/signin', { method: 'POST', body: { passcode: cls.passcode, alias: ` ${a.alias.toLowerCase()} `, pin: a.pin } }), {}, classMw);
   assert.equal(good.status, 200);
   const d = await body(good);
@@ -773,17 +783,19 @@ console.log('coliseum in lessons');
   assert.deepEqual(mine.map((r) => [r.posted, r.score]), [[0, 17], [0, 17], [1, 21]]);
   ok('the teacher sees each leaderboard name on the roster, and every lesson result (posted or not)');
 
-  // The public form still works through the shared code, and can't take over a lesson board name.
+  // The public form is closed: no device can post, under any name.
   const pub = (name) => call(publicBoard, 'POST', req('/api/leaderboard', { method: 'POST', body: { ...game, display_name: name, class_period: 'P1', teacher: 'WALKER' } }));
-  assert.equal((await pub('VectorFoxK7M2')).status, 201);
-  assert.equal((await pub('not an alias')).status, 400);
-  assert.equal((await pub(rolled.name)).status, 400, "the public form can't post under a lesson board name");
-  assert.equal(boardRows().length, 2);
-  ok("the public form still posts device aliases (shared code), but can't use a lesson leaderboard name");
+  for (const name of ['VectorFox42', 'VectorFoxK7M2', rolled.name]) {
+    const r = await pub(name);
+    assert.equal(r.status, 403);
+    assert.equal((await body(r)).code, 'sign_in');
+  }
+  assert.equal(boardRows().length, 1);
+  ok('the public form no longer posts: every score goes through a class sign-in and its leaderboard name');
 
   await call(classOne, 'PATCH', T(`/api/teach/classes/${cls.id}`, { method: 'PATCH', body: { leaderboardPosting: false } }), { classId: cls.id }, teachMw);
   assert.deepEqual(await body(await postScore()), { kept: true, posted: false, name: null });
-  assert.equal(boardRows().length, 2);
+  assert.equal(boardRows().length, 1);
   ok('turning posting off stops new posts; scores are still kept for the teacher');
 }
 

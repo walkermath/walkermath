@@ -71,3 +71,14 @@ export const isPinShape = (v: unknown): v is string =>
 /** Aliases are typed off a card: ignore case and spaces. */
 export const normalizeAliasInput = (v: unknown): string =>
   typeof v === 'string' ? v.replace(/\s+/g, '').toLowerCase().slice(0, 32) : '';
+
+/**
+ * The same typed alias with a misread 2-digit tail fixed ("vectorfox4o" -> "vectorfox40",
+ * "vectorfoxl7" -> "vectorfox17"), or null when there's nothing to fix. Sign-in tries both, so an
+ * older alias whose 4-character tail really ends in an L still matches as typed.
+ */
+export function aliasTailVariant(lower: string): string | null {
+  const m = /^([a-z]+)([0-9oil]{2})$/.exec(lower);
+  if (!m || !/[oil]/.test(m[2])) return null;
+  return m[1] + m[2].replace(/o/g, '0').replace(/[il]/g, '1');
+}

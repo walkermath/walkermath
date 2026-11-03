@@ -83,8 +83,8 @@ new value in a password manager, and don't change it again after students have c
 
 ## 3. Database tables
 
-Eight migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
-`0001`-`0003` and `0008` are safe to run twice; `0004`-`0007` are not (SQLite can't add a column twice: "duplicate column
+Nine migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
+`0001`-`0003`, `0008` and `0009` are safe to run twice; `0004`-`0007` are not (SQLite can't add a column twice: "duplicate column
 name" just means it's already applied).
 
 ```sh
@@ -98,6 +98,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0005_l
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0006_lesson_scores.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0007_submissions.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0008_run_ink.sql
+npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0009_run_joins.sql
 
 # production (once each, when you're ready to deploy): the same commands with --remote
 ```
@@ -113,6 +114,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0008_r
 | `0006_lesson_scores.sql` | Coliseum games in lessons: kept scores, each class's leaderboard switch (off), students' leaderboard names |
 | `0007_submissions.sql` | students' answers in live lessons; which delivery a game score belongs to; each delivery's final timing |
 | `0008_run_ink.sql` | what you wrote on each page of a delivery, kept when it ends |
+| `0009_run_joins.sql` | when each student first joined a delivery (the reports' Joined column) |
 
 ## 4. Try it locally
 
@@ -125,7 +127,7 @@ npx wrangler dev          # http://localhost:8787
 
 (`npm run start` does both.) After changing code, stop it, build again and restart. The local
 database is the one the migrations above were run on; if the site acts as if it's empty after the
-move from Pages, run the migrations again (`0001`-`0003` and `0008` are safe to repeat).
+move from Pages, run the migrations again (`0001`-`0003`, `0008` and `0009` are safe to repeat).
 
 Teachers and classes:
 
@@ -232,11 +234,27 @@ Drag that tab to the BenQ (or press **full screen**).
 A slide with more text than fits now shrinks its text to fit instead of scrolling (ink has to stay
 where you wrote it). The lesson builder says when a slide is shrunk below 85%.
 
+Aliases, joins and posting (Phase 5a, step 1; run `0009_run_joins.sql` first).
+
+1. Under [classes], add a few aliases to a test class: new ones look like `CometNarwhal42`: two
+   words and a 2-digit tail (never 14, 18, 69 or 88). Aliases
+   already printed (4-character tails) still sign in.
+2. Sign in as a student typing the alias in lowercase, with spaces, or with the tail's 0 typed as O
+   (or 1 as l): it still works.
+3. Join a running delivery as the student, then check the table:
+   `npx wrangler d1 execute walkermath-leaderboards --local --command "SELECT * FROM run_joins"`.
+   One row per student per delivery, with the first time they connected; rejoining adds nothing.
+4. Finish a game on the public /coliseum page while signed out: the end screen offers
+   **[sign in to your class]** (a new tab) and **[i've signed in]**; nothing posts until then.
+   Signed in, the score is saved for you and posts under the student's leaderboard name only when
+   the class's leaderboard switch is on.
+
 Tests (no install needed): `npm run test:lessons` (API, against a stand-in database),
 `npm run test:pacing` (the pacing engine), `npm run test:slides` (cutting notes into slides),
 `npm run test:room` (the live room's clock and commands), `npm run test:answers` (what students
 hand in, and marking against the key), `npm run test:ink` (strokes, the eraser, simplifying) and
-`npm run test:router` (every `/api` route is wired up).
+`npm run test:router` (every `/api` route is wired up) and `npm run test:pseudonym` (names and
+how sign-in reads a typed alias).
 
 ## 5. Production: moving walkermath.com from Pages to the Worker
 

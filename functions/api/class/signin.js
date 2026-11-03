@@ -3,7 +3,7 @@
 // Step 2 of joining. A wrong alias and a wrong PIN get the same answer, so the form can't be used
 // to discover which aliases exist. Five wrong PINs for one alias lock it for 10 minutes.
 
-import { isPinShape, normalizeAliasInput } from '../../../src/lib/classroom.ts';
+import { aliasTailVariant, isPinShape, normalizeAliasInput } from '../../../src/lib/classroom.ts';
 import { safeEqual } from '../../../src/lib/server/crypto.ts';
 import { fail, json, readJson } from '../../../src/lib/server/http.ts';
 import { pinHash } from '../../../src/lib/server/classes.ts';
@@ -25,10 +25,11 @@ export async function onRequestPost({ request, env }) {
   const pin = typeof body?.pin === 'string' ? body.pin.replace(/\s+/g, '') : '';
   if (!aliasLower || !isPinShape(pin)) return fail(NO_MATCH, 401);
 
+  // Case is ignored, and a tail typed with O for 0 or l/I for 1 still matches.
   const row = await env.DB.prepare(
-    'SELECT id, pin_hash FROM student_aliases WHERE class_id = ?1 AND alias_lower = ?2 AND retired = 0'
+    'SELECT id, pin_hash FROM student_aliases WHERE class_id = ?1 AND alias_lower IN (?2, ?3) AND retired = 0'
   )
-    .bind(cls.id, aliasLower)
+    .bind(cls.id, aliasLower, aliasTailVariant(aliasLower) ?? aliasLower)
     .first();
   if (!row) return fail(NO_MATCH, 401);
 
