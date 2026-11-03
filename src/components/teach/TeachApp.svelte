@@ -8,9 +8,10 @@
   import LessonBuilder from './LessonBuilder.svelte';
   import TeacherAdmin from './TeacherAdmin.svelte';
   import ReportBuilder from './ReportBuilder.svelte';
+  import LibraryView from './LibraryView.svelte';
   import TeachLive from '../live/TeachLive.svelte';
 
-  type View = 'home' | 'classes' | 'lesson' | 'live' | 'reports' | 'teachers';
+  type View = 'home' | 'classes' | 'lesson' | 'live' | 'reports' | 'library' | 'teachers';
   type Teacher = {
     email: string;
     displayName: string;
@@ -26,6 +27,7 @@
     { view: 'home', href: '/teach', label: 'lessons' },
     { view: 'classes', href: '/teach/classes', label: 'classes' },
     { view: 'reports', href: '/teach/reports', label: 'reports' },
+    { view: 'library', href: '/teach/library', label: 'library' },
     { view: 'teachers', href: '/teach/teachers', label: 'teachers', admin: true }
   ];
 
@@ -127,6 +129,8 @@
       <TeachLive />
     {:else if view === 'reports'}
       <ReportBuilder />
+    {:else if view === 'library'}
+      <LibraryView />
     {:else if view === 'teachers'}
       {#if teacher.isAdmin}
         <TeacherAdmin me={teacher.email} />

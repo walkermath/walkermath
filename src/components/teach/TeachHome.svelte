@@ -3,6 +3,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
+  import { lessonFromMarkdown } from '../../lib/lesson/exportMd.ts';
   import { clock12, mmss } from '../../lib/lesson/time.ts';
   import { btn, btnMain, heading, label, niceDate, panel, todayIso } from './ui.ts';
 
@@ -64,6 +65,32 @@
       location.href = `/teach/lesson?id=${lesson.id}`;
     } catch (e) {
       error = (e as Error).message;
+      busy = false;
+    }
+  }
+
+  /** A lesson from an exported .md file becomes a new lesson. */
+  async function importMd(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    error = '';
+    if (file.size > 1_000_000) {
+      error = 'That file is too big to be a lesson.';
+      return;
+    }
+    const read = lessonFromMarkdown(await file.text());
+    if ('error' in read) {
+      error = read.error;
+      return;
+    }
+    busy = true;
+    try {
+      const { lesson } = await api<{ lesson: { id: string } }>('/api/teach/lessons', { body: { import: read.lesson } });
+      location.href = `/teach/lesson?id=${lesson.id}`;
+    } catch (err) {
+      error = (err as Error).message;
       busy = false;
     }
   }
@@ -140,7 +167,14 @@
   <section class="space-y-3">
     <div class="flex justify-between items-center">
       <h2 class={heading}>// lessons</h2>
-      <button type="button" class={btnMain} onclick={newLesson} disabled={busy}>[+ new lesson]</button>
+      <div class="flex flex-wrap items-center gap-2">
+        <a href="/teach/library" class={btn}>[library]</a>
+        <label class="{btn} cursor-pointer" title="A lesson exported with [export .md]">
+          [import .md]
+          <input type="file" accept=".md,text/markdown,text/plain" class="sr-only" onchange={importMd} disabled={busy} />
+        </label>
+        <button type="button" class={btnMain} onclick={newLesson} disabled={busy}>[+ new lesson]</button>
+      </div>
     </div>
 
     {#if loaded && lessons.length === 0}

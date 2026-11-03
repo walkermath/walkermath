@@ -23,6 +23,8 @@
   } from '../../lib/lesson/modules.ts';
   import { previewOverrun, totalSec } from '../../lib/lesson/pacing.ts';
   import { mmss } from '../../lib/lesson/time.ts';
+  import { exportFileName, lessonToMarkdown } from '../../lib/lesson/exportMd.ts';
+  import { download } from '../../lib/reports/files.ts';
   import ModuleSettings from './ModuleSettings.svelte';
   import WhenPanel, { type Run } from './WhenPanel.svelte';
   import { btn, btnDanger, btnMain, field, heading, label, panel } from './ui.ts';
@@ -97,6 +99,7 @@
       .then((d) => {
         loaded(d.lesson);
         runs = d.runs;
+        loadShared();
         if (d.lesson.modules.length) previewIndex = Math.min(1, d.lesson.modules.length - 1);
       })
       .catch((e) => (loadError = e instanceof ApiError && e.status === 404 ? "That lesson doesn't exist (or isn't yours)." : e.message));
@@ -209,6 +212,47 @@
     }
   }
 
+  /** Downloads the lesson as it is on screen (saved or not) as a Markdown file. */
+  function exportMd() {
+    if (!lesson) return;
+    download(exportFileName(lesson.title), lessonToMarkdown($state.snapshot(lesson)), 'text/markdown;charset=utf-8');
+  }
+
+  /* The library: this lesson's shared copy, if it has one. */
+  type Shared = { id: string; updatedAt: number; copies: number };
+  let shared = $state<Shared | null>(null);
+  let sharing = $state(false);
+  async function loadShared() {
+    try {
+      const { entries } = await api<{ entries: (Shared & { lessonId: string | null })[] }>('/api/teach/library');
+      shared = entries.find((e) => e.lessonId === lesson?.id) ?? null;
+    } catch {
+      // the library is optional; the buttons just won't know
+    }
+  }
+  async function share() {
+    if (!lesson) return;
+    if (dirty && !confirm('Share the last saved version? Save first if you want your latest changes in it.')) return;
+    if (!shared && !confirm('Share this lesson with the other teachers on walkerMath? They can copy it, answer keys and your teacher notes included. Students never see the library.')) return;
+    sharing = true;
+    try {
+      shared = (await api<{ entry: Shared }>('/api/teach/library', { body: { lessonId: lesson.id } })).entry;
+    } catch (e) {
+      error = (e as Error).message;
+    } finally {
+      sharing = false;
+    }
+  }
+  async function unshare() {
+    if (!shared || !confirm('Take this lesson out of the library? Copies teachers already made stay theirs.')) return;
+    try {
+      await api(`/api/teach/library/${shared.id}`, { method: 'DELETE' });
+      shared = null;
+    } catch (e) {
+      error = (e as Error).message;
+    }
+  }
+
   async function setArchived(archived: boolean) {
     if (!lesson) return;
     try {
@@ -277,6 +321,13 @@
       {/if}
       <button type="button" class={btnMain} onclick={save} disabled={saving || !dirty} title="Ctrl+S">{saving ? '[saving...]' : '[save]'}</button>
       <button type="button" class={btn} onclick={duplicate}>[duplicate]</button>
+      <button type="button" class={btn} onclick={exportMd} title="A Markdown file you can read anywhere and import back">[export .md]</button>
+      {#if shared}
+        <button type="button" class={btn} onclick={share} disabled={sharing} title="Shared copies stay as they were until you update them">[update library copy]</button>
+        <button type="button" class={btn} onclick={unshare}>[unshare]</button>
+      {:else}
+        <button type="button" class={btn} onclick={share} disabled={sharing}>[share to library]</button>
+      {/if}
       {#if lesson.archived}
         <button type="button" class={btn} onclick={() => setArchived(false)}>[restore]</button>
       {:else}

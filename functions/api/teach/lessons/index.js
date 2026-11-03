@@ -1,17 +1,21 @@
 // functions/api/teach/lessons/index.js
 //   GET                          -> { lessons: [...] }   (summaries, newest first, archived last)
 //   POST { title?, copyFrom? }   -> { lesson }           new lesson (bellwork + exit ticket), or a copy of one of yours
+//   POST { import: lesson }      -> { lesson }           a lesson from an exported .md file (checked, with new ids)
 
 import { fail, json, readJson } from '../../../../src/lib/server/http.ts';
 import { DEFAULT_LESSON_SEC, cleanLine, LIMITS, starterModules } from '../../../../src/lib/lesson/modules.ts';
 import { MAX_LESSONS, createLesson, getLesson, listLessons } from '../../../../src/lib/server/lessons.ts';
+import { importLesson } from '../../../../src/lib/server/library.ts';
+
+const MAX_BODY = 1_000_000; // an imported lesson with long notes
 
 export async function onRequestGet({ env, data }) {
   return json({ lessons: await listLessons(env.DB, data.teacher.id) });
 }
 
 export async function onRequestPost({ request, env, data }) {
-  const body = await readJson(request);
+  const body = await readJson(request, MAX_BODY);
   if (!body) return fail('Invalid request.');
   const teacherId = data.teacher.id;
 
@@ -19,7 +23,11 @@ export async function onRequestPost({ request, env, data }) {
   if (n >= MAX_LESSONS) return fail('Lesson limit reached. Delete some old lessons first.');
 
   let id;
-  if (body.copyFrom !== undefined) {
+  if (body.import !== undefined) {
+    const made = await importLesson(env.DB, teacherId, body.import);
+    if (typeof made === 'string') return fail(made);
+    id = made.id;
+  } else if (body.copyFrom !== undefined) {
     const src = await getLesson(env.DB, teacherId, body.copyFrom);
     if (!src) return fail('Not found.', 404);
     const title = cleanLine(`${src.title} (copy)`, LIMITS.lessonTitle);
@@ -28,7 +36,7 @@ export async function onRequestPost({ request, env, data }) {
       id: crypto.randomUUID(),
       config:
         m.type === 'prompt'
-          ? { questions: m.config.questions.map((q) => ({ ...q, id: crypto.randomUUID() })) }
+          ? { ...m.config, questions: m.config.questions.map((q) => ({ ...q, id: crypto.randomUUID() })) }
           : m.config
     }));
     id = await createLesson(env.DB, teacherId, { ...src, title }, modules);

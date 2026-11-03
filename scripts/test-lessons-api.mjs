@@ -107,6 +107,10 @@ const classLive = await load('functions/api/class/live.js');
 const classLessonsR = await load('functions/api/class/lessons/index.js');
 const classLessonOneR = await load('functions/api/class/lessons/[runId].js');
 const notesR = await load('functions/api/class/notes.js');
+const libraryR = await load('functions/api/teach/library/index.js');
+const libraryOneR = await load('functions/api/teach/library/[entryId]/index.js');
+const libraryCopyR = await load('functions/api/teach/library/[entryId]/copy.js');
+const { lessonToMarkdown, lessonFromMarkdown } = await load('src/lib/lesson/exportMd.ts');
 
 /* ---------- a stand-in for the LessonRoom Durable Object (same state machine, no sockets) ---------- */
 const room = await load('src/lib/lesson/room.ts');
@@ -555,6 +559,45 @@ console.log('lessons');
   assert.ok(copy.modules.every((m, i) => m.id !== lesson.modules[i].id));
   assert.equal(copy.modules[0].config.questions[0].answer, '4');
   ok('duplicate makes an independent copy (new ids, answer keys kept)');
+  assert.equal(copy.modules[0].config.category, 'bellwork', 'the bellwork stays a bellwork');
+
+  // Export to Markdown and import it back: a new, independent lesson.
+  const md = lessonToMarkdown(lesson);
+  const imported = await call(lessonsIdx, 'POST', L('/api/teach/lessons', { method: 'POST', body: { import: lessonFromMarkdown(md).lesson } }), {}, teachMw);
+  assert.equal(imported.status, 201);
+  const im = (await body(imported)).lesson;
+  assert.equal(im.title, 'Solving linear equations');
+  assert.deepEqual(im.modules.map((m) => m.title), lesson.modules.map((m) => m.title));
+  assert.ok(im.modules.every((m, i) => m.id !== lesson.modules[i].id));
+  assert.deepEqual(JSON.parse(im.modules[0].config.questions[2].answer), ['x^2', '5x', '2x', '10'], 'grid keys survive the trip');
+  assert.equal((await call(lessonsIdx, 'POST', L('/api/teach/lessons', { method: 'POST', body: { import: { title: '' } } }), {}, teachMw)).status, 400);
+  ok('a lesson exported as Markdown imports back as a new lesson (checked, new ids, keys kept)');
+
+  // The library: share, list, look, copy, unshare.
+  const share = await call(libraryR, 'POST', L('/api/teach/library', { method: 'POST', body: { lessonId: lesson.id } }), {}, teachMw);
+  assert.equal(share.status, 200);
+  const entry = (await body(share)).entry;
+  assert.equal(entry.mine, true);
+  assert.equal(entry.title, 'Solving linear equations');
+  assert.equal((await call(libraryR, 'POST', req('/api/teach/library', { method: 'POST', body: { lessonId: lesson.id }, cookie: b.session }), {}, teachMw)).status, 404, "nobody else can share your lesson");
+  const theirList = (await body(await call(libraryR, 'GET', req('/api/teach/library', { cookie: b.session }), {}, teachMw))).entries;
+  assert.equal(theirList.length, 1);
+  assert.equal(theirList[0].mine, false);
+  assert.equal(theirList[0].lessonId, null, "another teacher doesn't get your lesson's id");
+  const look = (await body(await call(libraryOneR, 'GET', req(`/api/teach/library/${entry.id}`, { cookie: b.session }), { entryId: entry.id }, teachMw))).lesson;
+  assert.equal(look.modules.length, 6);
+  const taken = await call(libraryCopyR, 'POST', req(`/api/teach/library/${entry.id}/copy`, { method: 'POST', body: {}, cookie: b.session }), { entryId: entry.id }, teachMw);
+  assert.equal(taken.status, 201);
+  const theirs = (await body(taken)).lesson;
+  assert.equal(theirs.modules[0].config.questions[0].answer, '4', 'keys come with it');
+  assert.ok(theirs.modules.every((m, i) => m.id !== lesson.modules[i].id));
+  assert.equal((await body(await call(lessonOne, 'GET', req(`/api/teach/lessons/${theirs.id}`, { cookie: b.session }), { lessonId: theirs.id }, teachMw))).lesson.title, 'Solving linear equations');
+  assert.equal((await body(await call(libraryR, 'GET', L('/api/teach/library'), {}, teachMw))).entries[0].copies, 1);
+  assert.equal((await call(libraryOneR, 'DELETE', req(`/api/teach/library/${entry.id}`, { method: 'DELETE', cookie: b.session }), { entryId: entry.id }, teachMw)).status, 404, 'only the owner can take it out');
+  assert.equal((await call(libraryOneR, 'DELETE', L(`/api/teach/library/${entry.id}`, { method: 'DELETE' }), { entryId: entry.id }, teachMw)).status, 200);
+  assert.deepEqual((await body(await call(libraryR, 'GET', L('/api/teach/library'), {}, teachMw))).entries, []);
+  assert.equal((await call(libraryR, 'GET', req('/api/teach/library'), {}, teachMw)).status, 401, 'teachers only');
+  ok('the library: share a lesson, other teachers see it and copy it (keys included), only you take it out');
 
   // deliveries: the same lesson for two periods
   const tz = 'America/Chicago';
