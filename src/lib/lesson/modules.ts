@@ -6,10 +6,12 @@
 // Answer keys live only in a module's private part. splitModule() separates them before storage
 // and publicModule() is the only shape that will ever be sent to students.
 
+import { readMath, type MathMatch } from './mathcheck.ts';
 import { splitSlides } from './slides.ts';
 import { STEP_SEC } from './time.ts';
 
 /* ---------------- limits ---------------- */
+
 
 export const LIMITS = {
   lessonTitle: 100,
@@ -50,7 +52,7 @@ export interface Link {
   url: string;
 }
 
-export type QuestionKind = 'text' | 'number' | 'choice';
+export type QuestionKind = 'text' | 'number' | 'choice' | 'math';
 
 export interface Question {
   id: string;
@@ -58,8 +60,10 @@ export interface Question {
   text: string;
   /** Multiple choice only. */
   choices: string[];
-  /** Optional answer key: text, a number as text, or the correct choice's index as text. Private. */
+  /** Optional answer key: text, a number as text, algebra as typed, or the correct choice's index as text. Private. */
   answer: string;
+  /** Math questions only: 'form' = same form, any order (default); 'any' = any equivalent form. */
+  match?: MathMatch;
 }
 
 /** What a question set is for. Picking one gives the module its starting title (and, for the two
@@ -308,7 +312,8 @@ export const newQuestion = (kind: QuestionKind = 'text'): Question => ({
   kind,
   text: '',
   choices: kind === 'choice' ? ['', ''] : [],
-  answer: ''
+  answer: '',
+  ...(kind === 'math' ? { match: 'form' as const } : {})
 });
 
 export const DEFAULT_LESSON_SEC = 50 * 60;
@@ -390,7 +395,7 @@ function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | st
       if (qs.length > LIMITS.questions) return `${where}: at most ${LIMITS.questions} questions.`;
       const questions: Question[] = [];
       for (const [i, q] of qs.entries()) {
-        const kind: QuestionKind = ['text', 'number', 'choice'].includes(q?.kind) ? q.kind : 'text';
+        const kind: QuestionKind = ['text', 'number', 'choice', 'math'].includes(q?.kind) ? q.kind : 'text';
         const text = cleanText(q?.text, LIMITS.text);
         if (!text) return `${where}: question ${i + 1} is empty.`;
         let choices: string[] = [];
@@ -405,7 +410,18 @@ function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | st
         if (kind === 'number' && answer && !Number.isFinite(Number(answer))) {
           return `${where}: the answer to question ${i + 1} should be a number.`;
         }
-        questions.push({ id: isUuid(q?.id) ? q.id : newUuid(), kind, text, choices, answer });
+        if (kind === 'math' && answer) {
+          const read = readMath(answer);
+          if (!read.ok) return `${where}: the answer to question ${i + 1} can't be read (${read.error})`;
+        }
+        questions.push({
+          id: isUuid(q?.id) ? q.id : newUuid(),
+          kind,
+          text,
+          choices,
+          answer,
+          ...(kind === 'math' ? { match: q?.match === 'any' ? ('any' as const) : ('form' as const) } : {})
+        });
       }
       return { category: isPromptCategory(c.category) ? c.category : 'other', questions };
     }

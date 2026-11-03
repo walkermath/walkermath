@@ -81,3 +81,20 @@ test("the room's decision on a submission", () => {
   assert.equal(late.closed, true);
   assert.equal(late.status, 409);
 });
+
+test('math questions: marked by the checker, with the question\'s own matching rule', () => {
+  const q = (answer, match) => ({ kind: 'math', answer, match });
+  assert.equal(isCorrect(q('(x+5)(x+2)'), '(x+2)(x+5)'), true, 'same form is the default');
+  assert.equal(isCorrect(q('(x+5)(x+2)'), 'x^2+7x+10'), false);
+  assert.equal(isCorrect(q('(x+5)(x+2)', 'form'), 'x^2+7x+10'), false);
+  assert.equal(isCorrect(q('(x+5)(x+2)', 'any'), 'x^2+7x+10'), true);
+  assert.equal(isCorrect(q('x=7'), 'x+5=12'), false);
+  assert.equal(isCorrect(q('x=7', 'any'), 'x+5=12'), false);
+  assert.equal(isCorrect(q('x=7'), '7 = x'), true);
+  assert.equal(isCorrect(q(''), 'x'), null, 'no key');
+  assert.equal(isCorrect(q('x+2'), '  '), null, 'no answer');
+  assert.equal(isCorrect(q('x+2'), 'x2'), false, 'unreadable is wrong, not an error');
+  const spec = { kind: 'questions', questions: [{ id: 'm', kind: 'math', text: 'Factor', choices: [] }] };
+  assert.deepEqual(cleanAnswers(spec, { m: ' x\u00b2 + 1 ' }), { m: ' x\u00b2 + 1 ' });
+  assert.match(cleanAnswers(spec, { m: 'x'.repeat(201) }), /under 200/);
+});

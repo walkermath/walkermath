@@ -20,6 +20,7 @@
     type QuestionKind
   } from '../../lib/lesson/modules.ts';
   import { floorOf, capOf } from '../../lib/lesson/pacing.ts';
+  import { readMath } from '../../lib/lesson/mathcheck.ts';
   import { mmss } from '../../lib/lesson/time.ts';
   import MmssInput from './MmssInput.svelte';
   import NotesEditor from './NotesEditor.svelte';
@@ -125,6 +126,8 @@
     const q: Question = module.config.questions[qi];
     q.kind = kind;
     q.answer = '';
+    if (kind === 'math') q.match = 'form';
+    else delete q.match;
     if (kind === 'choice' && q.choices.length < 2) q.choices = ['', ''];
   }
   function moveQuestion(qi: number, to: number) {
@@ -266,6 +269,7 @@
             <select class="{field} w-40 p-1" value={q.kind} onchange={(e) => setKind(qi, (e.currentTarget as HTMLSelectElement).value as QuestionKind)}>
               <option value="text">short text</option>
               <option value="number">number</option>
+              <option value="math">math (algebra)</option>
               <option value="choice">multiple choice</option>
             </select>
             <span class="flex-1"></span>
@@ -302,6 +306,36 @@
                 {/if}
               </div>
             </div>
+          {:else if q.kind === 'math'}
+            <div class="space-y-1">
+              <label class="flex items-center gap-2">
+                <span class="{label} whitespace-nowrap">answer key (optional, students never see it)</span>
+                <input
+                  class="{field} p-1"
+                  bind:value={q.answer}
+                  maxlength={LIMITS.answer}
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="(x+5)(x+2)   or   x=±3"
+                />
+              </label>
+              {#if q.answer.trim()}
+                {@const read = readMath(q.answer)}
+                <p class="text-xs {read.ok ? label : 'text-[var(--bad)]'}">{read.ok ? `read as: ${read.text}` : read.error}</p>
+              {/if}
+              <label class="flex flex-wrap items-center gap-2">
+                <span class={label}>count as correct</span>
+                <select class="{field} w-64 p-1" bind:value={q.match}>
+                  <option value="form">same form, any order</option>
+                  <option value="any">any equivalent form</option>
+                </select>
+              </label>
+              <p class="text-xs {label}">
+                // same form: (x+2)(x+5) matches (x+5)(x+2) but not x²+7x+10, and 2(x+3) does not match 2x+6. any equivalent form accepts all
+                of those. an equation must match both sides (x+5=12 is not x=7). "x=3 or x=-3" and "x=±3" are the same answer. students type ^
+                for powers, sqrt() for roots and i for the imaginary unit.
+              </p>
+            </div>
           {:else}
             <label class="flex items-center gap-2">
               <span class="{label} whitespace-nowrap">answer key (optional, students never see it)</span>
@@ -314,6 +348,7 @@
         <div class="flex flex-wrap gap-2">
           <button type="button" class={btn} onclick={() => addQuestion('text')}>[+ short text]</button>
           <button type="button" class={btn} onclick={() => addQuestion('number')}>[+ number]</button>
+          <button type="button" class={btn} onclick={() => addQuestion('math')}>[+ math]</button>
           <button type="button" class={btn} onclick={() => addQuestion('choice')}>[+ multiple choice]</button>
         </div>
       {/if}

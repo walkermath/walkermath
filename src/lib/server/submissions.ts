@@ -81,7 +81,7 @@ export interface CollectModule {
   title: string;
   kind: CollectKind;
   /** Questions with their keys (teacher only). */
-  questions?: { id: string; kind: string; text: string; choices: string[]; answer: string }[];
+  questions?: { id: string; kind: string; text: string; choices: string[]; answer: string; match?: string }[];
 }
 
 export interface AnswerRow {
@@ -126,7 +126,8 @@ export async function runAnswers(db: any, run: LiveRun): Promise<{ modules: Coll
         kind: q.kind,
         text: q.text,
         choices: q.choices ?? [],
-        answer: q.answer ?? ''
+        answer: q.answer ?? '',
+        match: q.match === 'any' ? 'any' : 'form'
       }));
       keys.set(m.id, entry.questions);
     }

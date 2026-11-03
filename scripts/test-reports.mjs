@@ -166,3 +166,39 @@ test('xlsx pieces: column names and the zip checksum', () => {
   const bytes = toXlsx([{ name: 'All', columns: ['Alias'], rows: [['VectorFox42']] }]);
   assert.equal(new DataView(bytes.buffer).getUint32(0, true), 0x04034b50, 'a zip');
 });
+
+test('math questions: marked at export time with each question\'s own rule, answers shown as typed', () => {
+  const factoring = {
+    id: 'm-fac',
+    type: 'prompt',
+    title: 'Factoring',
+    config: {
+      category: 'other',
+      questions: [
+        { id: 'a', kind: 'math', text: 'Factor x^2+7x+10', choices: [], answer: '(x+5)(x+2)', match: 'form' },
+        { id: 'b', kind: 'math', text: 'Factor x^2+7x+10', choices: [], answer: '(x+5)(x+2)', match: 'any' }
+      ]
+    }
+  };
+  const d = {
+    runs: [{ ...run('r3', 'c3', 'Honors Algebra II', 'P3'), modules: [factoring] }],
+    aliases: [
+      { id: 'a1', classId: 'c3', alias: 'VectorFox42', retired: false },
+      { id: 'a2', classId: 'c3', alias: 'AlphaOwl17', retired: false }
+    ],
+    submissions: [
+      { runId: 'r3', moduleId: 'm-fac', aliasId: 'a1', answers: { a: '(x+2)(x+5)', b: 'x^2+7x+10' } },
+      { runId: 'r3', moduleId: 'm-fac', aliasId: 'a2', answers: { a: 'x^2+7x+10', b: 'x^2+7x+10' } }
+    ],
+    scores: [],
+    joins: []
+  };
+  const [sheet] = buildReport(d, { runIds: ['r3'], items: { L1: ['m-fac:responses', 'm-fac:results'] }, breakdown: 'period', questions: [], timeZone: 'UTC' });
+  const col = (h) => sheet.columns.findIndex((c) => c.includes(h));
+  const row = (alias) => sheet.rows.find((r) => r[0] === alias);
+  assert.equal(row('VectorFox42')[col('Correct')], 2, 'factors in another order; expanded form accepted where allowed');
+  assert.equal(row('AlphaOwl17')[col('Correct')], 1, 'the expanded form is not the factored form');
+  assert.equal(row('AlphaOwl17')[col('Q1')], 'x^2+7x+10', 'shown as typed');
+  const [q] = buildReport(d, { runIds: ['r3'], items: {}, breakdown: 'period', questions: ['L1:m-fac:a', 'L1:m-fac:b'], timeZone: 'UTC' });
+  assert.deepEqual(q.rows.map((r) => r.slice(4, 7)), [[2, 1, 50], [2, 2, 100]]);
+});

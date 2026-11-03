@@ -48,6 +48,8 @@ export interface ReportQuestion {
   text: string;
   choices: string[];
   answer: string;
+  /** Math questions: 'form' or 'any' (see mathcheck.ts). */
+  match?: string;
 }
 
 const KIND_LABEL: Record<ItemKind, string> = {
@@ -71,7 +73,8 @@ export function moduleQuestions(m: ReportModule): ReportQuestion[] {
     kind: q.kind,
     text: q.text ?? '',
     choices: q.choices ?? [],
-    answer: String(keys.get(q.id)?.answer ?? '')
+    answer: String(keys.get(q.id)?.answer ?? ''),
+    match: keys.get(q.id)?.match === 'any' ? 'any' : 'form'
   }));
 }
 

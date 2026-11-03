@@ -254,9 +254,10 @@ Reports (Phase 5a, step 2). Finish at least one delivery with some answers first
 1. **[teach] > [reports]**: pick a date range and **[show deliveries]**. Each finished lesson is a
    row; **▷** opens it into its periods, each with a checkbox. The lesson's checkbox picks or
    clears all of them.
-2. The columns are what the lessons can report (Joined, then each module's Responses, Results or
-   Coliseum score). The box under a column header picks it for every lesson. A greyed "–" is a
-   module that collects nothing.
+2. The columns are what the lessons can report: Joined, then Bellwork, then Exit ticket, then each
+   other module's Responses, Results or Coliseum score. The box under a column header picks it
+   for every lesson. A module that collects nothing is left out; "–" means that lesson doesn't
+   have the column.
 3. Pick a sheet layout: **by period** (a sheet per class), **aggregate** (one sheet) or **by
    lesson**. Several lessons go side by side in the same sheet.
 4. Tick **question analysis** to add a "Questions" sheet; open the tree to choose questions.
@@ -265,12 +266,30 @@ Reports (Phase 5a, step 2). Finish at least one delivery with some answers first
 6. Check a blank cell means nothing was handed in, 0 means answered and wrong, and Joined says
    "not recorded" for lessons taught before `0009_run_joins.sql`.
 
+Math questions (Phase 5, step 3). Needs a bellwork or exit ticket with questions.
+
+1. In the lesson builder, open a question set and choose **[+ math]**. Type the key
+   `(x+5)(x+2)`: "read as: (x + 5)(x + 2)" appears under it. Try `x2` (it says it is unclear) and
+   `(x+5` (it says a "(" is missing its ")").
+2. Leave **count as correct** on *same form, any order*. Save, start the lesson, and sign in as a
+   student. The student's box also says "we read: ..." as they type.
+3. Answer `(x+2)(x+5)`: right. Answer `x^2+7x+10`: wrong. In the control panel the answers table
+   marks them green and red.
+4. Make a second math question with the key `x=7`. `7=x` is right; `x+5=12` is wrong. A key of `7`
+   accepts `x=7`. A key of `x=3 or x=-3` accepts `x=±3`.
+5. Change a question to *any equivalent form* and re-mark: `x^2+7x+10` is now right. Marks are
+   worked out when you look, so an old lesson's answers re-mark after you change the setting
+   (the answer key is stored with each delivery, so past deliveries keep their own setting).
+6. Build a report: the Responses column shows what was typed, and the Results column counts the
+   marks.
+
 Tests (no install needed): `npm run test:lessons` (API, against a stand-in database),
 `npm run test:pacing` (the pacing engine), `npm run test:slides` (cutting notes into slides),
 `npm run test:room` (the live room's clock and commands), `npm run test:answers` (what students
 hand in, and marking against the key), `npm run test:ink` (strokes, the eraser, simplifying) and
 `npm run test:router` (every `/api` route is wired up) and `npm run test:pseudonym` (names and
-how sign-in reads a typed alias) and `npm run test:reports` (report sheets and the .xlsx/.csv files).
+how sign-in reads a typed alias) and `npm run test:reports` (report sheets and the .xlsx/.csv files) and `npm run test:math` (the
+algebra answer checker).
 
 ## 5. Production: moving walkermath.com from Pages to the Worker
 

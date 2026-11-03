@@ -472,6 +472,7 @@ console.log('lessons');
     [{ modules: [{ ...spec[0], plannedSec: 100 }] }, 'not a 15-s step'],
     [{ modules: [{ ...spec[2], config: { links: [{ url: 'javascript:alert(1)' }] } }] }, 'bad link'],
     [{ modules: [{ ...spec[0], config: { questions: [{ kind: 'text', text: '' }] } }] }, 'empty question'],
+    [{ modules: [{ ...spec[0], config: { questions: [{ kind: 'math', text: 'Factor', answer: '(x+5' }] } }] }, 'a math answer key that cannot be read'],
     [{ modules: [spec[0], spec[0]] }, 'duplicate module id'],
     [{ resources: [{ label: 'x', url: 'javascript:alert(1)' }] }, 'bad resource link'],
     [{ resources: Array.from({ length: 11 }, () => ({ label: 'a', url: 'https://a.example' })) }, 'too many resources'],
