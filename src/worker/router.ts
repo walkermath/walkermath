@@ -37,6 +37,8 @@ import * as teachLessonRunOne from '../../functions/api/teach/lessons/[lessonId]
 import * as teachLessonRuns from '../../functions/api/teach/lessons/[lessonId]/runs/index.js';
 import * as teachLessons from '../../functions/api/teach/lessons/index.js';
 import * as teachMe from '../../functions/api/teach/me.js';
+import * as teachReports from '../../functions/api/teach/reports/index.js';
+import * as teachReportOptions from '../../functions/api/teach/reports/options.js';
 import * as teachRuns from '../../functions/api/teach/runs.js';
 import * as teachRunAnswers from '../../functions/api/teach/runs/[runId]/answers.js';
 import * as teachRunEnd from '../../functions/api/teach/runs/[runId]/end.js';
@@ -92,6 +94,8 @@ export const ROUTES: Route[] = [
   r('/api/teach/lessons/:lessonId/runs', 'teach/lessons/[lessonId]/runs/index.js', teachLessonRuns),
   r('/api/teach/lessons/:lessonId/runs/:runId', 'teach/lessons/[lessonId]/runs/[runId].js', teachLessonRunOne),
   r('/api/teach/me', 'teach/me.js', teachMe),
+  r('/api/teach/reports', 'teach/reports/index.js', teachReports),
+  r('/api/teach/reports/options', 'teach/reports/options.js', teachReportOptions),
   r('/api/teach/runs', 'teach/runs.js', teachRuns),
   r('/api/teach/runs/:runId', 'teach/runs/[runId]/index.js', teachRunOne),
   r('/api/teach/runs/:runId/answers', 'teach/runs/[runId]/answers.js', teachRunAnswers),

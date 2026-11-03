@@ -7,9 +7,10 @@
   import TeachHome from './TeachHome.svelte';
   import LessonBuilder from './LessonBuilder.svelte';
   import TeacherAdmin from './TeacherAdmin.svelte';
+  import ReportBuilder from './ReportBuilder.svelte';
   import TeachLive from '../live/TeachLive.svelte';
 
-  type View = 'home' | 'classes' | 'lesson' | 'live' | 'teachers';
+  type View = 'home' | 'classes' | 'lesson' | 'live' | 'reports' | 'teachers';
   type Teacher = {
     email: string;
     displayName: string;
@@ -24,6 +25,7 @@
   const TABS: { view: View; href: string; label: string; admin?: boolean }[] = [
     { view: 'home', href: '/teach', label: 'lessons' },
     { view: 'classes', href: '/teach/classes', label: 'classes' },
+    { view: 'reports', href: '/teach/reports', label: 'reports' },
     { view: 'teachers', href: '/teach/teachers', label: 'teachers', admin: true }
   ];
 
@@ -123,6 +125,8 @@
       <LessonBuilder />
     {:else if view === 'live'}
       <TeachLive />
+    {:else if view === 'reports'}
+      <ReportBuilder />
     {:else if view === 'teachers'}
       {#if teacher.isAdmin}
         <TeacherAdmin me={teacher.email} />

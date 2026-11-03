@@ -98,6 +98,8 @@ const scoreR = await load('functions/api/class/score.js');
 const publicBoard = await load('functions/api/leaderboard.js');
 const startR = await load('functions/api/teach/runs/[runId]/start.js');
 const endR = await load('functions/api/teach/runs/[runId]/end.js');
+const reportR = await load('functions/api/teach/reports/index.js');
+const reportOptionsR = await load('functions/api/teach/reports/options.js');
 const liveR = await load('functions/api/live/[runId].js');
 const answersR = await load('functions/api/class/answers.js');
 const runAnswersR = await load('functions/api/teach/runs/[runId]/answers.js');
@@ -722,6 +724,46 @@ console.log('live lessons');
   assert.equal((await call(liveR, 'GET', S(`/api/live/${run.id}`), { runId: run.id })).status, 404, 'students leave an ended lesson');
   assert.equal((await call(startR, 'POST', T(`/api/teach/runs/${run.id}/start`, { method: 'POST', body: {} }), { runId: run.id }, teachMw)).status, 409);
   ok('ending stops the room and the run; it cannot be restarted');
+
+  // Reports: the finished delivery, its answer and its game.
+  const opts = await body(await call(reportOptionsR, 'GET', T(`/api/teach/reports/options?from=${day}&to=${day}`), {}, teachMw));
+  assert.equal(opts.lessons.length, 1);
+  assert.deepEqual(opts.lessons[0].runs.map((r) => [r.runId, r.period]), [[run.id, 'P3']]);
+  assert.deepEqual(
+    opts.lessons[0].items.map((i) => [i.label, i.available]),
+    [['Joined', true], ['Bellwork · Responses', true], ['Bellwork · Results', true], ['GCD race · Coliseum', true], ['Exit ticket', false]],
+    'an exit ticket with no questions yet collects nothing: listed, greyed'
+  );
+  assert.deepEqual(opts.lessons[0].modules.map((m) => m.questions.map((q) => [q.text, q.keyed])), [[['2 + 2?', true]]]);
+  assert.equal((await call(reportOptionsR, 'GET', T('/api/teach/reports/options?from=2026-02-01&to=2025-01-01'), {}, teachMw)).status, 400);
+  ok('the report picker lists finished deliveries with what each lesson can report and its questions');
+
+  const aId = env.DB.sql.prepare('SELECT id FROM student_aliases WHERE alias = ?').get(a.alias).id;
+  env.DB.sql.prepare('INSERT INTO run_joins (run_id, alias_id, joined_at) VALUES (?, ?, ?)').run(run.id, aId, Date.now()); // as the room would
+  const ask = (b, cookie) => call(reportR, 'POST', req('/api/teach/reports', { method: 'POST', body: b, cookie: cookie ?? jar.teacher }), {}, teachMw);
+  const want = { runIds: [run.id], items: { [l.id]: opts.lessons[0].items.map((i) => i.key) }, breakdown: 'period', questions: [`${l.id}:${bell.id}:${qid}`] };
+  const rep = await ask(want);
+  assert.equal(rep.status, 200);
+  const { sheets } = await body(rep);
+  assert.deepEqual(sheets.map((x) => x.name), ['Algebra II P3', 'Questions']);
+  const [period, questions] = sheets;
+  const col = (h) => period.columns.findIndex((c) => c.includes(h));
+  const mine = period.rows.find((r) => r[0] === a.alias);
+  assert.match(String(mine[col('Joined')]), /^\d{1,2}:\d{2} [AP]M$/);
+  assert.equal(mine[col('Q1')], 44);
+  assert.equal(mine[col('Correct (of 1)')], 0);
+  assert.equal(mine[col('Best score')], 15);
+  const others = period.rows.filter((r) => r[0] !== a.alias);
+  assert.ok(others.length > 0 && others.every((r) => r[col('Joined')] === null && r[col('Q1')] === null), 'everyone else is listed, blank');
+  assert.ok(!JSON.stringify(sheets).match(/pin|watch row 3/i), 'no PINs or private notes');
+  assert.deepEqual(questions.rows, [['Live test', 'Bellwork', '2 + 2?', '4', 1, 0, 0, '44 (1)', 0]]);
+  ok('a report by period: every student of the class, their answers, marks, game and join time; then the question sheet');
+
+  assert.equal((await ask(want, other.session)).status, 404, "another teacher can't report on these runs");
+  assert.equal((await ask({ ...want, breakdown: 'weekly' })).status, 400);
+  assert.equal((await ask({ ...want, runIds: [] })).status, 400);
+  assert.equal((await ask({ ...want, items: {}, questions: [] })).status, 400, 'nothing picked');
+  ok('reports are scoped to the teacher and checked');
 }
 
 console.log('coliseum in lessons');

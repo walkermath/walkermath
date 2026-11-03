@@ -19,7 +19,8 @@
     "test:answers": "node --experimental-strip-types --no-warnings --test scripts/test-answers.mjs",
     "test:ink": "node --experimental-strip-types --no-warnings --test scripts/test-ink.mjs",
     "test:router": "node --experimental-strip-types --no-warnings --test scripts/test-router.mjs",
-    "test:pseudonym": "node --experimental-strip-types --no-warnings --test scripts/test-pseudonym.mjs"
+    "test:pseudonym": "node --experimental-strip-types --no-warnings --test scripts/test-pseudonym.mjs",
+    "test:reports": "node --experimental-strip-types --no-warnings --test scripts/test-reports.mjs"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.1",

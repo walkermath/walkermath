@@ -249,12 +249,28 @@ Aliases, joins and posting (Phase 5a, step 1; run `0009_run_joins.sql` first).
    Signed in, the score is saved for you and posts under the student's leaderboard name only when
    the class's leaderboard switch is on.
 
+Reports (Phase 5a, step 2). Finish at least one delivery with some answers first.
+
+1. **[teach] > [reports]**: pick a date range and **[show deliveries]**. Each finished lesson is a
+   row; **▷** opens it into its periods, each with a checkbox. The lesson's checkbox picks or
+   clears all of them.
+2. The columns are what the lessons can report (Joined, then each module's Responses, Results or
+   Coliseum score). The box under a column header picks it for every lesson. A greyed "–" is a
+   module that collects nothing.
+3. Pick a sheet layout: **by period** (a sheet per class), **aggregate** (one sheet) or **by
+   lesson**. Several lessons go side by side in the same sheet.
+4. Tick **question analysis** to add a "Questions" sheet; open the tree to choose questions.
+5. **[build report]** shows the sheets and a preview. **[download .xlsx]** saves a workbook (open
+   it in Excel, or Google Sheets > File > Import); with one sheet, **[download .csv]** too.
+6. Check a blank cell means nothing was handed in, 0 means answered and wrong, and Joined says
+   "not recorded" for lessons taught before `0009_run_joins.sql`.
+
 Tests (no install needed): `npm run test:lessons` (API, against a stand-in database),
 `npm run test:pacing` (the pacing engine), `npm run test:slides` (cutting notes into slides),
 `npm run test:room` (the live room's clock and commands), `npm run test:answers` (what students
 hand in, and marking against the key), `npm run test:ink` (strokes, the eraser, simplifying) and
 `npm run test:router` (every `/api` route is wired up) and `npm run test:pseudonym` (names and
-how sign-in reads a typed alias).
+how sign-in reads a typed alias) and `npm run test:reports` (report sheets and the .xlsx/.csv files).
 
 ## 5. Production: moving walkermath.com from Pages to the Worker
 
