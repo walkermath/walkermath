@@ -25,6 +25,7 @@
     "test:grid": "node --experimental-strip-types --no-warnings --test scripts/test-grid.mjs",
     "test:export": "node --experimental-strip-types --no-warnings --test scripts/test-export.mjs",
     "test:sort": "node --experimental-strip-types --no-warnings --test scripts/test-sort.mjs",
+    "audit:hosts": "node scripts/audit-external-hosts.mjs",
     "test:gcf": "node --experimental-strip-types --no-warnings --test scripts/test-gcf.mjs"
   },
   "dependencies": {

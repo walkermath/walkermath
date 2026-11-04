@@ -334,6 +334,13 @@ factorOutTheGCF (a Coliseum challenge).
 4. In a lesson, add a Coliseum Practice activity and pick factorOutTheGCF; scores land in the
    control panel and reports like the other games.
 
+External hosts. After `npm run build`, run `npm run audit:hosts`: it lists every web address in the
+built files by host, with the files that mention it, and exits with an error if a host isn't on
+its expected list (walkermath.com, accounts.google.com, docs.google.com, plus harmless XML names).
+Run it before merging anything that adds a script, font, image or embed. It can't see what Cloudflare
+adds on its way out (a Web Analytics beacon, a bot challenge): for that, fetch the live page and
+search the HTML for `cloudflareinsights`.
+
 The public leaderboard. Open `/coliseum#leaderboards`: rows show only rank, leaderboard name,
 setting and result, with no period or teacher column and no teacher/period filters. Period and
 teacher are still saved with each score in the database (`leaderboard_entries.class_period`,
