@@ -7,6 +7,7 @@
   import { api } from '../../lib/api.ts';
   import type { Answers } from '../../lib/lesson/answers.ts';
   import { answerSpec, isAnswered } from '../../lib/lesson/answers.ts';
+  import type { FeedbackByModule } from '../../lib/lesson/feedback.ts';
   import type { InkStore } from '../../lib/lesson/inkStore.svelte.ts';
   import type { Page, RoomModule } from '../../lib/lesson/room.ts';
   import LiveModule from '../live/LiveModule.svelte';
@@ -22,6 +23,7 @@
     marks: Record<string, Record<string, boolean | null>>;
     scores: Record<string, { best: number; plays: number }>;
     notes: Record<string, string>;
+    feedback?: FeedbackByModule;
   };
 
   let lesson = $state<Lesson | null>(null);
@@ -145,6 +147,7 @@
             answers={lesson.answers[current.module.id] ?? {}}
             editable={false}
             marks={lesson.marks[current.module.id]}
+            feedback={lesson.feedback?.[current.module.id]}
           />
           <PersonalNote
             runId={lesson.run.id}

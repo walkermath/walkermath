@@ -13,6 +13,7 @@
   import type { Page, RoomModule } from '../../lib/lesson/room.ts';
   import type { InkStore } from '../../lib/lesson/inkStore.svelte.ts';
   import { ANSWER_LIMITS, answerSpec, isAnswered, type Answers } from '../../lib/lesson/answers.ts';
+  import { MARK_COLOR, MARK_LABEL, MARK_SYMBOL, isRevised, type Feedback } from '../../lib/lesson/feedback.ts';
   import { renderMarkdown } from '../../lib/lesson/markdown.ts';
   import { GRID_BLANK_MAX, blankPositions, joinList, parseList } from '../../lib/lesson/grid.ts';
   import MathInput from './MathInput.svelte';
@@ -33,6 +34,7 @@
     editable = false,
     saveState = '',
     marks,
+    feedback,
     onanswer
   }: {
     module: RoomModule;
@@ -58,6 +60,8 @@
     saveState?: SaveState;
     /** Looking back at a finished lesson: right (true), not right (false) or not marked (null), by question id. */
     marks?: Record<string, boolean | null>;
+    /** Active Feedback: the teacher's mark and message on each of this student's answers, by question id. */
+    feedback?: Record<string, Feedback>;
     /** A change to the answers; `flush` = save now (a choice picked, a field left) rather than after a pause in typing. */
     onanswer?: (answers: Answers, flush: boolean) => void;
   } = $props();
@@ -153,6 +157,18 @@
       {#if editable && mine.done === '1'}<span class="text-xs {label}">// tap again to undo</span>{/if}
     </div>
     {@render status()}
+  {/if}
+{/snippet}
+
+{#snippet teacherFeedback(f: Feedback | undefined, current: string | undefined)}
+  {#if f && (f.mark || f.message)}
+    <div class="p-2 rounded border-l-4 bg-[var(--well)] text-sm space-y-1" style="border-left-color: {f.mark ? MARK_COLOR[f.mark] : 'var(--accent)'}" aria-live="polite">
+      <div class="text-xs {label}">
+        // from your teacher{#if student && isRevised(f, current)} · you've changed your answer since{/if}
+      </div>
+      {#if f.mark}<div class="font-bold" style="color: {MARK_COLOR[f.mark]}">{MARK_SYMBOL[f.mark]} {MARK_LABEL[f.mark]}</div>{/if}
+      {#if f.message}<p class="whitespace-pre-wrap break-words">{f.message}</p>{/if}
+    </div>
   {/if}
 {/snippet}
 
@@ -285,6 +301,7 @@
             ></textarea>
           {/if}
         {/if}
+        {@render teacherFeedback(feedback?.[q.id], mine[q.id])}
       </li>
     {/each}
   </ol>

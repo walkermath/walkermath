@@ -73,6 +73,9 @@
     if (timer) clearInterval(timer);
   });
 
+  /** Goes up when a student saves an Active Feedback answer, so the answers box refreshes at once. */
+  let answersNudge = $state(0);
+
   function connect() {
     if (!run) return;
     conn?.close();
@@ -83,6 +86,7 @@
         if (s.status === 'ended' && run) run.status = 'ended';
       },
       onRoster: (r) => (students = r),
+      onAnswers: () => answersNudge++,
       onTransport: (t) => {
         if (t === 'socket' && transport !== 'socket') ink.resync(); // changes may have been missed
         transport = t;
@@ -187,6 +191,8 @@
       <p>// this delivery has ended.</p>
       <a class="underline hover:text-[var(--accent)]" href="/teach">&lt;- [lessons]</a>
     </section>
+    <!-- What it collected; Active Feedback can still be marked (it shows when students look back). -->
+    <AnswersPanel runId={run.id} />
   {:else if !lesson || !rs}
     <p class={label}>connecting to the room...</p>
   {:else}
@@ -213,6 +219,7 @@
         <p class="text-sm">// the lesson has ended. students see "the lesson is over".</p>
         <a class="underline hover:text-[var(--accent)]" href="/teach">&lt;- [lessons]</a>
       </section>
+      <AnswersPanel runId={run.id} />
     {:else}
       <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] items-start">
         <div class="space-y-4 min-w-0">
@@ -293,7 +300,7 @@
               </section>
             {/if}
 
-            <AnswersPanel runId={run.id} modules={lesson.modules} {rs} {students} onspotlight={(spot) => send({ type: 'spotlight', spot })} />
+            <AnswersPanel runId={run.id} modules={lesson.modules} {rs} {students} nudge={answersNudge} onspotlight={(spot) => send({ type: 'spotlight', spot })} />
 
             <section class="{panel} space-y-2">
               <div class={heading}>// what students see</div>

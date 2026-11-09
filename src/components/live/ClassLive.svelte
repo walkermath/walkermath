@@ -12,6 +12,7 @@
   import { ANSWER_GRACE_MS, lessonLeftMs, livePage, moduleLeftMs, pagesOf, type RoomState } from '../../lib/lesson/room.ts';
   import { InkStore, inkHandlers } from '../../lib/lesson/inkStore.svelte.ts';
   import { answerSpec, isAnswered, type Answers } from '../../lib/lesson/answers.ts';
+  import type { FeedbackByModule } from '../../lib/lesson/feedback.ts';
   import { clockAt, connectLive, countdown, type LiveConnection, type LiveLesson, type Transport } from '../../lib/lesson/liveClient.ts';
   import LiveModule, { type SaveState } from './LiveModule.svelte';
   import PageView from './PageView.svelte';
@@ -42,6 +43,11 @@
         transport = t;
       },
       onHand: (on) => (hand = on),
+      onFeedback: (rev) => {
+        // The first number only says where the counter stands (the page loaded the feedback itself).
+        if (lastFbRev !== null && rev !== lastFbRev) loadFeedback(true);
+        lastFbRev = rev;
+      },
       onGone: (status, message) =>
         (gone = status === 404 ? "This lesson isn't running for your class right now." : message),
       ...inkHandlers(ink)
@@ -52,6 +58,7 @@
     loadNotes();
     addEventListener('beforeunload', warnUnsaved);
     document.addEventListener('visibilitychange', flushIfHidden);
+    document.addEventListener('visibilitychange', feedbackOnReturn);
   });
   onDestroy(() => {
     conn?.close();
@@ -60,7 +67,9 @@
     if (typeof window !== 'undefined') {
       removeEventListener('beforeunload', warnUnsaved);
       document.removeEventListener('visibilitychange', flushIfHidden);
+      document.removeEventListener('visibilitychange', feedbackOnReturn);
     }
+    if (feedbackTimer) clearInterval(feedbackTimer);
   });
 
   /* ---------------- "I'm stuck" ---------------- */
@@ -103,6 +112,58 @@
   const TYPING_PAUSE_MS = 2000;
   const RETRY_MS = 4000;
 
+  /* ---------------- Active Feedback: the teacher's marks and messages on my answers ---------------- */
+  let feedback = $state<FeedbackByModule>({});
+  let feedbackTimer: ReturnType<typeof setInterval> | null = null;
+  /** The teacher's feedback arrives by a push from the room (a socket message, or a counter in the slow-mode poll);
+   *  this slower check is only a safety net while on an Active Feedback activity. */
+  const FEEDBACK_CHECK_MS = 30_000;
+  let lastFbRev: number | null = null;
+  /** Modules with feedback this student hasn't looked at yet (a ✉ in the sidebar, "(1)" in the tab title). */
+  let unseenFb = $state<string[]>([]);
+  let baseTitle = '';
+
+  /** `announce`: this came from a push, so mark modules whose feedback changed as unseen. */
+  async function loadFeedback(announce = false) {
+    if (!runId) return;
+    try {
+      const res = await fetch(`/api/class/feedback?run=${encodeURIComponent(runId)}`, { credentials: 'same-origin', cache: 'no-store' });
+      if (!res.ok) return;
+      const next: FeedbackByModule = (await res.json()).feedback ?? {};
+      if (announce) {
+        const changed = Object.keys(next).filter((id) =>
+          Object.entries(next[id]).some(([q, f]) => (f.mark || f.message) && f.at !== feedback[id]?.[q]?.at)
+        );
+        unseenFb = [...new Set([...unseenFb, ...changed])];
+      }
+      feedback = next;
+    } catch {
+      // offline: keep what's shown
+    }
+  }
+
+  /** Feedback on the module this student is looking at, in a visible tab, counts as seen. */
+  function markSeen() {
+    if (typeof document === 'undefined' || document.visibilityState !== 'visible' || !current) return;
+    if (unseenFb.includes(current.id)) unseenFb = unseenFb.filter((id) => id !== current!.id);
+  }
+  $effect(() => {
+    void unseenFb;
+    void current?.id;
+    markSeen();
+  });
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+    baseTitle ||= document.title;
+    document.title = unseenFb.length ? `(${unseenFb.length}) New feedback · ${baseTitle}` : baseTitle;
+  });
+  /** Coming back to this tab (from the app the activity links to): check for feedback right away. */
+  const feedbackOnReturn = () => {
+    if (document.visibilityState !== 'visible') return;
+    markSeen();
+    if (onFeedbackActivity) loadFeedback(true);
+  };
+
   async function loadMine() {
     try {
       const res = await fetch(`/api/class/answers?run=${encodeURIComponent(runId)}`, { credentials: 'same-origin', cache: 'no-store' });
@@ -112,6 +173,7 @@
       for (const [id, v] of Object.entries<any>(data.answers ?? {})) if (!dirty.has(id) && !inflight.has(id)) next[id] = v.answers ?? {};
       mine = next;
       marks = data.marks ?? {};
+      loadFeedback();
     } catch {
       // offline: what's on screen stays; saving retries
     }
@@ -201,6 +263,17 @@
   const shownIndex = $derived(rs ? (viewing ?? rs.index) : 0);
   const onLive = $derived(!!rs && shownIndex === rs.index);
   const current = $derived(lesson ? lesson.modules[shownIndex] : null);
+  /** On an Active Feedback activity, check every few seconds (only while this tab is showing). */
+  const onFeedbackActivity = $derived(current?.type === 'activity' && current.config?.category === 'feedback');
+  $effect(() => {
+    if (!onFeedbackActivity) return;
+    loadFeedback();
+    feedbackTimer = setInterval(() => document.visibilityState === 'visible' && loadFeedback(), FEEDBACK_CHECK_MS);
+    return () => {
+      if (feedbackTimer) clearInterval(feedbackTimer);
+      feedbackTimer = null;
+    };
+  });
   /** Modules the class has reached (including ones left or skipped past); later ones stay closed. */
   const reachable = (i: number) => !!rs && (i <= rs.index || !!rs.done?.[i] || (rs.took?.[i] ?? 0) > 0);
   const open = (i: number) => {
@@ -323,6 +396,9 @@
                 >
                   <span class="w-4 text-center {mk.cls}" title={mk.title} aria-label={mk.title || undefined}>{mk.sym}</span>
                   <span class="flex-1 truncate {i === rs.index ? 'font-bold' : ''}">{m.title}</span>
+                  {#if unseenFb.includes(m.id)}
+                    <span class="text-[var(--accent)] font-bold" title="New feedback from your teacher" aria-label="New feedback from your teacher">✉</span>
+                  {/if}
                   {#if i === rs.index}
                     <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
                   {/if}
@@ -425,6 +501,7 @@
             {runId}
             answers={mine[current.id] ?? {}}
             marks={editable(shownIndex) ? undefined : marks[current.id]}
+            feedback={feedback[current.id]}
             editable={editable(shownIndex)}
             saveState={saves[current.id] ?? ''}
             onanswer={(a, flush) => current && edit(current.id, a, flush)}

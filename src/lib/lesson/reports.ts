@@ -5,8 +5,9 @@
 // (src/lib/reports/files.ts).
 //
 // Each module reports whatever it collects, from its answer spec (answers.ts): a module that takes
-// answers has Responses, one with keyed questions also has Results, a Coliseum activity has its
-// best score. A module that collects nothing (Notes, a Turn & Talk, a question set with no
+// answers has Responses, one with keyed questions also has Results, an Active Feedback activity
+// also has Feedback (the marks the teacher gave by hand, and a score from them), a Coliseum
+// activity has its best score. A module that collects nothing (Notes, a Turn & Talk, a question set with no
 // questions) isn't listed. Activities that start taking input join in by declaring an answer spec;
 // nothing here lists module types by name.
 //
@@ -16,10 +17,12 @@
 // Rows are student aliases, never names. A blank cell means nothing was handed in.
 
 import { answerSpec, isAnswered, isCorrect, toNumber, type Answers } from './answers.ts';
+import { MARK_POINTS, MARK_REPORT, type Mark } from './feedback.ts';
 import { gridText, type Grid } from './grid.ts';
+import { isFeedbackActivity } from './modules.ts';
 import { sortText, type SortSpec } from './sort.ts';
 
-export type ItemKind = 'joined' | 'responses' | 'results' | 'coliseum';
+export type ItemKind = 'joined' | 'responses' | 'results' | 'feedback' | 'coliseum';
 
 /** A module as the run's snapshot holds it (answer keys included; Notes content left out). */
 export interface ReportModule {
@@ -62,6 +65,7 @@ const KIND_LABEL: Record<ItemKind, string> = {
   joined: 'Joined',
   responses: 'Responses',
   results: 'Results',
+  feedback: 'Feedback',
   coliseum: 'Coliseum'
 };
 
@@ -108,6 +112,7 @@ export function reportItems(modules: ReportModule[]): ReportItem[] {
     if (answerSpec(m)) {
       items.push(item('responses'));
       if (moduleQuestions(m).some((q) => q.answer !== '')) items.push(item('results'));
+      if (isFeedbackActivity(m)) items.push(item('feedback'));
     } else if (isColiseum(m)) {
       items.push(item('coliseum'));
     }
@@ -141,6 +146,8 @@ export interface ReportData {
   submissions: { runId: string; moduleId: string; aliasId: string; answers: Answers }[];
   scores: { runId: string; moduleId: string; aliasId: string; best: number; plays: number }[];
   joins: { runId: string; aliasId: string; joinedAt: number }[];
+  /** The teacher's marks in Active Feedback activities (their messages stay private: never reported). */
+  feedback?: { runId: string; moduleId: string; aliasId: string; questionId: string; mark: Mark }[];
 }
 
 export type Breakdown = 'aggregate' | 'period' | 'lesson';
@@ -231,8 +238,18 @@ export function buildReport(data: ReportData, req: ReportRequest): Sheet[] {
     joined.set(`${j.runId}|${j.aliasId}`, j.joinedAt);
     recorded.add(j.runId);
   }
+  const marks = new Map<string, Mark>(); // `${runId}|${moduleId}|${aliasId}|${questionId}`
+  const markCounts = new Map<string, Record<Mark, number>>(); // `${runId}|${moduleId}|${questionId}`
+  for (const f of data.feedback ?? []) {
+    marks.set(`${f.runId}|${f.moduleId}|${f.aliasId}|${f.questionId}`, f.mark);
+    const ck = `${f.runId}|${f.moduleId}|${f.questionId}`;
+    const c = markCounts.get(ck) ?? { right: 0, partial: 0, wrong: 0 };
+    c[f.mark]++;
+    markCounts.set(ck, c);
+  }
   const touched = new Set<string>(); // aliases with anything in these runs (keeps retired ones that took part)
   for (const k of [...subs.keys(), ...best.keys()]) touched.add(k.split('|')[2]);
+  for (const k of marks.keys()) touched.add(k.split('|')[2]);
   for (const k of joined.keys()) touched.add(k.split('|')[1]);
 
   // Lesson instances: the nth delivery of a lesson to a class. Usually n = 1.
@@ -284,6 +301,29 @@ export function buildReport(data: ReportData, req: ReportRequest): Sheet[] {
             if (!m || !a || !spec || !isAnswered(spec, a)) return null;
             return moduleQuestions(m).filter((q) => q.answer !== '' && isCorrect(q, a[q.id]) === true).length;
           }
+        });
+      } else if (item.kind === 'feedback') {
+        // The score first (right 1, partly right a half, not yet 0; blank until something is marked),
+        // then each question's mark.
+        const total = moduleQuestions(mod!).length;
+        const markOf = (run: ReportRun, s: Student, qid: string) => marks.get(`${run.id}|${item.moduleId}|${s.id}|${qid}`);
+        inst.columns.push({
+          header: head(`Score (of ${total})`),
+          value: (run, s) => {
+            const m = find(run);
+            const given = m ? moduleQuestions(m).map((q) => markOf(run, s, q.id)).filter((x): x is Mark => !!x) : [];
+            return given.length ? given.reduce((n, x) => n + MARK_POINTS[x], 0) : null;
+          }
+        });
+        moduleQuestions(mod!).forEach((q, i) => {
+          inst.columns.push({
+            header: head(`Q${i + 1} mark: ${clip(q.text, 40)}`),
+            value: (run, s) => {
+              const rq = find(run) ? moduleQuestions(find(run)!).find((x) => x.id === q.id) : undefined;
+              const mk = rq ? markOf(run, s, q.id) : undefined;
+              return mk ? MARK_REPORT[mk] : null;
+            }
+          });
         });
       } else if (item.kind === 'responses') {
         const spec = answerSpec(mod!);
@@ -369,7 +409,7 @@ export function buildReport(data: ReportData, req: ReportRequest): Sheet[] {
     }
   }
 
-  const analysis = questionAnalysis(runs, req.questions, subs, classOrder, classes);
+  const analysis = questionAnalysis(runs, req.questions, subs, markCounts, classOrder, classes);
   if (analysis) sheets.push({ ...analysis, name: sheetName('Questions', taken) });
   return sheets;
 }
@@ -387,6 +427,7 @@ function questionAnalysis(
   runs: ReportRun[],
   picked: string[],
   subs: Map<string, Answers>,
+  markCounts: Map<string, Record<Mark, number>>,
   classOrder: string[],
   classes: Map<string, { name: string; period: string }>
 ): Omit<Sheet, 'name'> | null {
@@ -399,7 +440,7 @@ function questionAnalysis(
     list.push(answers);
     byModule.set(`${runId}|${moduleId}`, list);
   }
-  type Group = { lesson: string; module: string; q: ReportQuestion; answered: number; correct: number; wrong: Map<string, number>; byClass: Map<string, { answered: number; correct: number }> };
+  type Group = { lesson: string; module: string; q: ReportQuestion; feedback: boolean; marked: Record<Mark, number>; answered: number; correct: number; wrong: Map<string, number>; byClass: Map<string, { answered: number; correct: number }> };
   const groups = new Map<string, Group>();
 
   for (const run of runs) {
@@ -409,11 +450,13 @@ function questionAnalysis(
         const gk = `${run.lessonId}|${m.id}|${q.id}|${q.text}`;
         let g = groups.get(gk);
         if (!g) {
-          g = { lesson: run.lessonTitle, module: m.title, q, answered: 0, correct: 0, wrong: new Map(), byClass: new Map() };
+          g = { lesson: run.lessonTitle, module: m.title, q, feedback: isFeedbackActivity(m), marked: { right: 0, partial: 0, wrong: 0 }, answered: 0, correct: 0, wrong: new Map(), byClass: new Map() };
           groups.set(gk, g);
         }
         const per = g.byClass.get(run.classId) ?? { answered: 0, correct: 0 };
         g.byClass.set(run.classId, per);
+        const mc = markCounts.get(`${run.id}|${m.id}|${q.id}`);
+        if (mc) for (const k of ['right', 'partial', 'wrong'] as const) g.marked[k] += mc[k];
         for (const answers of byModule.get(`${run.id}|${m.id}`) ?? []) {
           const raw = answers[q.id];
           if (raw === undefined || raw.trim() === '') continue;
@@ -435,9 +478,12 @@ function questionAnalysis(
 
   const pct = (c: number, n: number) => (n ? Math.round((100 * c) / n) : null);
   const classIds = classOrder.filter((c) => [...groups.values()].some((g) => g.byClass.has(c)));
+  // Active Feedback questions have no key: they get how many answers the teacher marked each way.
+  const hasFeedback = [...groups.values()].some((g) => g.feedback);
   return {
     columns: [
       'Lesson', 'Module', 'Question', 'Key', 'Answered', 'Correct', '% correct', 'Most common wrong answers',
+      ...(hasFeedback ? ['Marked right', 'Marked partly right', 'Marked not right yet'] : []),
       ...classIds.map((c) => `${classes.get(c)!.name} ${classes.get(c)!.period} % correct`)
     ],
     rows: [...groups.values()].map((g) => {
@@ -451,11 +497,12 @@ function questionAnalysis(
         g.lesson,
         g.module,
         g.q.text,
-        keyed ? answerText(g.q, g.q.answer) : '(no key)',
+        keyed ? answerText(g.q, g.q.answer) : g.feedback ? '(marked by teacher)' : '(no key)',
         g.answered,
         keyed ? g.correct : null,
         keyed ? pct(g.correct, g.answered) : null,
         top || null,
+        ...(hasFeedback ? (g.feedback ? [g.marked.right, g.marked.partial, g.marked.wrong] : [null, null, null]) : []),
         ...classIds.map((c) => {
           const per = g.byClass.get(c);
           return keyed && per ? pct(per.correct, per.answered) : null;

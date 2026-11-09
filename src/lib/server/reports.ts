@@ -113,7 +113,7 @@ export async function reportData(db: any, teacherId: string, runIds: string[]): 
   const runs = (runRows as any[]).map(toRun);
   const classIds = JSON.stringify([...new Set(runs.map((r) => r.classId))]);
 
-  const [aliases, subs, scores, joins] = await Promise.all([
+  const [aliases, subs, scores, joins, feedback] = await Promise.all([
     db.prepare('SELECT id, class_id, alias, retired FROM student_aliases WHERE class_id IN (SELECT value FROM json_each(?1))').bind(classIds).all(),
     db.prepare(`SELECT run_id, module_id, alias_id, answers_json FROM submissions WHERE run_id IN (SELECT value FROM json_each(?1))`).bind(ids).all(),
     db
@@ -124,7 +124,8 @@ export async function reportData(db: any, teacherId: string, runIds: string[]): 
       )
       .bind(ids)
       .all(),
-    readJoins(db, ids)
+    readJoins(db, ids),
+    readFeedback(db, ids)
   ]);
 
   return {
@@ -132,8 +133,22 @@ export async function reportData(db: any, teacherId: string, runIds: string[]): 
     aliases: aliases.results.map((a: any) => ({ id: a.id, classId: a.class_id, alias: a.alias, retired: !!a.retired })),
     submissions: subs.results.map((s: any) => ({ runId: s.run_id, moduleId: s.module_id, aliasId: s.alias_id, answers: parse(s.answers_json, {}) })),
     scores: scores.results.map((s: any) => ({ runId: s.run_id, moduleId: s.module_id, aliasId: s.alias_id, best: Number(s.best), plays: Number(s.plays) })),
-    joins
+    joins,
+    feedback
   };
+}
+
+/** The teacher's Active Feedback marks (not the messages); none before migration 0012 is run. */
+async function readFeedback(db: any, ids: string): Promise<NonNullable<ReportData['feedback']>> {
+  try {
+    const { results } = await db
+      .prepare(`SELECT run_id, module_id, alias_id, question_id, mark FROM feedback WHERE mark IS NOT NULL AND run_id IN (SELECT value FROM json_each(?1))`)
+      .bind(ids)
+      .all();
+    return results.map((f: any) => ({ runId: f.run_id, moduleId: f.module_id, aliasId: f.alias_id, questionId: f.question_id, mark: f.mark }));
+  } catch {
+    return [];
+  }
 }
 
 /** Join times; none at all before migration 0009 is run (the report then says "not recorded"). */

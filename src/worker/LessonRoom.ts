@@ -81,6 +81,9 @@ export class LessonRoom extends DurableObject<Env> {
   private seen: Map<string, string> | null = null;
   /** "I'm stuck": alias id -> when the hand went up. Kept in storage under 'hands'. */
   private hands: Map<string, number> | null = null;
+  /** Active Feedback: a counter per student that goes up each time the teacher marks or messages them
+   *  (kept in storage under 'fbrev'), so slow-mode devices know to fetch their feedback. */
+  private fbRev: Map<string, number> | null = null;
   /** Students in slow mode: alias id -> last poll (in memory; polling keeps the room awake). */
   private polled = new Map<string, { alias: string; at: number }>();
   /** Ink by page, read from storage when first needed (each stroke is its own key: k:<page>:<stroke>). */
@@ -139,6 +142,24 @@ export class LessonRoom extends DurableObject<Env> {
   private async loadHands(): Promise<Map<string, number>> {
     if (!this.hands) this.hands = new Map(Object.entries((await this.ctx.storage.get<Record<string, number>>('hands')) ?? {}));
     return this.hands;
+  }
+
+  private async loadFbRev(): Promise<Map<string, number>> {
+    if (!this.fbRev) this.fbRev = new Map(Object.entries((await this.ctx.storage.get<Record<string, number>>('fbrev')) ?? {}));
+    return this.fbRev;
+  }
+
+  /** The teacher gave this student feedback: bump their counter and tell their devices (nothing else
+   *  goes through the room: the devices fetch the feedback itself from the /api handler). */
+  private async feedbackFor(aliasId: string) {
+    const revs = await this.loadFbRev();
+    const rev = (revs.get(aliasId) ?? 0) + 1;
+    revs.set(aliasId, rev);
+    await this.ctx.storage.put('fbrev', Object.fromEntries(revs));
+    const msg = JSON.stringify({ type: 'feedback', rev });
+    for (const ws of this.ctx.getWebSockets('student')) {
+      if ((ws.deserializeAttachment() as Who | null)?.who === aliasId) this.send(ws, msg);
+    }
   }
 
   /** A student's "I'm stuck" goes up or down (the student, or the teacher clearing it). */
@@ -389,6 +410,8 @@ export class LessonRoom extends DurableObject<Env> {
       if (who.role === 'teacher') this.send(server, await this.rosterMsg());
       else {
         if ((await this.loadHands()).has(who.who)) this.send(server, JSON.stringify({ type: 'hand', on: true }));
+        const fbRev = (await this.loadFbRev()).get(who.who);
+        if (fbRev) this.send(server, JSON.stringify({ type: 'feedback', rev: fbRev })); // a device that was away learns what it missed
         await this.markSeen(who.who, who.name);
         this.broadcast(await this.rosterMsg(), 'teacher');
       }
@@ -437,7 +460,7 @@ export class LessonRoom extends DurableObject<Env> {
         inkRev: await this.loadRev(),
         ...(url.searchParams.get('full') === '1' ? { lesson: loaded.lesson } : {}),
         ...(who.role === 'teacher' ? { students: await this.roster() } : {}),
-        ...(who.role === 'student' ? { hand: (await this.loadHands()).has(who.who) } : {})
+        ...(who.role === 'student' ? { hand: (await this.loadHands()).has(who.who), feedbackRev: (await this.loadFbRev()).get(who.who) ?? 0 } : {})
       });
     }
 
@@ -482,6 +505,19 @@ export class LessonRoom extends DurableObject<Env> {
       const body = (await request.json().catch(() => null)) as { cmd?: unknown } | null;
       const state = await this.run(body?.cmd);
       return state ? json({ state, serverNow: Date.now() }) : json({ error: 'Not started' }, 409);
+    }
+
+    // Active Feedback pushes, from the /api handlers only (like /peek, the room is not reachable any
+    // other way): a student saved an answer -> the control panels refresh; the teacher gave a student
+    // feedback -> that student's devices fetch it. Only a nudge goes through here, never the content.
+    if (request.method === 'POST' && url.pathname === '/nudge') {
+      const loaded = await this.load();
+      if (!loaded || loaded.state.status !== 'live') return json({ ok: false });
+      const body = (await request.json().catch(() => null)) as { kind?: unknown; aliasId?: unknown } | null;
+      if (body?.kind === 'answers') this.broadcast(JSON.stringify({ type: 'answers' }), 'teacher');
+      else if (body?.kind === 'feedback' && typeof body.aliasId === 'string' && body.aliasId) await this.feedbackFor(body.aliasId.slice(0, 64));
+      else return json({ error: 'Invalid nudge.' }, 400);
+      return json({ ok: true });
     }
 
     return new Response('Not found', { status: 404 });

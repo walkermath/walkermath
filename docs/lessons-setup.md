@@ -83,8 +83,8 @@ new value in a password manager, and don't change it again after students have c
 
 ## 3. Database tables
 
-Eleven migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
-`0001`-`0003` and `0008`-`0011` are safe to run twice; `0004`-`0007` are not (SQLite can't add a column twice: "duplicate column
+Twelve migrations, applied in order. They only add tables or columns (`leaderboard_entries` is untouched).
+`0001`-`0003` and `0008`-`0012` are safe to run twice; `0004`-`0007` are not (SQLite can't add a column twice: "duplicate column
 name" just means it's already applied).
 
 ```sh
@@ -101,6 +101,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0008_r
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0009_run_joins.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0010_student_notes.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0011_library.sql
+npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0012_feedback.sql
 
 # production (once each, when you're ready to deploy): the same commands with --remote
 ```
@@ -119,6 +120,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0011_l
 | `0009_run_joins.sql` | when each student first joined a delivery (the reports' Joined column) |
 | `0010_student_notes.sql` | students' personal notes on a lesson (private to each student) |
 | `0011_library.sql` | the lesson library: lessons teachers share with each other |
+| `0012_feedback.sql` | your marks and messages on students' answers in Active Feedback activities |
 
 ## 4. Try it locally
 
@@ -131,7 +133,7 @@ npx wrangler dev          # http://localhost:8787
 
 (`npm run start` does both.) After changing code, stop it, build again and restart. The local
 database is the one the migrations above were run on; if the site acts as if it's empty after the
-move from Pages, run the migrations again (`0001`-`0003` and `0008`-`0011` are safe to repeat).
+move from Pages, run the migrations again (`0001`-`0003` and `0008`-`0012` are safe to repeat).
 
 Teachers and classes:
 
