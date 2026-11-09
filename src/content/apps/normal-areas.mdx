@@ -1,0 +1,21 @@
+---
+title: "Normal Model: Areas & Cutoffs"
+description: "Shade areas under the normal curve (less than, greater than, between, outside) for Z, X ~ N(μ, σ) or sample means x̄ ~ N(μ, σ/√n), or work backwards from an area or percentile to the cutoff. Every answer shows its steps."
+category: statistics
+---
+
+import NormalAreas from '../../components/apps/NormalAreas.svelte';
+
+<details class="mb-8 border border-[var(--border-color)] bg-[var(--bg-surface)] rounded-md p-4 group">
+  <summary class="font-mono text-xs font-bold text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] transition-colors list-none">
+    [help /!\\]
+  </summary>
+  <div class="mt-4 text-sm text-[var(--text-primary)] space-y-3 leading-relaxed">
+    <p><b>Find the area.</b> Pick what to shade (less than, greater than, between, outside), then drag on the curve or type the cutoffs. The answer shows each step: standardizing with z = (x − μ)/σ, writing the area in terms of areas to the <i>left</i> (what a z-table or normalcdf gives you), and what it means in words.</p>
+    <p><b>Find the cutoff.</b> Type an area or a percentile (0.90 or 90%) and the app works backwards: area to the left, then z, then x = μ + zσ.</p>
+    <p><b>Distribution.</b> Z is the standard normal. X ~ N(μ, σ) is any normal model, like test scores. x̄ ~ N(μ, σ/√n) is the sampling distribution of a sample mean: by the Central Limit Theorem its spread is the standard error σ/√n.</p>
+    <p><b>68–95–99.7.</b> The buttons at the bottom shade within 1, 2 and 3 standard deviations of the mean.</p>
+  </div>
+</details>
+
+<NormalAreas client:load />
