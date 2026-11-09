@@ -35,7 +35,8 @@ export async function onRequestPost({ request, env, data }) {
       ...m,
       id: crypto.randomUUID(),
       config:
-        m.type === 'prompt'
+        // Prompts and Active Feedback activities: fresh question ids too.
+        Array.isArray(m.config?.questions)
           ? { ...m.config, questions: m.config.questions.map((q) => ({ ...q, id: crypto.randomUUID() })) }
           : m.config
     }));

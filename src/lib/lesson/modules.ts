@@ -118,6 +118,7 @@ export const ACTIVITY_CATEGORIES = [
   { id: 'coliseum', label: 'Coliseum Practice', title: 'Coliseum practice' },
   { id: 'external', label: 'External Tool', title: 'External tool' },
   { id: 'handout', label: 'Paper Handout', title: 'Paper handout' },
+  { id: 'feedback', label: 'Active Feedback', title: 'Active feedback' },
   { id: 'other', label: 'Other', title: 'Learning activity' }
 ] as const;
 export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number]['id'];
@@ -134,7 +135,19 @@ export interface ActivityConfig {
   doneTap: boolean;
   /** Coliseum Practice only: the challenge shown in the module (an id from /coliseum), or ''. */
   coliseumId: string;
+  /**
+   * Active Feedback only: questions students answer while the teacher marks each answer by hand
+   * (no answer key: every `answer` is ''). Absent on other categories.
+   */
+  questions?: Question[];
 }
+
+/** Question kinds an Active Feedback activity can ask (grids and card sorts need a key to be useful). */
+export const FEEDBACK_QUESTION_KINDS = ['text', 'number', 'math', 'choice'] as const satisfies readonly QuestionKind[];
+
+/** An Active Feedback activity: questions with no key, marked live by the teacher. */
+export const isFeedbackActivity = (m: { type: string; config: any }): boolean =>
+  m.type === 'activity' && m.config?.category === 'feedback';
 
 /** A Coliseum challenge id (its file name under src/content/coliseum). */
 export const COLISEUM_ID = /^[a-z0-9][a-z0-9_-]{0,79}$/;
@@ -209,7 +222,7 @@ export const MODULE_TYPES: Record<ModuleType, ModuleTypeInfo> = {
     defaultTitle: 'Learning activity',
     defaultSec: 7 * 60,
     defaultConfig: (): ActivityConfig => ({ category: 'other', instructions: '', links: [], doneTap: true, coliseumId: '' }),
-    collects: () => false
+    collects: (c) => (c as ActivityConfig).category === 'feedback'
   },
   independent: {
     label: 'Independent work',
@@ -242,6 +255,7 @@ export function newModule(type: ModuleType, category?: ActivityCategory | Prompt
   if (type === 'activity' && category && isActivityCategory(category)) {
     (m.config as ActivityConfig).category = category;
     m.title = activityCategory(category).title;
+    if (category === 'feedback') toFeedback(m);
   }
   if (type === 'prompt' && category && isPromptCategory(category)) {
     const c = promptCategory(category);
@@ -251,6 +265,17 @@ export function newModule(type: ModuleType, category?: ActivityCategory | Prompt
     m.pacing = c.locked ? 'locked' : 'flex';
   }
   return m;
+}
+
+/**
+ * Makes an activity an Active Feedback one: it collects its questions' answers (no "done" tap), and
+ * by default holds when time runs out so the teacher can finish giving feedback before moving on.
+ */
+export function toFeedback(m: { onTimeUp: OnTimeUp; config: any }) {
+  m.config.category = 'feedback';
+  if (!Array.isArray(m.config.questions)) m.config.questions = [];
+  m.config.doneTap = false;
+  m.onTimeUp = 'hold';
 }
 
 /** Every new lesson starts with a locked 5-minute Bellwork and a locked 4-minute Exit ticket. */
@@ -395,58 +420,69 @@ export function upgradeNotesConfig(c: any): { slides: any[] } {
   return { slides: slides.length ? slides : [newSlide()] };
 }
 
+/**
+ * A list of questions, checked. `keyless` (Active Feedback): only the kinds in
+ * FEEDBACK_QUESTION_KINDS, and any answer key or matching rule is dropped.
+ */
+function cleanQuestions(v: unknown, where: string, keyless: boolean): Question[] | string {
+  const qs = Array.isArray(v) ? v : [];
+  if (qs.length > LIMITS.questions) return `${where}: at most ${LIMITS.questions} questions.`;
+  const kinds: readonly QuestionKind[] = keyless ? FEEDBACK_QUESTION_KINDS : ['text', 'number', 'choice', 'math', 'grid', 'sort'];
+  const questions: Question[] = [];
+  for (const [i, q] of qs.entries()) {
+    const kind: QuestionKind = kinds.includes(q?.kind) ? q.kind : 'text';
+    const text = cleanText(q?.text, LIMITS.text);
+    if (!text) return `${where}: question ${i + 1} is empty.`;
+    let choices: string[] = [];
+    let answer = keyless || kind === 'grid' || kind === 'sort' ? '' : cleanLine(q?.answer, LIMITS.answer);
+    let grid: Grid | undefined;
+    let sort: SortSpec | undefined;
+    if (kind === 'sort') {
+      const so = cleanSort(q?.sort, q?.answer);
+      if (typeof so === 'string') return `${where}: question ${i + 1}: ${so}`;
+      sort = so.sort;
+      answer = so.answer;
+    }
+    if (kind === 'grid') {
+      const g = cleanGrid(q?.grid, q?.answer);
+      if (typeof g === 'string') return `${where}: question ${i + 1}: ${g}`;
+      grid = g.grid;
+      answer = g.answer;
+    }
+    if (kind === 'choice') {
+      choices = (Array.isArray(q?.choices) ? q.choices : []).map((x: unknown) => cleanLine(x, LIMITS.choice)).filter(Boolean);
+      if (choices.length < 2 || choices.length > LIMITS.choices) {
+        return `${where}: question ${i + 1} needs 2 to ${LIMITS.choices} choices.`;
+      }
+      if (answer && !(Number.isInteger(Number(answer)) && Number(answer) >= 0 && Number(answer) < choices.length)) answer = '';
+    }
+    if (kind === 'number' && answer && !Number.isFinite(Number(answer))) {
+      return `${where}: the answer to question ${i + 1} should be a number.`;
+    }
+    if (kind === 'math' && answer) {
+      const read = readMath(answer);
+      if (!read.ok) return `${where}: the answer to question ${i + 1} can't be read (${read.error})`;
+    }
+    questions.push({
+      id: isUuid(q?.id) ? q.id : newUuid(),
+      kind,
+      text,
+      choices,
+      answer,
+      ...(!keyless && (kind === 'math' || kind === 'grid') ? { match: q?.match === 'any' ? ('any' as const) : ('form' as const) } : {}),
+      ...(grid ? { grid } : {}),
+      ...(sort ? { sort } : {})
+    });
+  }
+  return questions;
+}
+
 function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | string {
   c = c && typeof c === 'object' ? c : {};
   switch (type) {
     case 'prompt': {
-      const qs = Array.isArray(c.questions) ? c.questions : [];
-      if (qs.length > LIMITS.questions) return `${where}: at most ${LIMITS.questions} questions.`;
-      const questions: Question[] = [];
-      for (const [i, q] of qs.entries()) {
-        const kind: QuestionKind = ['text', 'number', 'choice', 'math', 'grid', 'sort'].includes(q?.kind) ? q.kind : 'text';
-        const text = cleanText(q?.text, LIMITS.text);
-        if (!text) return `${where}: question ${i + 1} is empty.`;
-        let choices: string[] = [];
-        let answer = kind === 'grid' || kind === 'sort' ? '' : cleanLine(q?.answer, LIMITS.answer);
-        let grid: Grid | undefined;
-        let sort: SortSpec | undefined;
-        if (kind === 'sort') {
-          const so = cleanSort(q?.sort, q?.answer);
-          if (typeof so === 'string') return `${where}: question ${i + 1}: ${so}`;
-          sort = so.sort;
-          answer = so.answer;
-        }
-        if (kind === 'grid') {
-          const g = cleanGrid(q?.grid, q?.answer);
-          if (typeof g === 'string') return `${where}: question ${i + 1}: ${g}`;
-          grid = g.grid;
-          answer = g.answer;
-        }
-        if (kind === 'choice') {
-          choices = (Array.isArray(q?.choices) ? q.choices : []).map((x: unknown) => cleanLine(x, LIMITS.choice)).filter(Boolean);
-          if (choices.length < 2 || choices.length > LIMITS.choices) {
-            return `${where}: question ${i + 1} needs 2 to ${LIMITS.choices} choices.`;
-          }
-          if (answer && !(Number.isInteger(Number(answer)) && Number(answer) >= 0 && Number(answer) < choices.length)) answer = '';
-        }
-        if (kind === 'number' && answer && !Number.isFinite(Number(answer))) {
-          return `${where}: the answer to question ${i + 1} should be a number.`;
-        }
-        if (kind === 'math' && answer) {
-          const read = readMath(answer);
-          if (!read.ok) return `${where}: the answer to question ${i + 1} can't be read (${read.error})`;
-        }
-        questions.push({
-          id: isUuid(q?.id) ? q.id : newUuid(),
-          kind,
-          text,
-          choices,
-          answer,
-          ...(kind === 'math' || kind === 'grid' ? { match: q?.match === 'any' ? ('any' as const) : ('form' as const) } : {}),
-          ...(grid ? { grid } : {}),
-          ...(sort ? { sort } : {})
-        });
-      }
+      const questions = cleanQuestions(c.questions, where, false);
+      if (typeof questions === 'string') return questions;
       return { category: isPromptCategory(c.category) ? c.category : 'other', questions };
     }
     case 'notes': {
@@ -468,13 +504,22 @@ function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | st
     case 'activity': {
       const links = cleanLinks(c.links);
       if (typeof links === 'string') return `${where}: ${links}`;
-      return {
-        category: isActivityCategory(c.category) ? c.category : 'other',
+      const category: ActivityCategory = isActivityCategory(c.category) ? c.category : 'other';
+      const out: ActivityConfig = {
+        category,
         instructions: cleanText(c.instructions, LIMITS.text),
         links,
         doneTap: c.doneTap !== false,
         coliseumId: typeof c.coliseumId === 'string' && COLISEUM_ID.test(c.coliseumId) ? c.coliseumId : ''
       };
+      if (category === 'feedback') {
+        // Answering the questions is the hand-in, so there's no "done" tap.
+        const questions = cleanQuestions(c.questions, where, true);
+        if (typeof questions === 'string') return questions;
+        out.questions = questions;
+        out.doneTap = false;
+      }
+      return out;
     }
     case 'independent': {
       const links = cleanLinks(c.links);
@@ -584,6 +629,9 @@ export function publicModule(m: LessonModule) {
   const strip = (c: ModuleConfig) =>
     m.type === 'prompt'
       ? { category: (c as PromptConfig).category, questions: (c as PromptConfig).questions.map(({ answer: _a, ...q }) => q) }
-      : c;
+      : m.type === 'activity' && Array.isArray((c as ActivityConfig).questions)
+        ? // Active Feedback questions have no key; drop the empty field anyway so nothing key-shaped leaves.
+          { ...c, questions: (c as ActivityConfig).questions!.map(({ answer: _a, ...q }) => q) }
+        : c;
   return { id: m.id, type: m.type, title: m.title, collects: MODULE_TYPES[m.type].collects(m.config), config: strip(config) };
 }

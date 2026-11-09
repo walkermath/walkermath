@@ -24,7 +24,7 @@ export function freshLesson(raw: any): { fields: LessonFields; modules: LessonMo
   const renewed = list.map((m: any) => {
     const c = m?.config && typeof m.config === 'object' ? m.config : {};
     const config =
-      m?.type === 'prompt'
+      m?.type === 'prompt' || (m?.type === 'activity' && Array.isArray(c.questions))
         ? { ...c, questions: (Array.isArray(c.questions) ? c.questions : []).map((q: any) => ({ ...q, id: crypto.randomUUID() })) }
         : m?.type === 'notes' && Array.isArray(c.slides)
           ? { ...c, slides: c.slides.map((s: any) => ({ ...s, id: crypto.randomUUID() })) }

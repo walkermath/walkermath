@@ -130,7 +130,8 @@
                         <span class="font-bold">{i + 1}. {m.title}</span>
                         <span class={label}>· {MODULE_TYPES[m.type as keyof typeof MODULE_TYPES]?.label ?? m.type} · {mmss(m.plannedSec)}</span>
                       </div>
-                      {#if m.type === 'prompt'}
+                      {#if m.type === 'prompt' || (m.type === 'activity' && m.config?.category === 'feedback')}
+                        {#if m.type === 'activity' && m.config?.instructions}<p class="pl-4 {label} line-clamp-2">{m.config.instructions}</p>{/if}
                         <ul class="pl-4 space-y-0.5">
                           {#each m.config.questions ?? [] as q, qi}
                             <li>Q{qi + 1}. {q.text} {#if keyOf(q)}<span class={label}>· key: {keyOf(q)}</span>{/if}</li>
