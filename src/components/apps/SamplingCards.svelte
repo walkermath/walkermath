@@ -33,6 +33,7 @@
   let revealed = $state(false);
   let showZ = $state(false);
   let notice = $state('');
+  let deckOpen = $state(true);
 
   // ---- derived ----
   const popCards = $derived(ALL_CARDS.filter((c) => inPop.has(c)));
@@ -162,61 +163,66 @@
       </div>
     </div>
 
-    <div>
-      <p class="text-xs text-[var(--text-muted)] mb-2">In the population (tap a card to remove it):</p>
-      {#if popCards.length === 0}
-        <p class="text-xs text-[var(--warn)]">[!] Empty. Add cards from the deck below.</p>
-      {:else}
-        <div class="flex flex-wrap gap-1.5">
-          {#each popCards as c (c)}
-            <button
-              class="card big"
-              class:red={isRed(c)}
-              onclick={() => toggleCard(c)}
-              aria-label={`Remove ${cardName(c)} (value ${cardValue(c)})`}
-              title={`${cardName(c)}: value ${cardValue(c)}`}
-            >
-              <span>{RANKS[rankOf(c)]}</span><span class="suit">{SUITS[suitOf(c)]}</span>
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </div>
-
-    <details class="group" open>
-      <summary class="text-xs text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] list-none">
-        <span class="group-open:hidden">[+]</span><span class="hidden group-open:inline">[−]</span> Rest of the deck (tap a card to add it)
-      </summary>
-      <div class="mt-2 space-y-0.5 max-w-sm">
-        {#each [0, 1, 2, 3] as s}
-          <div class="flex items-center gap-1.5">
-            <button
-              class="btn small shrink-0 w-12 text-center"
-              class:red-text={s === 1 || s === 2}
-              onclick={() => toggleSuit(s)}
-              aria-label={suitFull(s) ? `Remove all ${SUIT_NAMES[s]}` : `Add all ${SUIT_NAMES[s]}`}
-            >{suitFull(s) ? '−' : '+'}all {SUITS[s]}</button>
-            <div class="deck-row flex-1">
-              {#each suitCards(s) as c (c)}
-                {#if inPop.has(c)}
-                  <span class="slot" aria-hidden="true"></span>
-                {:else}
-                  <button
-                    class="card grid-card"
-                    class:red={isRed(c)}
-                    onclick={() => toggleCard(c)}
-                    aria-label={`Add ${cardName(c)} (value ${cardValue(c)})`}
-                    title={`${cardName(c)}: value ${cardValue(c)}`}
-                  >
-                    <span>{RANKS[rankOf(c)]}</span><span class="suit">{SUITS[s]}</span>
-                  </button>
-                {/if}
-              {/each}
-            </div>
+    <div class="flex flex-col sm:flex-row gap-3 items-start">
+      <!-- the population: the big cards -->
+      <div class="flex-1 min-w-0 w-full">
+        <p class="text-xs text-[var(--text-muted)] mb-2">In the population (tap a card to remove it):</p>
+        {#if popCards.length === 0}
+          <p class="text-xs text-[var(--warn)]">[!] Empty. Add cards from the rest of the deck.</p>
+        {:else}
+          <div class="flex flex-wrap gap-1.5">
+            {#each popCards as c (c)}
+              <button
+                class="card big"
+                class:red={isRed(c)}
+                onclick={() => toggleCard(c)}
+                aria-label={`Remove ${cardName(c)} (value ${cardValue(c)})`}
+                title={`${cardName(c)}: value ${cardValue(c)}`}
+              >
+                <span>{RANKS[rankOf(c)]}</span><span class="suit">{SUITS[suitOf(c)]}</span>
+              </button>
+            {/each}
           </div>
-        {/each}
+        {/if}
       </div>
-    </details>
+
+      <!-- the rest of the deck: a narrow picker, one column per suit, A..K top to bottom -->
+      <div class="flex gap-1 shrink-0 items-start">
+        {#if deckOpen}
+          <div class="flex gap-1" role="group" aria-label="Rest of the deck">
+            {#each [0, 1, 2, 3] as s}
+              <div class="flex flex-col gap-0.5">
+                <button
+                  class="btn suit-btn"
+                  class:red-text={s === 1 || s === 2}
+                  onclick={() => toggleSuit(s)}
+                  aria-label={suitFull(s) ? `Remove all ${SUIT_NAMES[s]}` : `Add all ${SUIT_NAMES[s]}`}
+                  title={suitFull(s) ? `remove all ${SUIT_NAMES[s]}` : `add all ${SUIT_NAMES[s]}`}
+                >{suitFull(s) ? '−' : '+'}{SUITS[s]}</button>
+                {#each suitCards(s) as c (c)}
+                  {#if inPop.has(c)}
+                    <span class="slot" aria-hidden="true"></span>
+                  {:else}
+                    <button
+                      class="card pick"
+                      class:red={isRed(c)}
+                      onclick={() => toggleCard(c)}
+                      aria-label={`Add ${cardName(c)} (value ${cardValue(c)})`}
+                      title={`${cardName(c)}: value ${cardValue(c)}`}
+                    >
+                      <span>{RANKS[rankOf(c)]}</span><span class="suit">{SUITS[s]}</span>
+                    </button>
+                  {/if}
+                {/each}
+              </div>
+            {/each}
+          </div>
+        {/if}
+        <button class="deck-label" onclick={() => (deckOpen = !deckOpen)} aria-expanded={deckOpen}>
+          [{deckOpen ? '−' : '+'}] Rest of the deck (tap a card to add it)
+        </button>
+      </div>
+    </div>
 
     <!-- population histogram -->
     <figure>
@@ -450,33 +456,41 @@
     height: 2.1rem;
     font-size: 0.65rem;
   }
-  .deck-row {
-    display: grid;
-    grid-template-columns: repeat(13, minmax(0, 1fr));
-    gap: 0.15rem;
-  }
   .card.big {
     width: 2.8rem;
     height: 3.9rem;
     font-size: 1.05rem;
     border-radius: 0.35rem;
   }
-  .grid-card,
+  /* rest-of-deck picker: small landscape tiles so 13 rows sit beside the population */
+  .card.pick,
   .slot {
-    width: 100%;
-    height: auto;
-    aspect-ratio: 5 / 7;
-    font-size: 0.6rem;
-    border-radius: 0.15rem;
-  }
-  .btn.small {
-    padding: 0.1rem 0.25rem;
+    width: 2.1rem;
+    height: 1.35rem;
+    flex-direction: row;
+    gap: 0.1em;
     font-size: 0.65rem;
+    border-radius: 0.15rem;
   }
   .slot {
     display: block;
     border: 1px dashed var(--border-color);
-    border-radius: 0.25rem;
+  }
+  .btn.suit-btn {
+    width: 2.1rem;
+    padding: 0.1rem 0;
+    font-size: 0.7rem;
+    text-align: center;
+  }
+  .deck-label {
+    writing-mode: vertical-rl;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    padding: 0.25rem 0;
+    white-space: nowrap;
+  }
+  .deck-label:hover {
+    color: var(--text-primary);
   }
 
   /* dealing animation on single draws */
