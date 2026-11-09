@@ -132,3 +132,74 @@ test('revised: the answer changed after it was marked', () => {
   assert.equal(isRevised(fb, ''), true, 'cleared');
   assert.equal(isRevised(undefined, '0.84'), false, 'nothing marked yet');
 });
+
+const { buildReport, reportItems } = await import('../src/lib/lesson/reports.ts');
+
+test('reports: Active Feedback has a Feedback item with a score and each question\'s mark', () => {
+  const fm = { id: 'm-fb', type: 'activity', title: 'Explore the curve', config: { category: 'feedback', questions: [
+    { id: 'q1', kind: 'text', text: 'What does the shaded area mean?', choices: [], answer: '' },
+    { id: 'q2', kind: 'number', text: 'P(Z < 1)?', choices: [], answer: '' }
+  ] } };
+  const check = { id: 'm-ci', type: 'prompt', title: 'Check-in', config: { category: 'check-in', questions: [{ id: 'k1', kind: 'number', text: '2 + 2?', choices: [], answer: '4' }] } };
+  const modules = [fm, check];
+  const labels = reportItems(modules).map((i) => i.label);
+  assert.deepEqual(labels, ['Joined', 'Explore the curve · Responses', 'Explore the curve · Feedback', 'Check-in · Responses', 'Check-in · Results']);
+  assert.ok(!reportItems([check]).some((i) => i.kind === 'feedback'), 'check-ins have no Feedback item');
+
+  const data = {
+    runs: [{ id: 'r1', lessonId: 'L', lessonTitle: 'Normal curve day', classId: 'c1', className: 'Stats', period: 'P2', date: '2026-11-09', startTime: '09:00', modules }],
+    aliases: [
+      { id: 'a1', classId: 'c1', alias: 'AlphaOwl11', retired: false },
+      { id: 'a2', classId: 'c1', alias: 'BetaYak22', retired: false },
+      { id: 'a3', classId: 'c1', alias: 'GammaFox33', retired: false }
+    ],
+    submissions: [
+      { runId: 'r1', moduleId: 'm-fb', aliasId: 'a1', answers: { q1: 'area below z', q2: '0.84' } },
+      { runId: 'r1', moduleId: 'm-fb', aliasId: 'a2', answers: { q1: 'idk' } },
+      { runId: 'r1', moduleId: 'm-fb', aliasId: 'a3', answers: { q2: '0.5' } },
+      { runId: 'r1', moduleId: 'm-ci', aliasId: 'a1', answers: { k1: '4' } }
+    ],
+    scores: [],
+    joins: [],
+    feedback: [
+      { runId: 'r1', moduleId: 'm-fb', aliasId: 'a1', questionId: 'q1', mark: 'partial' },
+      { runId: 'r1', moduleId: 'm-fb', aliasId: 'a1', questionId: 'q2', mark: 'right' },
+      { runId: 'r1', moduleId: 'm-fb', aliasId: 'a2', questionId: 'q1', mark: 'wrong' }
+    ]
+  };
+  const pick = ['m-fb:feedback', 'm-ci:results'];
+  const req = (over = {}) => ({ runIds: ['r1'], items: { L: pick }, breakdown: 'aggregate', questions: [], timeZone: 'America/Chicago', ...over });
+
+  const [sheet] = buildReport(data, req());
+  const col = (name) => sheet.columns.findIndex((c) => c.includes(name));
+  const rowOf = (alias) => sheet.rows.find((r) => r[2] === alias);
+  assert.ok(col('Score (of 2)') > 0, sheet.columns.join(' | '));
+  assert.equal(rowOf('AlphaOwl11')[col('Score (of 2)')], 1.5, 'partly right is a half, right is one');
+  assert.equal(rowOf('BetaYak22')[col('Score (of 2)')], 0, 'marked, not right yet: zero (not blank)');
+  assert.equal(rowOf('GammaFox33')[col('Score (of 2)')], null, 'answered but unmarked: blank');
+  assert.equal(rowOf('AlphaOwl11')[col('Q1 mark')], 'Partly right');
+  assert.equal(rowOf('AlphaOwl11')[col('Q2 mark')], 'Right');
+  assert.equal(rowOf('BetaYak22')[col('Q1 mark')], 'Not right yet');
+  assert.equal(rowOf('BetaYak22')[col('Q2 mark')], null);
+  assert.ok(!JSON.stringify(sheet).includes('message'), 'messages are never reported');
+
+  // Without feedback data (older databases) nothing breaks and scores are blank.
+  const bare = { ...data };
+  delete bare.feedback;
+  const [s2] = buildReport(bare, req());
+  assert.equal(s2.rows.find((r) => r[2] === 'AlphaOwl11')[s2.columns.findIndex((c) => c.includes('Score'))], null);
+
+  // The question sheet: marks for feedback questions, keys and % correct for the others.
+  const sheets = buildReport(data, req({ questions: ['L:m-fb:q1', 'L:m-fb:q2', 'L:m-ci:k1'] }));
+  const qs = sheets.at(-1);
+  assert.equal(qs.name, 'Questions');
+  const qc = (name) => qs.columns.indexOf(name);
+  const q1 = qs.rows.find((r) => r[2] === 'What does the shaded area mean?');
+  assert.deepEqual([q1[qc('Key')], q1[qc('Answered')], q1[qc('Marked right')], q1[qc('Marked partly right')], q1[qc('Marked not right yet')]], ['(marked by teacher)', 2, 0, 1, 1]);
+  assert.equal(q1[qc('% correct')], null);
+  const k1 = qs.rows.find((r) => r[2] === '2 + 2?');
+  assert.deepEqual([k1[qc('Key')], k1[qc('% correct')], k1[qc('Marked right')]], ['4', 100, null]);
+  // Only keyed questions: no mark columns at all.
+  const plain = buildReport(data, req({ questions: ['L:m-ci:k1'] })).at(-1);
+  assert.ok(!plain.columns.includes('Marked right'));
+});

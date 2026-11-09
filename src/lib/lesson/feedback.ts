@@ -12,6 +12,11 @@ export const FEEDBACK_MESSAGE_MAX = 400;
 export const MARK_SYMBOL: Record<Mark, string> = { right: '✓', partial: '◐', wrong: '✗' };
 /** How a mark reads to the student. */
 export const MARK_LABEL: Record<Mark, string> = { right: 'right', partial: 'partly right', wrong: 'not right yet' };
+/** What each mark counts for in a report's score: right 1, partly right a half, not right yet 0. */
+export const MARK_POINTS: Record<Mark, number> = { right: 1, partial: 0.5, wrong: 0 };
+/** How a mark reads in a report. */
+export const MARK_REPORT: Record<Mark, string> = { right: 'Right', partial: 'Partly right', wrong: 'Not right yet' };
+
 /** The site's colour slot for each mark. */
 export const MARK_COLOR: Record<Mark, string> = { right: 'var(--ok)', partial: 'var(--warn)', wrong: 'var(--bad)' };
 

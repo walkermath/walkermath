@@ -1112,6 +1112,19 @@ console.log('active feedback');
   assert.equal((await call(classFeedbackR, 'GET', req(`/api/class/feedback?run=${run.id}`, { cookie: sc }), {}, classMw)).status, 404, 'the live route closes with the lesson');
   ok('feedback can be given after class and shows when the student looks back');
 
+  // The marks are in reports (not the messages).
+  const rep = await body(await call(reportR, 'POST', T('/api/teach/reports', { method: 'POST', body: { runIds: [run.id], items: { [l.id]: [`${fm.id}:feedback`] }, breakdown: 'aggregate', questions: [`${l.id}:${fm.id}:${q1}`] } }), {}, teachMw));
+  const sheet = rep.sheets[0];
+  const sc_ = sheet.columns.findIndex((c) => c.includes('Score (of 2)'));
+  assert.ok(sc_ > 0, sheet.columns.join(' | '));
+  assert.equal(sheet.rows.find((r) => r[2] === a.alias)[sc_], 1, 'a: Q1 right');
+  assert.equal(sheet.rows.find((r) => r[2] === b.alias)[sc_], 1, 'b: Q1 not yet, Q2 right (marked after class)');
+  assert.equal(sheet.rows.find((r) => r[2] === b.alias)[sheet.columns.findIndex((c) => c.includes('Q1 mark'))], 'Not right yet');
+  const qsheet = rep.sheets.at(-1);
+  assert.equal(qsheet.rows[0][qsheet.columns.indexOf('Marked right')], 1);
+  assert.ok(!JSON.stringify(rep).includes('Nice.') && !JSON.stringify(rep).includes('Got it after class'), 'messages are not in reports');
+  ok('reports: a Feedback item with each student’s score and marks, and mark counts on the question sheet; messages stay private');
+
   const n = () => env.DB.sql.prepare('SELECT COUNT(*) n FROM feedback WHERE run_id = ?').get(run.id).n;
   assert.equal(n(), 3);
   env.DB.sql.prepare('DELETE FROM lesson_runs WHERE id = ?').run(run.id);
