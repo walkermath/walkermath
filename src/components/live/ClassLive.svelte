@@ -43,6 +43,11 @@
         transport = t;
       },
       onHand: (on) => (hand = on),
+      onFeedback: (rev) => {
+        // The first number only says where the counter stands (the page loaded the feedback itself).
+        if (lastFbRev !== null && rev !== lastFbRev) loadFeedback(true);
+        lastFbRev = rev;
+      },
       onGone: (status, message) =>
         (gone = status === 404 ? "This lesson isn't running for your class right now." : message),
       ...inkHandlers(ink)
@@ -110,19 +115,54 @@
   /* ---------------- Active Feedback: the teacher's marks and messages on my answers ---------------- */
   let feedback = $state<FeedbackByModule>({});
   let feedbackTimer: ReturnType<typeof setInterval> | null = null;
-  const FEEDBACK_CHECK_MS = 8000;
+  /** The teacher's feedback arrives by a push from the room (a socket message, or a counter in the slow-mode poll);
+   *  this slower check is only a safety net while on an Active Feedback activity. */
+  const FEEDBACK_CHECK_MS = 30_000;
+  let lastFbRev: number | null = null;
+  /** Modules with feedback this student hasn't looked at yet (a ✉ in the sidebar, "(1)" in the tab title). */
+  let unseenFb = $state<string[]>([]);
+  let baseTitle = '';
 
-  async function loadFeedback() {
+  /** `announce`: this came from a push, so mark modules whose feedback changed as unseen. */
+  async function loadFeedback(announce = false) {
     if (!runId) return;
     try {
       const res = await fetch(`/api/class/feedback?run=${encodeURIComponent(runId)}`, { credentials: 'same-origin', cache: 'no-store' });
-      if (res.ok) feedback = (await res.json()).feedback ?? {};
+      if (!res.ok) return;
+      const next: FeedbackByModule = (await res.json()).feedback ?? {};
+      if (announce) {
+        const changed = Object.keys(next).filter((id) =>
+          Object.entries(next[id]).some(([q, f]) => (f.mark || f.message) && f.at !== feedback[id]?.[q]?.at)
+        );
+        unseenFb = [...new Set([...unseenFb, ...changed])];
+      }
+      feedback = next;
     } catch {
       // offline: keep what's shown
     }
   }
+
+  /** Feedback on the module this student is looking at, in a visible tab, counts as seen. */
+  function markSeen() {
+    if (typeof document === 'undefined' || document.visibilityState !== 'visible' || !current) return;
+    if (unseenFb.includes(current.id)) unseenFb = unseenFb.filter((id) => id !== current!.id);
+  }
+  $effect(() => {
+    void unseenFb;
+    void current?.id;
+    markSeen();
+  });
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+    baseTitle ||= document.title;
+    document.title = unseenFb.length ? `(${unseenFb.length}) New feedback · ${baseTitle}` : baseTitle;
+  });
   /** Coming back to this tab (from the app the activity links to): check for feedback right away. */
-  const feedbackOnReturn = () => document.visibilityState === 'visible' && onFeedbackActivity && loadFeedback();
+  const feedbackOnReturn = () => {
+    if (document.visibilityState !== 'visible') return;
+    markSeen();
+    if (onFeedbackActivity) loadFeedback(true);
+  };
 
   async function loadMine() {
     try {
@@ -356,6 +396,9 @@
                 >
                   <span class="w-4 text-center {mk.cls}" title={mk.title} aria-label={mk.title || undefined}>{mk.sym}</span>
                   <span class="flex-1 truncate {i === rs.index ? 'font-bold' : ''}">{m.title}</span>
+                  {#if unseenFb.includes(m.id)}
+                    <span class="text-[var(--accent)] font-bold" title="New feedback from your teacher" aria-label="New feedback from your teacher">✉</span>
+                  {/if}
                   {#if i === rs.index}
                     <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
                   {/if}

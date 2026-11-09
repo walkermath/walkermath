@@ -24,6 +24,7 @@
     modules = [],
     rs = null,
     students = [],
+    nudge = 0,
     onspotlight
   }: {
     runId: string;
@@ -31,6 +32,8 @@
     /** The live room's state; null once the lesson has ended (marking after class). */
     rs?: RoomState | null;
     students?: RosterRow[];
+    /** Goes up when a student saves an Active Feedback answer: refresh now rather than at the next tick. */
+    nudge?: number;
     /** Put a poll's results or one answer on the projector (null hides it). */
     onspotlight?: (spot: Spotlight | null) => void;
   } = $props();
@@ -82,7 +85,18 @@
     // After the lesson there's nothing new coming in: one load (and your own saves) is enough.
     if (rs) timer = setInterval(refresh, REFRESH_MS);
   });
-  onDestroy(() => timer && clearInterval(timer));
+  onDestroy(() => {
+    if (timer) clearInterval(timer);
+    if (nudgeTimer) clearTimeout(nudgeTimer);
+  });
+
+  // Answers arriving in a burst (a whole class saving) make one refresh, a moment after the last.
+  let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
+  $effect(() => {
+    if (!nudge) return;
+    if (nudgeTimer) clearTimeout(nudgeTimer);
+    nudgeTimer = setTimeout(refresh, 600);
+  });
 
   const toggle = (e: Event) => {
     open = (e.currentTarget as HTMLDetailsElement).open;

@@ -35,6 +35,10 @@ export interface LiveHandlers {
   onInkRev?: (rev: Record<string, number>) => void;
   /** Students: their "I'm stuck" hand went up or down (from this device, another, or the teacher). */
   onHand?: (on: boolean) => void;
+  /** Students: the teacher gave them feedback (Active Feedback). `rev` goes up each time; slow mode reads it from the poll. */
+  onFeedback?: (rev: number) => void;
+  /** Teacher: a student saved an answer in an Active Feedback activity (time to refresh the answers). */
+  onAnswers?: () => void;
 }
 
 export interface LiveConnection {
@@ -98,6 +102,7 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
       if (data.lesson) h.onLesson(data.lesson);
       if (data.students) h.onRoster?.(data.students);
       if (typeof data.hand === 'boolean') h.onHand?.(data.hand);
+      if (typeof data.feedbackRev === 'number') h.onFeedback?.(data.feedbackRev);
       takeState(data.state, data.serverNow);
       if (data.inkRev) h.onInkRev?.(data.inkRev);
       return true;
@@ -151,6 +156,8 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
       else if (msg.type === 'state') takeState(msg.state, msg.serverNow);
       else if (msg.type === 'roster') h.onRoster?.(msg.students);
       else if (msg.type === 'hand') h.onHand?.(!!msg.on);
+      else if (msg.type === 'feedback') h.onFeedback?.(Number(msg.rev) || 0);
+      else if (msg.type === 'answers') h.onAnswers?.();
       else if (msg.type === 'ink') h.onInk?.(msg.op, msg.rev);
       else if (msg.type === 'inkPages') h.onInkPages?.(msg.pages ?? {}, msg.rev ?? {});
     };

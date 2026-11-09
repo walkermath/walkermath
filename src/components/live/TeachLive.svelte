@@ -73,6 +73,9 @@
     if (timer) clearInterval(timer);
   });
 
+  /** Goes up when a student saves an Active Feedback answer, so the answers box refreshes at once. */
+  let answersNudge = $state(0);
+
   function connect() {
     if (!run) return;
     conn?.close();
@@ -83,6 +86,7 @@
         if (s.status === 'ended' && run) run.status = 'ended';
       },
       onRoster: (r) => (students = r),
+      onAnswers: () => answersNudge++,
       onTransport: (t) => {
         if (t === 'socket' && transport !== 'socket') ink.resync(); // changes may have been missed
         transport = t;
@@ -296,7 +300,7 @@
               </section>
             {/if}
 
-            <AnswersPanel runId={run.id} modules={lesson.modules} {rs} {students} onspotlight={(spot) => send({ type: 'spotlight', spot })} />
+            <AnswersPanel runId={run.id} modules={lesson.modules} {rs} {students} nudge={answersNudge} onspotlight={(spot) => send({ type: 'spotlight', spot })} />
 
             <section class="{panel} space-y-2">
               <div class={heading}>// what students see</div>

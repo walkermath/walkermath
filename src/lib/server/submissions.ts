@@ -8,7 +8,7 @@ import { answerSpec, checkSubmission, isCorrect, type Answers, type AnswerSpec }
 import { answersOpen, type RoomState } from '../lesson/room.ts';
 import { isFeedbackActivity } from '../lesson/modules.ts';
 import type { Lesson } from './lessons.ts';
-import { getLiveRun, roomModules, roomStub, type LiveRun } from './live.ts';
+import { getLiveRun, nudgeRoom, roomModules, roomStub, type LiveRun } from './live.ts';
 import type { Student } from './sessions.ts';
 
 const parse = (s: unknown, fallback: any) => {
@@ -59,6 +59,8 @@ export async function saveAnswers(env: any, s: Student, run: LiveRun, moduleId: 
   )
     .bind(run.id, moduleId, s.aliasId, JSON.stringify(check.answers), now)
     .run();
+  // An Active Feedback answer: the control panel shows it now instead of at its next refresh.
+  if (isFeedbackActivity((lesson.modules as any[])[check.index])) await nudgeRoom(env, run.id, { kind: 'answers' });
   return { ok: true, answers: check.answers, updatedAt: now };
 }
 

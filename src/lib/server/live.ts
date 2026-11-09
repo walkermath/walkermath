@@ -79,6 +79,24 @@ export function roomModules(lesson: Lesson): RoomModule[] {
   });
 }
 
+/**
+ * Tells a live room something changed (never what): { kind: 'answers' } refreshes the control panels,
+ * { kind: 'feedback', aliasId } makes that student's devices fetch their feedback. Best effort: if
+ * the room can't be reached the screens still catch up on their next refresh.
+ */
+export async function nudgeRoom(env: any, runId: string, nudge: { kind: 'answers' } | { kind: 'feedback'; aliasId: string }): Promise<void> {
+  if (!env.LESSON_ROOM) return;
+  try {
+    await roomStub(env, runId).fetch('https://room.internal/nudge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(nudge)
+    });
+  } catch {
+    // fine
+  }
+}
+
 export const roomStub = (env: any, runId: string) => env.LESSON_ROOM.get(env.LESSON_ROOM.idFromName(`run:${runId}`));
 
 /** Headers that tell the room who is connecting (it trusts them: only these Functions reach it). */

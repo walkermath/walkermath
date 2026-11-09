@@ -119,6 +119,7 @@ const room = await load('src/lib/lesson/room.ts');
 const ink = await load('src/lib/lesson/ink.ts');
 const rooms = new Map();
 const roomCalls = [];
+const nudges = []; // what the room was told to push (Active Feedback)
 env.LESSON_ROOM = {
   idFromName: (name) => name,
   get: (id) => ({
@@ -137,7 +138,18 @@ env.LESSON_ROOM = {
         return Response.json({ state: r.state, serverNow: Date.now() });
       }
       if (!r) return Response.json({ error: 'Not started' }, { status: 409 });
-      if (u.pathname === '/state') return Response.json({ state: r.state, ...(u.searchParams.get('full') ? { lesson: r.lesson } : {}) });
+      if (u.pathname === '/state') return Response.json({ state: r.state, ...(u.searchParams.get('full') ? { lesson: r.lesson } : {}), ...(h.get('X-Role') === 'student' ? { feedbackRev: r.fbRev?.[h.get('X-Who')] ?? 0 } : {}) });
+      if (u.pathname === '/nudge') {
+        if (r.state.status !== 'live') return Response.json({ ok: false });
+        const b = JSON.parse(init.body);
+        if (b.kind === 'answers') nudges.push({ kind: 'answers' });
+        else if (b.kind === 'feedback' && b.aliasId) {
+          r.fbRev ??= {};
+          r.fbRev[b.aliasId] = (r.fbRev[b.aliasId] ?? 0) + 1;
+          nudges.push({ kind: 'feedback', aliasId: b.aliasId, rev: r.fbRev[b.aliasId] });
+        } else return Response.json({ error: 'Invalid nudge.' }, { status: 400 });
+        return Response.json({ ok: true });
+      }
       if (u.pathname === '/peek') return Response.json({ state: r.state });
       if (u.pathname === '/ink' && (init.method ?? 'GET') === 'GET') {
         const ids = (u.searchParams.get('pages') ?? '').split(',').filter(Boolean);
@@ -1017,7 +1029,9 @@ console.log('active feedback');
   await call(startR, 'POST', T(`/api/teach/runs/${run.id}/start`, { method: 'POST', body: {} }), { runId: run.id }, teachMw);
   await call(liveR, 'POST', T(`/api/live/${run.id}`, { method: 'POST', body: { cmd: { type: 'next' } } }), { runId: run.id });
   const A = (cookie, answers) => call(answersR, 'POST', req('/api/class/answers', { method: 'POST', cookie, body: { runId: run.id, moduleId: fm.id, answers } }), {}, classMw);
+  nudges.length = 0;
   assert.equal((await A(sc, { [q1]: 'the chance Z is below 1', [q2]: '0.84' })).status, 200, 'students answer the activity');
+  assert.deepEqual(nudges, [{ kind: 'answers' }], 'the control panels are told to refresh');
   assert.equal((await A(sc, { done: '1' })).status, 400, 'no done tap');
   assert.equal((await A(sc2, { [q2]: '0.5' })).status, 200);
 
@@ -1029,13 +1043,20 @@ console.log('active feedback');
   assert.deepEqual(panel.feedback, []);
   ok('students answer an Active Feedback activity; the control panel sees it, unmarked');
 
+  nudges.length = 0;
   const r1 = await give({ mark: 'partial', message: 'Close! Which side of 1 is shaded?' });
   assert.equal(r1.status, 200);
+  assert.deepEqual(nudges, [{ kind: 'feedback', aliasId: idOf(a), rev: 1 }], "only that student's devices are told");
+  const stateRev = async (cookie) => (await body(await call(liveR, 'GET', req(`/api/live/${run.id}`, { cookie }), { runId: run.id }))).feedbackRev;
+  assert.equal(await stateRev(sc), 1, 'slow mode: the counter rides on the poll');
+  assert.equal(await stateRev(sc2), 0, "a classmate's counter does not move");
+  assert.equal(await stateRev(jar.teacher), undefined, 'teachers get no student counter');
   const fb1 = (await body(r1)).feedback;
   assert.deepEqual([fb1.mark, fb1.message, fb1.answer], ['partial', 'Close! Which side of 1 is shaded?', 'the chance Z is below 1'], 'the answer is kept as it was marked');
   assert.equal((await FB({ moduleId: fm.id, aliasId: idOf(b), questionId: q2, mark: null, message: 'Look at the table again.' })).status, 200, 'a message with no mark');
   assert.equal((await FB({ moduleId: fm.id, aliasId: idOf(b), questionId: q1, mark: 'wrong' })).status, 200, 'feedback on an unanswered question is fine');
   assert.equal((await give({ mark: 'great' })).status, 400);
+  assert.equal(nudges.length, 3, 'refused requests push nothing');
   assert.equal((await give({ mark: 'right', message: 'x'.repeat(401) })).status, 400, 'messages are short');
   assert.equal((await give({ mark: 'right', message: 42 })).status, 400);
   assert.equal((await FB({ moduleId: fm.id, aliasId: idOf(a), questionId: 'nope', mark: 'right' })).status, 404, 'a real question of this run');
@@ -1071,8 +1092,16 @@ console.log('active feedback');
   await give({ mark: 'right', message: 'Nice.' });
   ok('a revised answer shows as revised; feedback can be changed or cleared');
 
+  // An answer outside an Active Feedback activity doesn't nudge the panels (they keep their own refresh).
+  nudges.length = 0;
+  const bellwork = l.modules[0];
+  if (bellwork.config.questions?.length) await call(answersR, 'POST', req('/api/class/answers', { method: 'POST', cookie: sc, body: { runId: run.id, moduleId: bellwork.id, answers: {} } }), {}, classMw);
+  assert.deepEqual(nudges, [], 'no nudge for other modules');
+
   await call(endR, 'POST', T(`/api/teach/runs/${run.id}/end`, { method: 'POST', body: {} }), { runId: run.id }, teachMw);
+  nudges.length = 0;
   assert.equal((await FB({ moduleId: fm.id, aliasId: idOf(b), questionId: q2, mark: 'right', message: 'Got it after class.' })).status, 200, 'marking after class');
+  assert.deepEqual(nudges, [], 'nothing to push once the lesson is over');
   const back = (cookie) => call(classLessonOneR, 'GET', req(`/api/class/lessons/${run.id}`, { cookie }), { runId: run.id }, classMw);
   const pastA = (await body(await back(sc))).lesson;
   assert.equal(pastA.feedback[fm.id][q1].message, 'Nice.');

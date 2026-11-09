@@ -7,7 +7,7 @@
 
 import { fail, json, readJson } from '../../../../../src/lib/server/http.ts';
 import { saveFeedback } from '../../../../../src/lib/server/feedback.ts';
-import { getLiveRun } from '../../../../../src/lib/server/live.ts';
+import { getLiveRun, nudgeRoom } from '../../../../../src/lib/server/live.ts';
 
 export async function onRequestPost({ request, env, data, params }) {
   const run = await getLiveRun(env.DB, params.runId);
@@ -16,5 +16,7 @@ export async function onRequestPost({ request, env, data, params }) {
   if (!body) return fail('Invalid request.');
   const r = await saveFeedback(env.DB, run, body);
   if (!r.ok) return fail(r.error, r.status);
+  // While the lesson is live, that student's devices fetch it right away (marking later waits for them to look back).
+  if (run.status === 'live') await nudgeRoom(env, run.id, { kind: 'feedback', aliasId: String(body.aliasId) });
   return json({ feedback: r.feedback });
 }
