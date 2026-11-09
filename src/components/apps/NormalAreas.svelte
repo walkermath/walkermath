@@ -95,12 +95,12 @@
   const W = 560;
   const PAD_L = 20;
   const PAD_R = 20;
-  const PAD_T = 34;
+  const PAD_T = 46; // statement at 16, cutoff labels at 34, curve from 46
   const PLOT_H = 130;
   const BASE = PAD_T + PLOT_H;
   const gx = (z: number) => PAD_L + ((clampZ(z) + Z_LIM) / (2 * Z_LIM)) * (W - PAD_L - PAD_R);
   const gy = (z: number) => BASE - (normalPdf(clampZ(z)) / normalPdf(0)) * PLOT_H;
-  const H = $derived(BASE + (scale === 'z' ? 24 : 42));
+  const H = BASE + 42; // always room for the x row, so switching scales doesn't move anything
   const curvePath = (() => {
     const pts: string[] = [];
     for (let z = -Z_LIM; z <= Z_LIM + 1e-9; z += 0.05) pts.push(`${pts.length ? 'L' : 'M'}${gx(z).toFixed(1)},${gy(z).toFixed(1)}`);
@@ -128,8 +128,17 @@
     }
   });
   const cuts = $derived(two ? [za, zb] : [za]);
-  /** two cutoff labels too close to sit side by side: the upper one drops a line */
-  const labelsClose = $derived(two && gx(zb) - gx(za) < (scale === 'z' ? 80 : 150));
+  /** cutoff label text, and where it sits: one cutoff centered on its line; two cutoffs on the
+      outsides of their lines (left label ends at the left line, right label starts at the right line) */
+  const cutText = (c: number) => (scale === 'z' ? `z = ${fz(c)}` : `${fx(toX(c))} (z = ${fz(c)})`);
+  const textW = (t: string) => t.length * 6.7; // 11px Courier
+  function cutLabel(c: number, i: number): { x: number; anchor: 'start' | 'middle' | 'end' } {
+    const w = textW(cutText(c));
+    const x = gx(c);
+    if (!two) return { x: Math.min(W - PAD_R - w / 2, Math.max(PAD_L + w / 2, x)), anchor: 'middle' };
+    if (i === 0) return { x: Math.max(PAD_L + w, x - 5), anchor: 'end' };
+    return { x: Math.min(W - PAD_R - w, x + 5), anchor: 'start' };
+  }
   const TICKS = [-3, -2, -1, 0, 1, 2, 3];
 
   function zFromPointer(e: PointerEvent): number {
@@ -358,7 +367,7 @@
 <div class="max-w-4xl mx-auto font-mono text-sm">
   <section class="panel space-y-3">
     <!-- top row: this question's inputs, and the 68–95–99.7 shortcuts -->
-    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 min-h-[2rem]">
       {#if goal === 'area'}
         <div class="flex flex-wrap items-center gap-2">
           {#if two}
@@ -384,12 +393,6 @@
           <span class="text-xs text-[var(--text-muted)]">0.90 or 90%</span>
         </div>
       {/if}
-      <div class="flex flex-wrap items-center gap-1.5">
-        <span class="text-xs text-[var(--text-muted)]">68–95–99.7:</span>
-        {#each [1, 2, 3] as k (k)}
-          <button class="btn" onclick={() => empirical(k)}>[within {k} SD]</button>
-        {/each}
-      </div>
     </div>
 
     <!-- the curve -->
@@ -397,7 +400,7 @@
       <svg bind:this={svgEl} viewBox={`0 0 ${W} ${H}`} class="w-full h-auto curve-svg" class:grabbing={dragging >= 0}
         role="group" aria-label={`Normal curve with ${statement} = ${f4(area)} shaded`}
         onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={endDrag} onpointercancel={endDrag}>
-        <text x={W / 2} y="16" class="lbl strong" text-anchor="middle">{statement} = {f4(area)}</text>
+        <text x={W / 2} y="16" class="lbl strong statement" text-anchor="middle">{statement} = {f4(area)}</text>
         {#each shaded as d}
           {#if d}<path {d} class="shade" />{/if}
         {/each}
@@ -413,11 +416,9 @@
         <text x={PAD_L - 4} y={BASE + 16} class="lbl small" text-anchor="end">z</text>
         {#if scale !== 'z'}<text x={PAD_L - 4} y={BASE + 33} class="lbl small xrow" text-anchor="end">{scale === 'x' ? 'x' : 'x̄'}</text>{/if}
         {#each cuts as c, i (i)}
-          <line x1={gx(c)} x2={gx(c)} y1={BASE} y2={PAD_T - 2} class="cut" />
-          <text x={Math.min(W - PAD_R - 30, Math.max(PAD_L + 30, gx(c)))} y={PAD_T - 6 + (i === 1 && labelsClose ? 14 : 0)}
-            class="lbl strong cut-lbl" text-anchor="middle">
-            {scale === 'z' ? `z = ${fz(c)}` : `${fx(toX(c))} (z = ${fz(c)})`}
-          </text>
+          {@const lab = cutLabel(c, i)}
+          <line x1={gx(c)} x2={gx(c)} y1={BASE} y2={PAD_T - 16} class="cut" />
+          <text x={lab.x} y={PAD_T - 12} class="lbl strong cut-lbl halo" text-anchor={lab.anchor}>{cutText(c)}</text>
           <circle cx={gx(c)} cy={BASE} r="8" class="handle" class:active={dragging === i}
             role="slider" tabindex="0" aria-label={two ? (i === 0 ? 'lower cutoff' : 'upper cutoff') : 'cutoff'}
             aria-valuemin={-Z_LIM} aria-valuemax={Z_LIM} aria-valuenow={Math.round(c * 100) / 100}
@@ -460,15 +461,23 @@
 
       <div class="controls space-y-2.5 order-first md:order-last min-w-0">
         <div class="row">
+          <span class="row-label">first look</span>
+          <div class="seg cols-3" role="group" aria-label="68–95–99.7 rule">
+            {#each [1, 2, 3] as k (k)}
+              <button onclick={() => empirical(k)} title={`Shade within ${k} SD of the mean (68–95–99.7 rule)`}>[±{k} SD]</button>
+            {/each}
+          </div>
+        </div>
+        <div class="row">
           <span class="row-label">find the</span>
-          <div class="seg" role="group" aria-label="What to find">
+          <div class="seg cols-2" role="group" aria-label="What to find">
             <button class:on={goal === 'area'} aria-pressed={goal === 'area'} onclick={() => setGoal('area')}>[area]</button>
             <button class:on={goal === 'cutoff'} aria-pressed={goal === 'cutoff'} onclick={() => setGoal('cutoff')}>[cutoff]</button>
           </div>
         </div>
         <div class="row">
           <span class="row-label">shade</span>
-          <div class="seg" role="group" aria-label="Region">
+          <div class="seg cols-2" role="group" aria-label="Region">
             {#each REGIONS as r (r.id)}
               <button class:on={region === r.id} aria-pressed={region === r.id} onclick={() => setRegion(r.id)}>[{r.label}]</button>
             {/each}
@@ -476,31 +485,35 @@
         </div>
         <div class="row">
           <span class="row-label">distribution</span>
-          <div class="seg seg-col" role="group" aria-label="Distribution">
-            {#each SCALES as s (s.id)}
-              <button class:on={scale === s.id} aria-pressed={scale === s.id} onclick={() => (scale = s.id)}>[{s.label}]</button>
-            {/each}
+          <div class="w-full space-y-0">
+            <div class="seg cols-1" class:joined={scale !== 'z'} role="group" aria-label="Distribution">
+              {#each SCALES as s (s.id)}
+                <button class:on={scale === s.id} aria-pressed={scale === s.id} onclick={() => (scale = s.id)}>[{s.label}]</button>
+              {/each}
+            </div>
+            {#if scale !== 'z'}
+              <div class="params">
+                <label>
+                  <span>μ</span>
+                  <input class="field" type="text" inputmode="decimal" value={mu} onchange={(e) => setParam('mu', e)} aria-label="population mean μ" />
+                </label>
+                <label>
+                  <span>σ</span>
+                  <input class="field" type="text" inputmode="decimal" value={sigma} onchange={(e) => setParam('sigma', e)} aria-label="population standard deviation σ" />
+                </label>
+                {#if scale === 'xbar'}
+                  <label>
+                    <span>n</span>
+                    <input class="field" type="text" inputmode="numeric" value={nSize} onchange={(e) => setParam('n', e)} aria-label="sample size n" />
+                  </label>
+                  <p class="se" title="By the CLT, sample means are about normal with center μ and spread σ/√n (the standard error).">
+                    SE = σ/√n = {num(sigma)}/√{nSize} = <b>{num(spread)}</b>
+                  </p>
+                {/if}
+              </div>
+            {/if}
           </div>
         </div>
-        {#if scale !== 'z'}
-          <div class="row">
-            <span class="row-label"></span>
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <label class="flex items-center gap-1">μ =
-                <input class="field w-16" type="text" inputmode="decimal" value={mu} onchange={(e) => setParam('mu', e)} aria-label="population mean μ" />
-              </label>
-              <label class="flex items-center gap-1">σ =
-                <input class="field w-16" type="text" inputmode="decimal" value={sigma} onchange={(e) => setParam('sigma', e)} aria-label="population standard deviation σ" />
-              </label>
-              {#if scale === 'xbar'}
-                <label class="flex items-center gap-1">n =
-                  <input class="field w-14" type="text" inputmode="numeric" value={nSize} onchange={(e) => setParam('n', e)} aria-label="sample size n" />
-                </label>
-                <span class="text-xs text-[var(--text-muted)]" title="By the CLT, sample means are about normal with center μ and spread σ/√n (the standard error).">σ/√n = {num(spread)} (SE)</span>
-              {/if}
-            </div>
-          </div>
-        {/if}
       </div>
     </div>
   </section>
@@ -513,36 +526,38 @@
     background: var(--bg-surface);
     border-radius: 0.375rem;
   }
-  .btn {
-    border: 1px solid var(--line);
-    background: var(--bg-surface);
-    padding: 0.2rem 0.5rem;
-    border-radius: 0.25rem;
-    font-size: 0.75rem;
-    font-weight: bold;
-    transition: border-color 0.15s, color 0.15s;
-  }
-  .btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
 
-  /* segmented choices */
+  /* segmented choices: equal cells in a grid, all groups the same width; 1px gaps show the lines */
   .seg {
-    display: inline-flex;
-    flex-wrap: wrap;
+    display: grid;
+    width: 100%;
+    max-width: 19rem;
+    gap: 1px;
+    background: var(--border-color);
     border: 1px solid var(--line);
     border-radius: 0.25rem;
     overflow: hidden;
   }
+  .seg.cols-1 {
+    grid-template-columns: 1fr;
+  }
+  .seg.cols-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .seg.cols-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  .seg.joined {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
   .seg button {
-    padding: 0.2rem 0.55rem;
+    padding: 0.25rem 0.55rem;
     font-size: 0.75rem;
     font-weight: bold;
     color: var(--text-muted);
-  }
-  .seg button + button {
-    border-left: 1px solid var(--border-color);
+    background: var(--bg-surface);
+    text-align: left;
   }
   .seg button.on {
     background: var(--accent);
@@ -577,15 +592,37 @@
     font-size: 0.75rem;
     color: var(--text-muted);
   }
-  .seg.seg-col {
-    flex-direction: column;
+  /* μ, σ, n: a box joined under the distribution choices */
+  .params {
+    max-width: 19rem;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.25rem 0.75rem;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--line);
+    border-top: none;
+    border-radius: 0 0 0.25rem 0.25rem;
+    background: var(--well);
   }
-  .seg.seg-col button + button {
-    border-left: none;
-    border-top: 1px solid var(--border-color);
+  .params label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
   }
-  .seg.seg-col button {
-    text-align: left;
+  .params label span {
+    color: var(--text-muted);
+  }
+  .params .field {
+    width: 100%;
+    min-width: 0;
+  }
+  .params .se {
+    grid-column: 1 / -1;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .params .se b {
+    color: var(--text-primary);
   }
 
   /* worked answer */
@@ -645,6 +682,13 @@
   }
   svg .lbl.cut-lbl {
     font-size: 11px;
+  }
+  /* a background-colored outline so a label stays readable over the curve or a dashed line */
+  svg .halo {
+    paint-order: stroke;
+    stroke: var(--bg-surface);
+    stroke-width: 4px;
+    stroke-linejoin: round;
   }
   svg .axis {
     stroke: var(--line);
