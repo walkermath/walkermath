@@ -167,10 +167,10 @@
       {#if popCards.length === 0}
         <p class="text-xs text-[var(--warn)]">[!] Empty. Add cards from the deck below.</p>
       {:else}
-        <div class="flex flex-wrap gap-1">
+        <div class="flex flex-wrap gap-1.5">
           {#each popCards as c (c)}
             <button
-              class="card mini"
+              class="card big"
               class:red={isRed(c)}
               onclick={() => toggleCard(c)}
               aria-label={`Remove ${cardName(c)} (value ${cardValue(c)})`}
@@ -187,11 +187,11 @@
       <summary class="text-xs text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] list-none">
         <span class="group-open:hidden">[+]</span><span class="hidden group-open:inline">[−]</span> Rest of the deck (tap a card to add it)
       </summary>
-      <div class="mt-2 space-y-1">
+      <div class="mt-2 space-y-0.5 max-w-sm">
         {#each [0, 1, 2, 3] as s}
           <div class="flex items-center gap-1.5">
             <button
-              class="btn shrink-0 w-14 text-center"
+              class="btn small shrink-0 w-12 text-center"
               class:red-text={s === 1 || s === 2}
               onclick={() => toggleSuit(s)}
               aria-label={suitFull(s) ? `Remove all ${SUIT_NAMES[s]}` : `Add all ${SUIT_NAMES[s]}`}
@@ -453,14 +453,25 @@
   .deck-row {
     display: grid;
     grid-template-columns: repeat(13, minmax(0, 1fr));
-    gap: 0.2rem;
+    gap: 0.15rem;
+  }
+  .card.big {
+    width: 2.8rem;
+    height: 3.9rem;
+    font-size: 1.05rem;
+    border-radius: 0.35rem;
   }
   .grid-card,
   .slot {
     width: 100%;
     height: auto;
     aspect-ratio: 5 / 7;
-    font-size: clamp(0.5rem, 1.6vw, 0.75rem);
+    font-size: 0.6rem;
+    border-radius: 0.15rem;
+  }
+  .btn.small {
+    padding: 0.1rem 0.25rem;
+    font-size: 0.65rem;
   }
   .slot {
     display: block;

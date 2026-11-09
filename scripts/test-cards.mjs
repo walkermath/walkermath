@@ -34,6 +34,8 @@ test('full deck: μ = 340/52, σ ≈ 3.153, 16 tens', () => {
 
 test('presets and edge populations', () => {
   const ids = Object.fromEntries(PRESETS.map((p) => [p.id, p.cards]));
+  assert.equal(ids['a-10'].length, 40);
+  assert.deepEqual(populationStats(ids['a-10']).counts, new Array(10).fill(4));
   assert.equal(ids.hearts.length, 13);
   assert.equal(ids.low.length, 20);
   assert.equal(ids['aces-tens'].length, 8);

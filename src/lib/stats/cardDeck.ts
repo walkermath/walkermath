@@ -32,6 +32,7 @@ export const isRed = (id: CardId) => suitOf(id) === 1 || suitOf(id) === 2;
 /** Starting populations a student (or later, a lesson) can pick. */
 export const PRESETS: { id: string; label: string; cards: CardId[] }[] = [
   { id: 'deck', label: 'full deck', cards: ALL_CARDS },
+  { id: 'a-10', label: 'A–10', cards: ALL_CARDS.filter((c) => rankOf(c) <= 9) },
   { id: 'hearts', label: 'only ♥', cards: ALL_CARDS.filter((c) => suitOf(c) === 1) },
   { id: 'low', label: 'A–5 only', cards: ALL_CARDS.filter((c) => rankOf(c) <= 4) },
   { id: 'aces-tens', label: 'aces + 10s', cards: ALL_CARDS.filter((c) => cardValue(c) === 1 || rankOf(c) === 9) },
