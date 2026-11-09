@@ -72,6 +72,12 @@
     } catch {
       // no storage: stays open
     }
+    try {
+      const saved = JSON.parse(localStorage.getItem(MSG_KEY) ?? '[]');
+      if (Array.isArray(saved)) recentMessages = saved.filter((m) => typeof m === 'string' && m).slice(0, MSG_KEEP);
+    } catch {
+      // no storage, or unreadable: start empty
+    }
     refresh();
     // After the lesson there's nothing new coming in: one load (and your own saves) is enough.
     if (rs) timer = setInterval(refresh, REFRESH_MS);
@@ -174,19 +180,27 @@
     }
     return t;
   }
-  /** Your recent messages, newest first, for reuse with one tap. */
-  const recentMessages = $derived.by(() => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const f of [...feedback].sort((a, b) => b.at - a.at)) {
-      if (f.message && !seen.has(f.message)) {
-        seen.add(f.message);
-        out.push(f.message);
-        if (out.length === 6) break;
-      }
+  /* Messages you've sent, newest first, for reuse with one tap. Kept in this browser (not with the
+     lesson), so overwriting or clearing a student's feedback doesn't lose them, and they carry over
+     to other periods and lessons. A convenience only: without storage the list lasts until reload. */
+  const MSG_KEY = 'wm_feedback_msgs';
+  const MSG_KEEP = 10;
+  let recentMessages = $state<string[]>([]);
+  function storeMessages() {
+    try {
+      localStorage.setItem(MSG_KEY, JSON.stringify(recentMessages));
+    } catch {
+      // no storage
     }
-    return out;
-  });
+  }
+  function rememberMessage(m: string) {
+    recentMessages = [m, ...recentMessages.filter((x) => x !== m)].slice(0, MSG_KEEP);
+    storeMessages();
+  }
+  function forgetMessage(m: string) {
+    recentMessages = recentMessages.filter((x) => x !== m);
+    storeMessages();
+  }
 
   /** The answer open for feedback, and your message being written. */
   let cell = $state<{ aliasId: string; qid: string } | null>(null);
@@ -228,6 +242,7 @@
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
       const rest = feedback.filter((f) => !(f.moduleId === moduleId && f.aliasId === aliasId && f.questionId === qid));
       feedback = data.feedback ? [...rest, data.feedback] : rest;
+      if (data.feedback?.message) rememberMessage(data.feedback.message);
       if (cell?.aliasId === aliasId && cell.qid === qid) draft = data.feedback?.message ?? '';
       fbStatus = data.feedback ? (rs ? '// sent. it shows on their screen within a few seconds.' : '// saved. they see it when they look back at this lesson.') : '// cleared.';
     } catch (e) {
@@ -403,15 +418,18 @@
             {#if recentMessages.length}
               <div class="flex flex-wrap gap-1">
                 {#each recentMessages as msg (msg)}
-                  <button
-                    type="button"
-                    class="max-w-[16rem] truncate px-1.5 py-0.5 rounded border border-[var(--line)] hover:border-[var(--accent)] cursor-pointer {label}"
-                    title={`Use: ${msg}`}
-                    onclick={() => {
-                      draft = msg;
-                      draftBox?.focus();
-                    }}
-                  >{msg}</button>
+                  <span class="inline-flex max-w-[16rem] items-center rounded border border-[var(--line)] hover:border-[var(--accent)] {label}">
+                    <button
+                      type="button"
+                      class="truncate px-1.5 py-0.5 cursor-pointer"
+                      title={`Use: ${msg}`}
+                      onclick={() => {
+                        draft = msg;
+                        draftBox?.focus();
+                      }}
+                    >{msg}</button>
+                    <button type="button" class="px-1 cursor-pointer hover:text-[var(--bad)]" title="Remove from this list" aria-label="Remove this saved message" onclick={() => forgetMessage(msg)}>×</button>
+                  </span>
                 {/each}
               </div>
             {/if}
