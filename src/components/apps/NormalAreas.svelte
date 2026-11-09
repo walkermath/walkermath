@@ -2,7 +2,7 @@
 <!-- Normal-model areas: shade the area less than, greater than, between or outside cutoffs on the -->
 <!-- standard normal curve, or on X ~ N(μ, σ), or on x̄ ~ N(μ, σ/√n) (the CLT, from the sampling app). -->
 <!-- Two directions: [find the area] (drag or type the cutoffs) and [find the cutoff] (type an area or -->
-<!-- percentile). Every answer shows its steps: standardizing, the left-area (z-table) form with any -->
+<!-- percentile). Every answer shows its steps: standardizing, the left-area (pnorm) form with any -->
 <!-- "1 −", and a plain-English sentence. Cutoffs are kept in z units so the picture stays put when the -->
 <!-- scale changes. Math: src/lib/stats/normal.ts (npm run test:normal). -->
 <script lang="ts">
@@ -270,7 +270,7 @@
         return `P(${L} < ${a} or ${L} > ${b})`;
     }
   });
-  /** the same statement for Z, then in left areas (z-table / normalcdf form), then the answer */
+  /** the same statement for Z, then in left areas (what pnorm() in R gives), then the answer */
   const chain = $derived.by(() => {
     const A = normalCdf(za);
     const B = normalCdf(zb);
@@ -312,16 +312,16 @@
     const t = f4(targetArea);
     switch (region) {
       case 'left':
-        return [['area to the left', t], ['z', `invNorm(${t})`, fz(za)]];
+        return [['area to the left', t], ['z', `qnorm(${t})`, fz(za)]];
       case 'right':
-        return [['area to the right', t], ['area to the left', `1 − ${t}`, f4(1 - targetArea)], ['z', `invNorm(${f4(1 - targetArea)})`, fz(za)]];
+        return [['area to the right', t], ['area to the left', `1 − ${t}`, f4(1 - targetArea)], ['z', `qnorm(${f4(1 - targetArea)})`, fz(za)]];
       case 'between': {
         const tail = (1 - targetArea) / 2;
-        return [['middle area', t], ['each tail', `(1 − ${t}) / 2`, f4(tail)], ['z', `±invNorm(${f4(1 - tail)})`, `±${fz(zb)}`]];
+        return [['middle area', t], ['each tail', `(1 − ${t}) / 2`, f4(tail)], ['z', `±qnorm(${f4(1 - tail)})`, `±${fz(zb)}`]];
       }
       case 'outside': {
         const tail = targetArea / 2;
-        return [['both tails together', t], ['each tail', `${t} / 2`, f4(tail)], ['z', `±invNorm(${f4(1 - tail)})`, `±${fz(zb)}`]];
+        return [['both tails together', t], ['each tail', `${t} / 2`, f4(tail)], ['z', `±qnorm(${f4(1 - tail)})`, `±${fz(zb)}`]];
       }
     }
   });
