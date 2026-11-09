@@ -6,7 +6,9 @@
 // teacher's private notes.
 
 import { isCorrect, type Answers } from '../lesson/answers.ts';
+import type { FeedbackByModule } from '../lesson/feedback.ts';
 import { pagesOf, type Page, type RoomModule } from '../lesson/room.ts';
+import { studentFeedback } from './feedback.ts';
 import { roomModules } from './live.ts';
 import { studentNotes } from './notes.ts';
 import type { Student } from './sessions.ts';
@@ -71,6 +73,8 @@ export interface PastLesson {
   scores: Record<string, { best: number; plays: number }>;
   /** This student's personal notes, by module id. */
   notes: Record<string, string>;
+  /** The teacher's marks and messages on this student's answers (Active Feedback), by module id then question id. */
+  feedback: FeedbackByModule;
 }
 
 /** One finished delivery of the student's own class, or null. */
@@ -86,7 +90,7 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
   const pageOrder = parse(run.timing_json, null)?.pageOrder ?? null;
   const pages = modules.map((_, i) => pagesOf({ pageOrder } as any, modules, i));
 
-  const [inkRows, answersByModule, scoreRows, notes] = await Promise.all([
+  const [inkRows, answersByModule, scoreRows, notes, feedback] = await Promise.all([
     db.prepare('SELECT page_id, strokes_json FROM run_ink WHERE run_id = ?1 ORDER BY page_id, part').bind(run.id).all(),
     studentAnswers(db, run.id, s.aliasId),
     db
@@ -96,7 +100,8 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
       )
       .bind(run.id, s.aliasId)
       .all(),
-    studentNotes(db, run.id, s.aliasId)
+    studentNotes(db, run.id, s.aliasId),
+    studentFeedback(db, run.id, s.aliasId)
   ]);
 
   const shown = new Set(pages.flat().map((p) => p.id));
@@ -130,6 +135,7 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
     answers,
     marks,
     scores,
-    notes
+    notes,
+    feedback
   };
 }
