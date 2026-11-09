@@ -52,7 +52,11 @@ export function lessonToMarkdown(lesson: any): string {
     const type = MODULE_TYPES[m.type as keyof typeof MODULE_TYPES]?.label ?? m.type;
     out.push('---', '', `## ${i + 1}. ${m.title}`, '', `*${type} · ${mmss(m.plannedSec)} · ${m.pacing === 'locked' ? 'locked' : 'flexible'}*`, '');
     const c = m.config ?? {};
-    if (m.type === 'prompt') {
+    if (m.type === 'activity' && c.category === 'feedback') {
+      if (c.instructions) out.push(c.instructions, '');
+      if (c.links?.length) out.push(...c.links.map((l: any) => `- [${l.label}](${l.url})`), '');
+    }
+    if (m.type === 'prompt' || (m.type === 'activity' && c.category === 'feedback')) {
       (c.questions ?? []).forEach((q: any, qi: number) => {
         out.push(`**Q${qi + 1}.** ${q.text}`, '');
         if (q.kind === 'choice') out.push(...q.choices.map((ch: string, ci: number) => `- ${letter(ci)}. ${ch}`), '');

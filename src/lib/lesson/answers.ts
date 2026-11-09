@@ -4,7 +4,7 @@
 // draw the form, the ticks and the control panel's answer table.
 //
 // A module takes one of three kinds of answer, from its (student-safe) config:
-//   questions  a prompt: one answer per question, keyed by the question's id
+//   questions  a prompt, or an Active Feedback activity: one answer per question, keyed by the question's id
 //   short      independent work set to "short answer": one text, keyed 'short'
 //   tap        an activity's or independent work's "done" button: { done: '1' }
 // Answers are stored as { key: text }. Choice answers are the chosen index as text ('0', '1', ...).
@@ -38,6 +38,10 @@ export function answerSpec(m: { type: string; config: any }): AnswerSpec | null 
     case 'independent':
       return c.response === 'short' ? { kind: 'short' } : c.response === 'done' ? { kind: 'tap' } : null;
     case 'activity':
+      // Active Feedback: questions with no key, marked by the teacher (a "done" tap never applies).
+      if (c.category === 'feedback') {
+        return Array.isArray(c.questions) && c.questions.length ? { kind: 'questions', questions: c.questions } : null;
+      }
       return c.doneTap ? { kind: 'tap' } : null;
     default:
       return null;

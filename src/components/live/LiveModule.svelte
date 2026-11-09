@@ -156,6 +156,142 @@
   {/if}
 {/snippet}
 
+{#snippet questionList()}
+  <!-- A prompt's questions, or an Active Feedback activity's (same form; feedback ones have no key). -->
+  <ol class="space-y-3">
+    {#each c.questions ?? [] as q, i (q.id)}
+      <li class="p-4 rounded border border-[var(--line)] bg-[var(--bg-surface)] space-y-2">
+        <div class="font-bold">
+          Q{i + 1}
+          {#if marks?.[q.id] === true}
+            <span class="ml-2 text-sm text-[var(--ok)]">✓ right</span>
+          {:else if marks?.[q.id] === false}
+            <span class="ml-2 text-sm text-[var(--bad)]">✗ not right</span>
+          {/if}
+        </div>
+        <div class="slide-text">{@html renderMarkdown(q.text)}</div>
+        {#if q.kind === 'choice'}
+          <ul class="space-y-1" role={student ? 'radiogroup' : undefined}>
+            {#each q.choices as choice, ci}
+              <li>
+                {#if student}
+                  <label
+                    class="flex gap-2 items-start p-2 rounded border {mine[q.id] === String(ci)
+                      ? 'border-[var(--accent)] bg-[var(--accent)]/10'
+                      : 'border-[var(--line)]'} {editable ? 'cursor-pointer hover:border-[var(--accent)]' : 'cursor-default'}"
+                  >
+                    <input
+                      type="radio"
+                      class="mt-1"
+                      name="q-{q.id}"
+                      value={String(ci)}
+                      checked={mine[q.id] === String(ci)}
+                      disabled={!editable}
+                      onchange={() => set(q.id, String(ci), true)}
+                    />
+                    <span class={label}>{String.fromCharCode(65 + ci)}.</span>
+                    <span>{@html renderMarkdown(choice)}</span>
+                  </label>
+                {:else}
+                  <div class="flex gap-2"><span class={label}>{String.fromCharCode(65 + ci)}.</span><span>{@html renderMarkdown(choice)}</span></div>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {:else if q.kind === 'sort' && q.sort}
+          <SortQuestion
+            spec={q.sort}
+            value={mine[q.id] ?? ''}
+            {student}
+            {editable}
+            label="Question {i + 1}"
+            onchange={(v) => set(q.id, v, true)}
+          />
+        {:else if q.kind === 'grid' && q.grid}
+          {@const vals = parseList(mine[q.id] ?? '')}
+          {@const blanks = blankPositions(q.grid)}
+          <div class="overflow-x-auto">
+            <table class="border-collapse">
+              <tbody>
+                {#each q.grid.cells as row, r}
+                  <tr>
+                    {#each row as cell, c}
+                      {@const k = blanks.findIndex(([br, bc]) => br === r && bc === c)}
+                      <td
+                        class="border-2 border-[var(--line)] p-1 min-w-24 h-14 text-center align-middle {isHeader(q.grid, r, c)
+                          ? 'bg-[var(--well)] font-bold'
+                          : ''}"
+                      >
+                        {#if cell.blank}
+                          {#if student}
+                            <MathInput
+                              compact
+                              ariaLabel="Question {i + 1}, row {r + 1}, column {c + 1}"
+                              maxlength={GRID_BLANK_MAX}
+                              value={vals[k] ?? ''}
+                              disabled={!editable}
+                              oninput={(v) => setBlank(q.id, blanks.length, k, v, false)}
+                              onchange={(v) => setBlank(q.id, blanks.length, k, v, true)}
+                            />
+                          {:else}
+                            <span class={label}>?</span>
+                          {/if}
+                        {:else}
+                          <span class="grid-cell">{@html renderMarkdown(cell.text)}</span>
+                        {/if}
+                      </td>
+                    {/each}
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {:else if student}
+          {#if q.kind === 'number'}
+            <input
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              class={field}
+              aria-label="Answer to question {i + 1}"
+              placeholder={editable ? 'a number (3/4 and -2.5 work)' : ''}
+              maxlength={ANSWER_LIMITS.number}
+              value={mine[q.id] ?? ''}
+              disabled={!editable}
+              oninput={(e) => set(q.id, e.currentTarget.value, false)}
+              onchange={(e) => set(q.id, e.currentTarget.value, true)}
+            />
+          {:else if q.kind === 'math'}
+            <MathInput
+              ariaLabel="Answer to question {i + 1}"
+              placeholder={editable ? 'type it like (x+2)(x+5) or x=7, or use the buttons' : ''}
+              maxlength={ANSWER_LIMITS.math}
+              value={mine[q.id] ?? ''}
+              disabled={!editable}
+              oninput={(v) => set(q.id, v, false)}
+              onchange={(v) => set(q.id, v, true)}
+            />
+          {:else}
+            <textarea
+              rows="2"
+              class={field}
+              aria-label="Answer to question {i + 1}"
+              placeholder={editable ? 'your answer' : ''}
+              maxlength={ANSWER_LIMITS.text}
+              value={mine[q.id] ?? ''}
+              disabled={!editable}
+              oninput={(e) => set(q.id, e.currentTarget.value, false)}
+              onchange={(e) => set(q.id, e.currentTarget.value, true)}
+            ></textarea>
+          {/if}
+        {/if}
+      </li>
+    {/each}
+  </ol>
+  {#if !(c.questions ?? []).length}<p class={label}>// no questions in this module.</p>{/if}
+  {@render status()}
+{/snippet}
+
 <div class="space-y-4">
   {#if module.type === 'notes'}
     {#if pages.length}
@@ -206,138 +342,7 @@
   {:else if module.type === 'notes'}
     <!-- (drawn above) -->
   {:else if module.type === 'prompt'}
-    <ol class="space-y-3">
-      {#each c.questions ?? [] as q, i (q.id)}
-        <li class="p-4 rounded border border-[var(--line)] bg-[var(--bg-surface)] space-y-2">
-          <div class="font-bold">
-            Q{i + 1}
-            {#if marks?.[q.id] === true}
-              <span class="ml-2 text-sm text-[var(--ok)]">✓ right</span>
-            {:else if marks?.[q.id] === false}
-              <span class="ml-2 text-sm text-[var(--bad)]">✗ not right</span>
-            {/if}
-          </div>
-          <div class="slide-text">{@html renderMarkdown(q.text)}</div>
-          {#if q.kind === 'choice'}
-            <ul class="space-y-1" role={student ? 'radiogroup' : undefined}>
-              {#each q.choices as choice, ci}
-                <li>
-                  {#if student}
-                    <label
-                      class="flex gap-2 items-start p-2 rounded border {mine[q.id] === String(ci)
-                        ? 'border-[var(--accent)] bg-[var(--accent)]/10'
-                        : 'border-[var(--line)]'} {editable ? 'cursor-pointer hover:border-[var(--accent)]' : 'cursor-default'}"
-                    >
-                      <input
-                        type="radio"
-                        class="mt-1"
-                        name="q-{q.id}"
-                        value={String(ci)}
-                        checked={mine[q.id] === String(ci)}
-                        disabled={!editable}
-                        onchange={() => set(q.id, String(ci), true)}
-                      />
-                      <span class={label}>{String.fromCharCode(65 + ci)}.</span>
-                      <span>{@html renderMarkdown(choice)}</span>
-                    </label>
-                  {:else}
-                    <div class="flex gap-2"><span class={label}>{String.fromCharCode(65 + ci)}.</span><span>{@html renderMarkdown(choice)}</span></div>
-                  {/if}
-                </li>
-              {/each}
-            </ul>
-          {:else if q.kind === 'sort' && q.sort}
-            <SortQuestion
-              spec={q.sort}
-              value={mine[q.id] ?? ''}
-              {student}
-              {editable}
-              label="Question {i + 1}"
-              onchange={(v) => set(q.id, v, true)}
-            />
-          {:else if q.kind === 'grid' && q.grid}
-            {@const vals = parseList(mine[q.id] ?? '')}
-            {@const blanks = blankPositions(q.grid)}
-            <div class="overflow-x-auto">
-              <table class="border-collapse">
-                <tbody>
-                  {#each q.grid.cells as row, r}
-                    <tr>
-                      {#each row as cell, c}
-                        {@const k = blanks.findIndex(([br, bc]) => br === r && bc === c)}
-                        <td
-                          class="border-2 border-[var(--line)] p-1 min-w-24 h-14 text-center align-middle {isHeader(q.grid, r, c)
-                            ? 'bg-[var(--well)] font-bold'
-                            : ''}"
-                        >
-                          {#if cell.blank}
-                            {#if student}
-                              <MathInput
-                                compact
-                                ariaLabel="Question {i + 1}, row {r + 1}, column {c + 1}"
-                                maxlength={GRID_BLANK_MAX}
-                                value={vals[k] ?? ''}
-                                disabled={!editable}
-                                oninput={(v) => setBlank(q.id, blanks.length, k, v, false)}
-                                onchange={(v) => setBlank(q.id, blanks.length, k, v, true)}
-                              />
-                            {:else}
-                              <span class={label}>?</span>
-                            {/if}
-                          {:else}
-                            <span class="grid-cell">{@html renderMarkdown(cell.text)}</span>
-                          {/if}
-                        </td>
-                      {/each}
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-          {:else if student}
-            {#if q.kind === 'number'}
-              <input
-                type="text"
-                inputmode="decimal"
-                autocomplete="off"
-                class={field}
-                aria-label="Answer to question {i + 1}"
-                placeholder={editable ? 'a number (3/4 and -2.5 work)' : ''}
-                maxlength={ANSWER_LIMITS.number}
-                value={mine[q.id] ?? ''}
-                disabled={!editable}
-                oninput={(e) => set(q.id, e.currentTarget.value, false)}
-                onchange={(e) => set(q.id, e.currentTarget.value, true)}
-              />
-            {:else if q.kind === 'math'}
-              <MathInput
-                ariaLabel="Answer to question {i + 1}"
-                placeholder={editable ? 'type it like (x+2)(x+5) or x=7, or use the buttons' : ''}
-                maxlength={ANSWER_LIMITS.math}
-                value={mine[q.id] ?? ''}
-                disabled={!editable}
-                oninput={(v) => set(q.id, v, false)}
-                onchange={(v) => set(q.id, v, true)}
-              />
-            {:else}
-              <textarea
-                rows="2"
-                class={field}
-                aria-label="Answer to question {i + 1}"
-                placeholder={editable ? 'your answer' : ''}
-                maxlength={ANSWER_LIMITS.text}
-                value={mine[q.id] ?? ''}
-                disabled={!editable}
-                oninput={(e) => set(q.id, e.currentTarget.value, false)}
-                onchange={(e) => set(q.id, e.currentTarget.value, true)}
-              ></textarea>
-            {/if}
-          {/if}
-        </li>
-      {/each}
-    </ol>
-    {#if !(c.questions ?? []).length}<p class={label}>// no questions in this module.</p>{/if}
-    {@render status()}
+    {@render questionList()}
   {:else}
     {#if c.instructions}
       <div class="p-4 rounded border border-[var(--line)] bg-[var(--bg-surface)] slide-text">{@html renderMarkdown(c.instructions)}</div>
@@ -356,7 +361,9 @@
         {/each}
       </ul>
     {/if}
-    {#if spec?.kind === 'short'}
+    {#if module.type === 'activity' && c.category === 'feedback'}
+      {@render questionList()}
+    {:else if spec?.kind === 'short'}
       {#if student}
         <label class="block space-y-1">
           <span class="text-sm font-bold">your answer</span>

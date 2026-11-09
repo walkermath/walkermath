@@ -12,6 +12,7 @@
     activityCategory,
     promptCategory,
     newQuestion,
+    toFeedback,
     type ActivityCategory,
     type PromptCategory,
     type LessonModule,
@@ -104,8 +105,12 @@
   /** Picking an activity category renames the module only while it still has a stock title. */
   const STOCK_TITLES = new Set(ACTIVITY_CATEGORIES.map((c) => c.title as string));
   function setCategory(id: ActivityCategory) {
+    const was = module.config.category;
     module.config.category = id;
     if (!module.title.trim() || STOCK_TITLES.has(module.title)) module.title = activityCategory(id).title;
+    // Active Feedback takes questions instead of a "done" tap and holds at time up (you can change that).
+    if (id === 'feedback' && was !== 'feedback') toFeedback(module);
+    else if (id !== 'feedback' && was === 'feedback') module.config.doneTap = true;
   }
 
   /** Same for question sets: the category renames the module only while it has a stock title. */
@@ -210,6 +215,294 @@
   const removeLink = (i: number) => module.config.links.splice(i, 1);
 
 </script>
+
+{#snippet questionsEditor(keyless: boolean)}
+  <!-- keyless: an Active Feedback activity (no answer keys; no grids or card sorts) -->
+  <div class={heading}>// questions ({module.config.questions.length})</div>
+  {#if module.config.questions.length === 0}
+    <p class={label}>no questions yet.</p>
+  {/if}
+  {#each module.config.questions as q, qi (q.id)}
+    <div class="p-3 rounded border border-[var(--line)] space-y-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="font-bold">Q{qi + 1}</span>
+        <select class="{field} w-40 p-1" value={q.kind} onchange={(e) => setKind(qi, (e.currentTarget as HTMLSelectElement).value as QuestionKind)}>
+          <option value="text">short text</option>
+          <option value="number">number</option>
+          <option value="math">math (algebra)</option>
+          {#if !keyless}
+            <option value="grid">grid (table / area model)</option>
+            <option value="sort">card sort / matching</option>
+          {/if}
+          <option value="choice">multiple choice</option>
+        </select>
+        <span class="flex-1"></span>
+        <button type="button" class="hover:text-[var(--accent)] cursor-pointer disabled:opacity-40" onclick={() => moveQuestion(qi, qi - 1)} disabled={qi === 0} aria-label="Move up">[up]</button>
+        <button type="button" class="hover:text-[var(--accent)] cursor-pointer disabled:opacity-40" onclick={() => moveQuestion(qi, qi + 1)} disabled={qi === module.config.questions.length - 1} aria-label="Move down">[down]</button>
+        <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => module.config.questions.splice(qi, 1)}>[x]</button>
+      </div>
+      <textarea class={field} rows="2" bind:value={q.text} maxlength={LIMITS.text} placeholder="Question (use $...$ for math)"></textarea>
+
+      {#if q.kind === 'choice'}
+        <div class="space-y-1">
+          {#each q.choices as _, ci}
+            <div class="flex items-center gap-2">
+              {#if keyless}
+                <span class="{label} w-4 text-center">{String.fromCharCode(65 + ci)}</span>
+              {:else}
+                <input
+                  type="radio"
+                  name="key-{q.id}"
+                  checked={q.answer === String(ci)}
+                  onchange={() => (q.answer = String(ci))}
+                  title="Correct answer"
+                  aria-label="Mark choice {ci + 1} correct"
+                />
+              {/if}
+              <input class="{field} p-1" bind:value={q.choices[ci]} maxlength={LIMITS.choice} placeholder="Choice {String.fromCharCode(65 + ci)}" />
+              {#if q.choices.length > 2}
+                <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => removeChoice(qi, ci)} aria-label="Remove choice">[x]</button>
+              {/if}
+            </div>
+          {/each}
+          <div class="flex gap-3 pl-6">
+            {#if q.choices.length < LIMITS.choices}
+              <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => q.choices.push('')}>[+ choice]</button>
+            {/if}
+            {#if !keyless && q.answer !== ''}
+              <button type="button" class="hover:text-[var(--accent)] cursor-pointer {label}" onclick={() => (q.answer = '')}>[no answer key]</button>
+            {/if}
+          </div>
+        </div>
+      {:else if q.kind === 'sort' && q.sort}
+        {@const keys = sortKeys(q)}
+        <div class="space-y-3">
+          <div class="space-y-1">
+            <div class={label}>groups (students put each card in one)</div>
+            {#each q.sort.groups as _, gi}
+              <div class="flex items-center gap-2">
+                <input class="{field} p-1" bind:value={q.sort.groups[gi]} maxlength={SORT_LIMITS.group} placeholder="Group {gi + 1}" />
+                {#if q.sort.groups.length > 2}
+                  <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => removeGroup(q, gi)} aria-label="Remove group">[x]</button>
+                {/if}
+              </div>
+            {/each}
+            {#if q.sort.groups.length < SORT_LIMITS.groups}
+              <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => q.sort!.groups.push('')}>[+ group]</button>
+            {/if}
+          </div>
+          <div class="space-y-1">
+            <div class={label}>cards, and the group each belongs in (the key; students never see it)</div>
+            {#each q.sort.cards as _, ci}
+              <div class="flex flex-wrap items-center gap-2">
+                <input class="{field} p-1 flex-1 min-w-40" bind:value={q.sort.cards[ci]} maxlength={SORT_LIMITS.card} placeholder="Card {ci + 1} (use $...$ for math)" />
+                <select
+                  class="{field} w-44 p-1"
+                  value={keys[ci]}
+                  onchange={(e) => setSortKey(q, ci, (e.currentTarget as HTMLSelectElement).value)}
+                  aria-label="Group for card {ci + 1}"
+                >
+                  <option value="">no key</option>
+                  {#each q.sort.groups as g, gi}
+                    <option value={String(gi)}>{g || `Group ${gi + 1}`}</option>
+                  {/each}
+                </select>
+                {#if q.sort.cards.length > 2}
+                  <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => removeCard(q, ci)} aria-label="Remove card">[x]</button>
+                {/if}
+              </div>
+            {/each}
+            {#if q.sort.cards.length < SORT_LIMITS.cards}
+              <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => addCard(q)}>[+ card]</button>
+            {/if}
+          </div>
+          <p class="text-xs {label}">
+            // students drag each card into a group, or tap a card and then a group. for matching, make one group per answer and one card for each.
+            the question is right when every keyed card is in its group.
+          </p>
+        </div>
+      {:else if q.kind === 'grid' && q.grid}
+        {@const keys = parseList(q.answer)}
+        {@const blanks = blankPositions(q.grid)}
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center gap-3 text-xs">
+            <label class="flex items-center gap-1">
+              <span class={label}>rows</span>
+              <input class="{field} w-16 p-1" type="number" min="1" max={GRID_MAX} value={q.grid.rows} onchange={(e) => reshapeGrid(q, { rows: Number(e.currentTarget.value) })} />
+            </label>
+            <label class="flex items-center gap-1">
+              <span class={label}>columns</span>
+              <input class="{field} w-16 p-1" type="number" min="1" max={GRID_MAX} value={q.grid.cols} onchange={(e) => reshapeGrid(q, { cols: Number(e.currentTarget.value) })} />
+            </label>
+            <label class="flex items-center gap-1"><input type="checkbox" bind:checked={q.grid.headerRow} disabled={q.grid.check === 'area'} /> first row is a header</label>
+            <label class="flex items-center gap-1"><input type="checkbox" bind:checked={q.grid.headerCol} disabled={q.grid.check === 'area'} /> first column is a header</label>
+          </div>
+          <label class="flex flex-wrap items-center gap-2 text-xs">
+            <span class={label}>mark it by</span>
+            <select
+              class="{field} w-auto p-1"
+              value={q.grid.check === 'area' ? 'area' : 'keys'}
+              onchange={(e) => setGridCheck(q, e.currentTarget.value as 'keys' | 'area')}
+            >
+              <option value="keys">a key for each blank</option>
+              <option value="area">area model: multiply it out (one key)</option>
+            </select>
+          </label>
+          <div class="overflow-x-auto">
+            <table class="border-collapse">
+              <tbody>
+                {#each q.grid.cells as row, r}
+                  <tr>
+                    {#each row as cell, c}
+                      {@const k = blanks.findIndex(([br, bc]) => br === r && bc === c)}
+                      <td
+                        class="border border-[var(--line)] p-1 align-top {cell.blank
+                          ? 'bg-[var(--accent)]/10'
+                          : (q.grid.headerRow && r === 0) || (q.grid.headerCol && c === 0)
+                            ? 'bg-[var(--well)]'
+                            : ''}"
+                      >
+                        {#if cell.blank && q.grid.check === 'area'}
+                          <div class="w-28 p-1 text-xs {label}">students fill in</div>
+                        {:else if cell.blank}
+                          <input
+                            class="{field} p-1 w-28"
+                            value={keys[k] ?? ''}
+                            placeholder="key (optional)"
+                            autocomplete="off"
+                            spellcheck="false"
+                            aria-label="Answer key, row {r + 1}, column {c + 1}"
+                            oninput={(e) => setGridKey(q, k, e.currentTarget.value)}
+                          />
+                          <select
+                            class="block mt-1 text-xs bg-transparent {cell.group ? 'text-[var(--accent)]' : label} cursor-pointer"
+                            value={cell.group ?? ''}
+                            aria-label="Any-order group, row {r + 1}, column {c + 1}"
+                            title="blanks with the same letter can be filled in any order"
+                            onchange={(e) => {
+                              const v = e.currentTarget.value;
+                              if (v) cell.group = v;
+                              else delete cell.group;
+                            }}
+                          >
+                            <option value="">no group</option>
+                            {#each GRID_GROUPS as letter}<option value={letter}>any order: {letter}</option>{/each}
+                          </select>
+                        {:else}
+                          <input
+                            class="{field} p-1 w-28"
+                            bind:value={cell.text}
+                            maxlength={GRID_TEXT_MAX}
+                            placeholder="given"
+                            aria-label="Given, row {r + 1}, column {c + 1}"
+                          />
+                        {/if}
+                        <button type="button" class="block text-xs {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => reshapeGrid(q, { toggle: [r, c] })}>
+                          {cell.blank ? '[make given]' : '[make blank]'}
+                        </button>
+                      </td>
+                    {/each}
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          {#if q.grid.check === 'area'}
+            {@const target = keys[0] ?? ''}
+            <label class="flex flex-wrap items-center gap-2">
+              <span class="{label} whitespace-nowrap">the model multiplies out to</span>
+              <input
+                class="{field} p-1 w-64"
+                value={target}
+                maxlength={GRID_BLANK_MAX}
+                placeholder="x^2 - 13x + 40"
+                autocomplete="off"
+                spellcheck="false"
+                oninput={(e) => (q.answer = e.currentTarget.value.trim() ? JSON.stringify([e.currentTarget.value]) : '')}
+              />
+            </label>
+            {#if target.trim() && !readMath(target).ok}
+              <p class="text-xs text-[var(--bad)]">{(readMath(target) as { error: string }).error}</p>
+            {/if}
+            <p class="text-xs {label}">
+              // headers are the factors' terms, the other cells their products. right when every cell is its row header times its
+              column header, written as one simplified term (-8x, not x·(-8)), and the headers multiply to the key. any correct
+              arrangement counts: either factor on top, terms in either order. blank the headers too and students find the factors
+              themselves. a key you write factored, like (x-8)(x-5), works the same.
+            </p>
+          {:else}
+            {#each keys as k, ki}
+              {#if k.trim() && !readMath(k).ok}
+                <p class="text-xs text-[var(--bad)]">blank {ki + 1}: {(readMath(k) as { error: string }).error}</p>
+              {/if}
+            {/each}
+            <label class="flex flex-wrap items-center gap-2">
+              <span class={label}>count as correct</span>
+              <select class="{field} w-64 p-1" bind:value={q.match}>
+                <option value="form">same form, any order</option>
+                <option value="any">any equivalent form</option>
+              </select>
+            </label>
+            <p class="text-xs {label}">
+              // shaded blanks are what students fill in; type a key in each to have it marked (checked like a math answer, students never
+              see it). given cells can use $...$ for math, like $x^2$ or $+5$. blanks with the same "any order" letter can be filled in
+              either order: their keys and answers just have to pair up. the question is right when every keyed blank is right.
+            </p>
+          {/if}
+        </div>
+      {:else if q.kind === 'math' && keyless}
+        <p class="text-xs {label}">// students type ^ for powers, sqrt() for roots and i for the imaginary unit.</p>
+      {:else if q.kind === 'math'}
+        <div class="space-y-1">
+          <label class="flex items-center gap-2">
+            <span class="{label} whitespace-nowrap">answer key (optional, students never see it)</span>
+            <input
+              class="{field} p-1"
+              bind:value={q.answer}
+              maxlength={LIMITS.answer}
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="(x+5)(x+2)   or   x=±3"
+            />
+          </label>
+          {#if q.answer.trim()}
+            {@const read = readMath(q.answer)}
+            <p class="text-xs {read.ok ? label : 'text-[var(--bad)]'}">{read.ok ? `read as: ${read.text}` : read.error}</p>
+          {/if}
+          <label class="flex flex-wrap items-center gap-2">
+            <span class={label}>count as correct</span>
+            <select class="{field} w-64 p-1" bind:value={q.match}>
+              <option value="form">same form, any order</option>
+              <option value="any">any equivalent form</option>
+            </select>
+          </label>
+          <p class="text-xs {label}">
+            // same form: (x+2)(x+5) matches (x+5)(x+2) but not x²+7x+10, and 2(x+3) does not match 2x+6. any equivalent form accepts all
+            of those. an equation must match both sides (x+5=12 is not x=7). "x=3 or x=-3" and "x=±3" are the same answer. students type ^
+            for powers, sqrt() for roots and i for the imaginary unit.
+          </p>
+        </div>
+      {:else if !keyless}
+        <label class="flex items-center gap-2">
+          <span class="{label} whitespace-nowrap">answer key (optional, students never see it)</span>
+          <input class="{field} p-1" bind:value={q.answer} maxlength={LIMITS.answer} inputmode={q.kind === 'number' ? 'decimal' : 'text'} />
+        </label>
+      {/if}
+    </div>
+  {/each}
+  {#if module.config.questions.length < LIMITS.questions}
+    <div class="flex flex-wrap gap-2">
+      <button type="button" class={btn} onclick={() => addQuestion('text')}>[+ short text]</button>
+      <button type="button" class={btn} onclick={() => addQuestion('number')}>[+ number]</button>
+      <button type="button" class={btn} onclick={() => addQuestion('math')}>[+ math]</button>
+      {#if !keyless}
+        <button type="button" class={btn} onclick={() => addQuestion('grid')}>[+ grid]</button>
+        <button type="button" class={btn} onclick={() => addQuestion('sort')}>[+ card sort]</button>
+      {/if}
+      <button type="button" class={btn} onclick={() => addQuestion('choice')}>[+ multiple choice]</button>
+    </div>
+  {/if}
+{/snippet}
 
 <section class="{panel} space-y-5 text-xs">
   <div class="flex flex-wrap justify-between items-start gap-3">
@@ -319,280 +612,7 @@
           </select>
         </label>
       {/if}
-      <div class={heading}>// questions ({module.config.questions.length})</div>
-      {#if module.config.questions.length === 0}
-        <p class={label}>no questions yet.</p>
-      {/if}
-      {#each module.config.questions as q, qi (q.id)}
-        <div class="p-3 rounded border border-[var(--line)] space-y-2">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="font-bold">Q{qi + 1}</span>
-            <select class="{field} w-40 p-1" value={q.kind} onchange={(e) => setKind(qi, (e.currentTarget as HTMLSelectElement).value as QuestionKind)}>
-              <option value="text">short text</option>
-              <option value="number">number</option>
-              <option value="math">math (algebra)</option>
-              <option value="grid">grid (table / area model)</option>
-              <option value="sort">card sort / matching</option>
-              <option value="choice">multiple choice</option>
-            </select>
-            <span class="flex-1"></span>
-            <button type="button" class="hover:text-[var(--accent)] cursor-pointer disabled:opacity-40" onclick={() => moveQuestion(qi, qi - 1)} disabled={qi === 0} aria-label="Move up">[up]</button>
-            <button type="button" class="hover:text-[var(--accent)] cursor-pointer disabled:opacity-40" onclick={() => moveQuestion(qi, qi + 1)} disabled={qi === module.config.questions.length - 1} aria-label="Move down">[down]</button>
-            <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => module.config.questions.splice(qi, 1)}>[x]</button>
-          </div>
-          <textarea class={field} rows="2" bind:value={q.text} maxlength={LIMITS.text} placeholder="Question (use $...$ for math)"></textarea>
-
-          {#if q.kind === 'choice'}
-            <div class="space-y-1">
-              {#each q.choices as _, ci}
-                <div class="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="key-{q.id}"
-                    checked={q.answer === String(ci)}
-                    onchange={() => (q.answer = String(ci))}
-                    title="Correct answer"
-                    aria-label="Mark choice {ci + 1} correct"
-                  />
-                  <input class="{field} p-1" bind:value={q.choices[ci]} maxlength={LIMITS.choice} placeholder="Choice {String.fromCharCode(65 + ci)}" />
-                  {#if q.choices.length > 2}
-                    <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => removeChoice(qi, ci)} aria-label="Remove choice">[x]</button>
-                  {/if}
-                </div>
-              {/each}
-              <div class="flex gap-3 pl-6">
-                {#if q.choices.length < LIMITS.choices}
-                  <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => q.choices.push('')}>[+ choice]</button>
-                {/if}
-                {#if q.answer !== ''}
-                  <button type="button" class="hover:text-[var(--accent)] cursor-pointer {label}" onclick={() => (q.answer = '')}>[no answer key]</button>
-                {/if}
-              </div>
-            </div>
-          {:else if q.kind === 'sort' && q.sort}
-            {@const keys = sortKeys(q)}
-            <div class="space-y-3">
-              <div class="space-y-1">
-                <div class={label}>groups (students put each card in one)</div>
-                {#each q.sort.groups as _, gi}
-                  <div class="flex items-center gap-2">
-                    <input class="{field} p-1" bind:value={q.sort.groups[gi]} maxlength={SORT_LIMITS.group} placeholder="Group {gi + 1}" />
-                    {#if q.sort.groups.length > 2}
-                      <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => removeGroup(q, gi)} aria-label="Remove group">[x]</button>
-                    {/if}
-                  </div>
-                {/each}
-                {#if q.sort.groups.length < SORT_LIMITS.groups}
-                  <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => q.sort!.groups.push('')}>[+ group]</button>
-                {/if}
-              </div>
-              <div class="space-y-1">
-                <div class={label}>cards, and the group each belongs in (the key; students never see it)</div>
-                {#each q.sort.cards as _, ci}
-                  <div class="flex flex-wrap items-center gap-2">
-                    <input class="{field} p-1 flex-1 min-w-40" bind:value={q.sort.cards[ci]} maxlength={SORT_LIMITS.card} placeholder="Card {ci + 1} (use $...$ for math)" />
-                    <select
-                      class="{field} w-44 p-1"
-                      value={keys[ci]}
-                      onchange={(e) => setSortKey(q, ci, (e.currentTarget as HTMLSelectElement).value)}
-                      aria-label="Group for card {ci + 1}"
-                    >
-                      <option value="">no key</option>
-                      {#each q.sort.groups as g, gi}
-                        <option value={String(gi)}>{g || `Group ${gi + 1}`}</option>
-                      {/each}
-                    </select>
-                    {#if q.sort.cards.length > 2}
-                      <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => removeCard(q, ci)} aria-label="Remove card">[x]</button>
-                    {/if}
-                  </div>
-                {/each}
-                {#if q.sort.cards.length < SORT_LIMITS.cards}
-                  <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => addCard(q)}>[+ card]</button>
-                {/if}
-              </div>
-              <p class="text-xs {label}">
-                // students drag each card into a group, or tap a card and then a group. for matching, make one group per answer and one card for each.
-                the question is right when every keyed card is in its group.
-              </p>
-            </div>
-          {:else if q.kind === 'grid' && q.grid}
-            {@const keys = parseList(q.answer)}
-            {@const blanks = blankPositions(q.grid)}
-            <div class="space-y-2">
-              <div class="flex flex-wrap items-center gap-3 text-xs">
-                <label class="flex items-center gap-1">
-                  <span class={label}>rows</span>
-                  <input class="{field} w-16 p-1" type="number" min="1" max={GRID_MAX} value={q.grid.rows} onchange={(e) => reshapeGrid(q, { rows: Number(e.currentTarget.value) })} />
-                </label>
-                <label class="flex items-center gap-1">
-                  <span class={label}>columns</span>
-                  <input class="{field} w-16 p-1" type="number" min="1" max={GRID_MAX} value={q.grid.cols} onchange={(e) => reshapeGrid(q, { cols: Number(e.currentTarget.value) })} />
-                </label>
-                <label class="flex items-center gap-1"><input type="checkbox" bind:checked={q.grid.headerRow} disabled={q.grid.check === 'area'} /> first row is a header</label>
-                <label class="flex items-center gap-1"><input type="checkbox" bind:checked={q.grid.headerCol} disabled={q.grid.check === 'area'} /> first column is a header</label>
-              </div>
-              <label class="flex flex-wrap items-center gap-2 text-xs">
-                <span class={label}>mark it by</span>
-                <select
-                  class="{field} w-auto p-1"
-                  value={q.grid.check === 'area' ? 'area' : 'keys'}
-                  onchange={(e) => setGridCheck(q, e.currentTarget.value as 'keys' | 'area')}
-                >
-                  <option value="keys">a key for each blank</option>
-                  <option value="area">area model: multiply it out (one key)</option>
-                </select>
-              </label>
-              <div class="overflow-x-auto">
-                <table class="border-collapse">
-                  <tbody>
-                    {#each q.grid.cells as row, r}
-                      <tr>
-                        {#each row as cell, c}
-                          {@const k = blanks.findIndex(([br, bc]) => br === r && bc === c)}
-                          <td
-                            class="border border-[var(--line)] p-1 align-top {cell.blank
-                              ? 'bg-[var(--accent)]/10'
-                              : (q.grid.headerRow && r === 0) || (q.grid.headerCol && c === 0)
-                                ? 'bg-[var(--well)]'
-                                : ''}"
-                          >
-                            {#if cell.blank && q.grid.check === 'area'}
-                              <div class="w-28 p-1 text-xs {label}">students fill in</div>
-                            {:else if cell.blank}
-                              <input
-                                class="{field} p-1 w-28"
-                                value={keys[k] ?? ''}
-                                placeholder="key (optional)"
-                                autocomplete="off"
-                                spellcheck="false"
-                                aria-label="Answer key, row {r + 1}, column {c + 1}"
-                                oninput={(e) => setGridKey(q, k, e.currentTarget.value)}
-                              />
-                              <select
-                                class="block mt-1 text-xs bg-transparent {cell.group ? 'text-[var(--accent)]' : label} cursor-pointer"
-                                value={cell.group ?? ''}
-                                aria-label="Any-order group, row {r + 1}, column {c + 1}"
-                                title="blanks with the same letter can be filled in any order"
-                                onchange={(e) => {
-                                  const v = e.currentTarget.value;
-                                  if (v) cell.group = v;
-                                  else delete cell.group;
-                                }}
-                              >
-                                <option value="">no group</option>
-                                {#each GRID_GROUPS as letter}<option value={letter}>any order: {letter}</option>{/each}
-                              </select>
-                            {:else}
-                              <input
-                                class="{field} p-1 w-28"
-                                bind:value={cell.text}
-                                maxlength={GRID_TEXT_MAX}
-                                placeholder="given"
-                                aria-label="Given, row {r + 1}, column {c + 1}"
-                              />
-                            {/if}
-                            <button type="button" class="block text-xs {label} hover:text-[var(--accent)] cursor-pointer" onclick={() => reshapeGrid(q, { toggle: [r, c] })}>
-                              {cell.blank ? '[make given]' : '[make blank]'}
-                            </button>
-                          </td>
-                        {/each}
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
-              {#if q.grid.check === 'area'}
-                {@const target = keys[0] ?? ''}
-                <label class="flex flex-wrap items-center gap-2">
-                  <span class="{label} whitespace-nowrap">the model multiplies out to</span>
-                  <input
-                    class="{field} p-1 w-64"
-                    value={target}
-                    maxlength={GRID_BLANK_MAX}
-                    placeholder="x^2 - 13x + 40"
-                    autocomplete="off"
-                    spellcheck="false"
-                    oninput={(e) => (q.answer = e.currentTarget.value.trim() ? JSON.stringify([e.currentTarget.value]) : '')}
-                  />
-                </label>
-                {#if target.trim() && !readMath(target).ok}
-                  <p class="text-xs text-[var(--bad)]">{(readMath(target) as { error: string }).error}</p>
-                {/if}
-                <p class="text-xs {label}">
-                  // headers are the factors' terms, the other cells their products. right when every cell is its row header times its
-                  column header, written as one simplified term (-8x, not x·(-8)), and the headers multiply to the key. any correct
-                  arrangement counts: either factor on top, terms in either order. blank the headers too and students find the factors
-                  themselves. a key you write factored, like (x-8)(x-5), works the same.
-                </p>
-              {:else}
-                {#each keys as k, ki}
-                  {#if k.trim() && !readMath(k).ok}
-                    <p class="text-xs text-[var(--bad)]">blank {ki + 1}: {(readMath(k) as { error: string }).error}</p>
-                  {/if}
-                {/each}
-                <label class="flex flex-wrap items-center gap-2">
-                  <span class={label}>count as correct</span>
-                  <select class="{field} w-64 p-1" bind:value={q.match}>
-                    <option value="form">same form, any order</option>
-                    <option value="any">any equivalent form</option>
-                  </select>
-                </label>
-                <p class="text-xs {label}">
-                  // shaded blanks are what students fill in; type a key in each to have it marked (checked like a math answer, students never
-                  see it). given cells can use $...$ for math, like $x^2$ or $+5$. blanks with the same "any order" letter can be filled in
-                  either order: their keys and answers just have to pair up. the question is right when every keyed blank is right.
-                </p>
-              {/if}
-            </div>
-          {:else if q.kind === 'math'}
-            <div class="space-y-1">
-              <label class="flex items-center gap-2">
-                <span class="{label} whitespace-nowrap">answer key (optional, students never see it)</span>
-                <input
-                  class="{field} p-1"
-                  bind:value={q.answer}
-                  maxlength={LIMITS.answer}
-                  autocomplete="off"
-                  spellcheck="false"
-                  placeholder="(x+5)(x+2)   or   x=±3"
-                />
-              </label>
-              {#if q.answer.trim()}
-                {@const read = readMath(q.answer)}
-                <p class="text-xs {read.ok ? label : 'text-[var(--bad)]'}">{read.ok ? `read as: ${read.text}` : read.error}</p>
-              {/if}
-              <label class="flex flex-wrap items-center gap-2">
-                <span class={label}>count as correct</span>
-                <select class="{field} w-64 p-1" bind:value={q.match}>
-                  <option value="form">same form, any order</option>
-                  <option value="any">any equivalent form</option>
-                </select>
-              </label>
-              <p class="text-xs {label}">
-                // same form: (x+2)(x+5) matches (x+5)(x+2) but not x²+7x+10, and 2(x+3) does not match 2x+6. any equivalent form accepts all
-                of those. an equation must match both sides (x+5=12 is not x=7). "x=3 or x=-3" and "x=±3" are the same answer. students type ^
-                for powers, sqrt() for roots and i for the imaginary unit.
-              </p>
-            </div>
-          {:else}
-            <label class="flex items-center gap-2">
-              <span class="{label} whitespace-nowrap">answer key (optional, students never see it)</span>
-              <input class="{field} p-1" bind:value={q.answer} maxlength={LIMITS.answer} inputmode={q.kind === 'number' ? 'decimal' : 'text'} />
-            </label>
-          {/if}
-        </div>
-      {/each}
-      {#if module.config.questions.length < LIMITS.questions}
-        <div class="flex flex-wrap gap-2">
-          <button type="button" class={btn} onclick={() => addQuestion('text')}>[+ short text]</button>
-          <button type="button" class={btn} onclick={() => addQuestion('number')}>[+ number]</button>
-          <button type="button" class={btn} onclick={() => addQuestion('math')}>[+ math]</button>
-          <button type="button" class={btn} onclick={() => addQuestion('grid')}>[+ grid]</button>
-          <button type="button" class={btn} onclick={() => addQuestion('sort')}>[+ card sort]</button>
-          <button type="button" class={btn} onclick={() => addQuestion('choice')}>[+ multiple choice]</button>
-        </div>
-      {/if}
+      {@render questionsEditor(false)}
     </div>
   {:else if module.type === 'notes'}
     <NotesEditor bind:config={module.config} {notes} />
@@ -658,7 +678,15 @@
         {/if}
       </div>
 
-      {#if module.type === 'activity'}
+      {#if module.type === 'activity' && module.config.category === 'feedback'}
+        <div class="space-y-3">
+          <p class={label}>
+            // no answer keys: during the lesson you read each answer and mark it yourself. put the tool students
+            should open under links, and ask about it here.
+          </p>
+          {@render questionsEditor(true)}
+        </div>
+      {:else if module.type === 'activity'}
         <label class="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" bind:checked={module.config.doneTap} />
           students tap "done" when finished

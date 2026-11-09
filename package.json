@@ -27,7 +27,8 @@
     "test:sort": "node --experimental-strip-types --no-warnings --test scripts/test-sort.mjs",
     "test:gcf": "node --experimental-strip-types --no-warnings --test scripts/test-gcf.mjs",
     "test:sampling": "node --experimental-strip-types --no-warnings --test scripts/test-sampling.mjs",
-    "test:normal": "node --experimental-strip-types --no-warnings --test scripts/test-normal.mjs"
+    "test:normal": "node --experimental-strip-types --no-warnings --test scripts/test-normal.mjs",
+    "test:feedback": "node --experimental-strip-types --no-warnings --test scripts/test-feedback.mjs"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.1",
