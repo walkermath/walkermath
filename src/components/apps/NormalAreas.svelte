@@ -96,7 +96,7 @@
   const PAD_L = 20;
   const PAD_R = 20;
   const PAD_T = 34;
-  const PLOT_H = 150;
+  const PLOT_H = 130;
   const BASE = PAD_T + PLOT_H;
   const gx = (z: number) => PAD_L + ((clampZ(z) + Z_LIM) / (2 * Z_LIM)) * (W - PAD_L - PAD_R);
   const gy = (z: number) => BASE - (normalPdf(clampZ(z)) / normalPdf(0)) * PLOT_H;
@@ -355,86 +355,41 @@
   </div>
 {/snippet}
 
-<div class="max-w-3xl mx-auto space-y-4 font-mono text-sm">
+<div class="max-w-4xl mx-auto font-mono text-sm">
   <section class="panel space-y-3">
-    <!-- what kind of question -->
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="text-xs text-[var(--text-muted)] w-20 shrink-0">find the</span>
-      <div class="seg" role="group" aria-label="What to find">
-        <button class:on={goal === 'area'} aria-pressed={goal === 'area'} onclick={() => setGoal('area')}>[area]</button>
-        <button class:on={goal === 'cutoff'} aria-pressed={goal === 'cutoff'} onclick={() => setGoal('cutoff')}>[cutoff]</button>
-      </div>
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="text-xs text-[var(--text-muted)] w-20 shrink-0">shade</span>
-      <div class="seg" role="group" aria-label="Region">
-        {#each REGIONS as r (r.id)}
-          <button class:on={region === r.id} aria-pressed={region === r.id} onclick={() => setRegion(r.id)}>[{r.label}]</button>
-        {/each}
-      </div>
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="text-xs text-[var(--text-muted)] w-20 shrink-0">distribution</span>
-      <div class="seg" role="group" aria-label="Distribution">
-        {#each SCALES as s (s.id)}
-          <button class:on={scale === s.id} aria-pressed={scale === s.id} onclick={() => (scale = s.id)}>[{s.label}]</button>
-        {/each}
-      </div>
-    </div>
-    {#if scale !== 'z'}
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 pl-0 sm:pl-[5.5rem]">
-        <label class="flex items-center gap-1">μ =
-          <input class="field w-20" type="text" inputmode="decimal" value={mu} onchange={(e) => setParam('mu', e)} aria-label="population mean μ" />
-        </label>
-        <label class="flex items-center gap-1">σ =
-          <input class="field w-20" type="text" inputmode="decimal" value={sigma} onchange={(e) => setParam('sigma', e)} aria-label="population standard deviation σ" />
-        </label>
-        {#if scale === 'xbar'}
-          <label class="flex items-center gap-1">n =
-            <input class="field w-16" type="text" inputmode="numeric" value={nSize} onchange={(e) => setParam('n', e)} aria-label="sample size n" />
+    <!-- top row: this question's inputs, and the 68–95–99.7 shortcuts -->
+    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      {#if goal === 'area'}
+        <div class="flex flex-wrap items-center gap-2">
+          {#if two}
+            <label class="flex items-center gap-1">{region === 'between' ? 'from' : 'below'}
+              <input class="field w-24" type="text" inputmode="decimal" value={fv(toX(za))} onchange={(e) => onCutoffInput(0, e)} aria-label="lower cutoff" />
+            </label>
+            <label class="flex items-center gap-1">{region === 'between' ? 'to' : 'or above'}
+              <input class="field w-24" type="text" inputmode="decimal" value={fv(toX(zb))} onchange={(e) => onCutoffInput(1, e)} aria-label="upper cutoff" />
+            </label>
+          {:else}
+            <label class="flex items-center gap-1">{letter} {region === 'left' ? '<' : '>'}
+              <input class="field w-24" type="text" inputmode="decimal" value={fv(toX(za))} onchange={(e) => onCutoffInput(0, e)} aria-label="cutoff" />
+            </label>
+          {/if}
+          <span class="text-xs text-[var(--text-muted)]">or drag on the curve</span>
+        </div>
+      {:else}
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="flex items-center gap-1">
+            {region === 'left' ? 'area to the left' : region === 'right' ? 'area to the right' : region === 'between' ? 'middle area' : 'area in both tails'} =
+            <input class="field w-24" type="text" inputmode="decimal" value={f4(targetArea)} onchange={onAreaInput} aria-label="area" />
           </label>
-          <span class="text-xs text-[var(--text-muted)]">σ/√n = {num(spread)}</span>
-        {/if}
-      </div>
-      {#if scale === 'xbar'}
-        <p class="text-xs text-[var(--text-muted)] sm:pl-[5.5rem]">By the CLT, sample means x̄ are about normal with center μ and spread σ/√n (the standard error).</p>
+          <span class="text-xs text-[var(--text-muted)]">0.90 or 90%</span>
+        </div>
       {/if}
-    {/if}
-  </section>
-
-  <section class="panel space-y-3">
-    <!-- the inputs for this kind of question -->
-    {#if goal === 'area'}
-      <div class="flex flex-wrap items-center gap-2">
-        {#if two}
-          <label class="flex items-center gap-1">{region === 'between' ? 'from' : 'below'}
-            <input class="field w-24" type="text" inputmode="decimal" value={fv(toX(za))} onchange={(e) => onCutoffInput(0, e)} aria-label="lower cutoff" />
-          </label>
-          <label class="flex items-center gap-1">{region === 'between' ? 'to' : 'or above'}
-            <input class="field w-24" type="text" inputmode="decimal" value={fv(toX(zb))} onchange={(e) => onCutoffInput(1, e)} aria-label="upper cutoff" />
-          </label>
-        {:else}
-          <label class="flex items-center gap-1">{letter} {region === 'left' ? '<' : '>'}
-            <input class="field w-24" type="text" inputmode="decimal" value={fv(toX(za))} onchange={(e) => onCutoffInput(0, e)} aria-label="cutoff" />
-          </label>
-        {/if}
-        <span class="text-xs text-[var(--text-muted)]">or drag on the curve</span>
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class="text-xs text-[var(--text-muted)]">68–95–99.7:</span>
+        {#each [1, 2, 3] as k (k)}
+          <button class="btn" onclick={() => empirical(k)}>[within {k} SD]</button>
+        {/each}
       </div>
-    {:else}
-      <div class="flex flex-wrap items-center gap-2">
-        <label class="flex items-center gap-1">
-          {region === 'left' ? 'area to the left' : region === 'right' ? 'area to the right' : region === 'between' ? 'middle area' : 'area in both tails'} =
-          <input class="field w-24" type="text" inputmode="decimal" value={f4(targetArea)} onchange={onAreaInput} aria-label="area" />
-        </label>
-        <span class="text-xs text-[var(--text-muted)]">0.90 or 90%</span>
-      </div>
-    {/if}
-
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="text-xs text-[var(--text-muted)]">68–95–99.7 rule:</span>
-      {#each [1, 2, 3] as k (k)}
-        <button class="btn" onclick={() => empirical(k)}>[within {k} SD]</button>
-      {/each}
     </div>
 
     <!-- the curve -->
@@ -471,38 +426,84 @@
         {/each}
       </svg>
       <figcaption class="text-[0.7rem] text-[var(--text-muted)] text-center">
-        Drag on the curve to move {two ? 'the nearest cutoff' : 'the cutoff'} (or focus a dot and use the arrow keys).
+        Drag on the curve to move {two ? 'the nearest cutoff' : 'the cutoff'}, or focus a dot and use the arrow keys.
       </figcaption>
     </figure>
 
-    <!-- the answer, worked out -->
-    <div class="work space-y-1">
-      {#if goal === 'area'}
-        {#if scale !== 'z'}
-          <p class="muted">standardize:</p>
-          {#each cuts as c, i (i)}
-            {@render eq(standardize(c), false)}
+    <!-- bottom: the worked answer beside the controls (controls first on small screens) -->
+    <div class="grid gap-4 md:grid-cols-2 items-start">
+      <div class="work space-y-1 min-w-0">
+        {#if goal === 'area'}
+          {#if scale !== 'z'}
+            <p class="muted">standardize:</p>
+            {#each cuts as c, i (i)}
+              {@render eq(standardize(c), false)}
+            {/each}
+          {/if}
+          <p class="muted mt-2">area:</p>
+          {@render eq([statement, ...chainShown], true)}
+          <p class="sentence">{sentence}</p>
+        {:else}
+          <p class="muted">cutoff:</p>
+          {#each inverseSteps as parts, i}
+            {@render eq(parts, scale === 'z' && i === inverseSteps.length - 1)}
           {/each}
+          {#if scale !== 'z'}
+            <p class="muted mt-2">un-standardize:</p>
+            {#each cuts as c, i (i)}
+              {@render eq(unstandardize(c), true)}
+            {/each}
+          {/if}
+          <p class="sentence">{inverseSentence}</p>
         {/if}
-        <p class="muted mt-2">area:</p>
-        {@render eq([statement, ...chainShown], true)}
-        <p class="sentence">{sentence}</p>
-      {:else}
-        <p class="muted">cutoff:</p>
-        {#each inverseSteps as parts, i}
-          {@render eq(parts, scale === 'z' && i === inverseSteps.length - 1)}
-        {/each}
+      </div>
+
+      <div class="controls space-y-2.5 order-first md:order-last min-w-0">
+        <div class="row">
+          <span class="row-label">find the</span>
+          <div class="seg" role="group" aria-label="What to find">
+            <button class:on={goal === 'area'} aria-pressed={goal === 'area'} onclick={() => setGoal('area')}>[area]</button>
+            <button class:on={goal === 'cutoff'} aria-pressed={goal === 'cutoff'} onclick={() => setGoal('cutoff')}>[cutoff]</button>
+          </div>
+        </div>
+        <div class="row">
+          <span class="row-label">shade</span>
+          <div class="seg" role="group" aria-label="Region">
+            {#each REGIONS as r (r.id)}
+              <button class:on={region === r.id} aria-pressed={region === r.id} onclick={() => setRegion(r.id)}>[{r.label}]</button>
+            {/each}
+          </div>
+        </div>
+        <div class="row">
+          <span class="row-label">distribution</span>
+          <div class="seg seg-col" role="group" aria-label="Distribution">
+            {#each SCALES as s (s.id)}
+              <button class:on={scale === s.id} aria-pressed={scale === s.id} onclick={() => (scale = s.id)}>[{s.label}]</button>
+            {/each}
+          </div>
+        </div>
         {#if scale !== 'z'}
-          <p class="muted mt-2">un-standardize:</p>
-          {#each cuts as c, i (i)}
-            {@render eq(unstandardize(c), true)}
-          {/each}
+          <div class="row">
+            <span class="row-label"></span>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <label class="flex items-center gap-1">μ =
+                <input class="field w-16" type="text" inputmode="decimal" value={mu} onchange={(e) => setParam('mu', e)} aria-label="population mean μ" />
+              </label>
+              <label class="flex items-center gap-1">σ =
+                <input class="field w-16" type="text" inputmode="decimal" value={sigma} onchange={(e) => setParam('sigma', e)} aria-label="population standard deviation σ" />
+              </label>
+              {#if scale === 'xbar'}
+                <label class="flex items-center gap-1">n =
+                  <input class="field w-14" type="text" inputmode="numeric" value={nSize} onchange={(e) => setParam('n', e)} aria-label="sample size n" />
+                </label>
+                <span class="text-xs text-[var(--text-muted)]" title="By the CLT, sample means are about normal with center μ and spread σ/√n (the standard error).">σ/√n = {num(spread)} (SE)</span>
+              {/if}
+            </div>
+          </div>
         {/if}
-        <p class="sentence">{inverseSentence}</p>
-      {/if}
+      </div>
     </div>
   </section>
-
 </div>
 
 <style>
@@ -561,6 +562,30 @@
   .field:focus {
     outline: none;
     border-color: var(--accent);
+  }
+
+  /* controls beside the worked answer */
+  .controls .row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  .controls .row-label {
+    width: 5.5rem;
+    flex-shrink: 0;
+    padding-top: 0.2rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .seg.seg-col {
+    flex-direction: column;
+  }
+  .seg.seg-col button + button {
+    border-left: none;
+    border-top: 1px solid var(--border-color);
+  }
+  .seg.seg-col button {
+    text-align: left;
   }
 
   /* worked answer */
