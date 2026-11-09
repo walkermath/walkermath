@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import {
   ALL_CARDS, PRESETS, cardValue, cardLabel, cardName, isRed, clampN, meanSd, populationStats,
   drawSample, standardError, zScore, isUnusual, sumsPerBin, binCount, binOfSum, binEdges,
-  binSampleMeans, normalPdf,
+  binSampleMeans, normalPdf, populationLabel,
 } from '../src/lib/stats/cardDeck.ts';
 
 const seeded = (seed) => () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
@@ -115,4 +115,12 @@ test('normal pdf integrates to about 1', () => {
   let area = 0;
   for (let x = -10; x <= 10; x += 0.001) area += normalPdf(x, 0.5, 1.3) * 0.001;
   close(area, 1, 1e-6);
+});
+
+test('population labels: a preset by name, anything else as custom', () => {
+  assert.equal(populationLabel(ALL_CARDS), 'full deck');
+  assert.equal(populationLabel([...ALL_CARDS].reverse().filter((c) => c % 13 <= 9)), 'A–10');
+  assert.equal(populationLabel([0, 13]), 'custom (2 cards)');
+  assert.equal(populationLabel([5]), 'custom (1 card)');
+  assert.equal(populationLabel([]), 'custom (0 cards)');
 });

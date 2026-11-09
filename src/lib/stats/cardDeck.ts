@@ -127,3 +127,12 @@ export function binSampleMeans(samples: { sum: number }[], n: number): number[] 
 
 export const normalPdf = (x: number, mu: number, sd: number) =>
   Math.exp(-0.5 * ((x - mu) / sd) ** 2) / (sd * Math.sqrt(2 * Math.PI));
+
+/** A short name for a population: its preset's label if it matches one, else "custom (k cards)". */
+export function populationLabel(cards: CardId[]): string {
+  const set = new Set(cards);
+  for (const p of PRESETS) {
+    if (p.cards.length > 0 && p.cards.length === set.size && p.cards.every((c) => set.has(c))) return p.label;
+  }
+  return `custom (${set.size} ${set.size === 1 ? 'card' : 'cards'})`;
+}
