@@ -6,6 +6,7 @@
 
 import { answerSpec, checkSubmission, isCorrect, type Answers, type AnswerSpec } from '../lesson/answers.ts';
 import { answersOpen, type RoomState } from '../lesson/room.ts';
+import { isFeedbackActivity } from '../lesson/modules.ts';
 import type { Lesson } from './lessons.ts';
 import { getLiveRun, roomModules, roomStub, type LiveRun } from './live.ts';
 import type { Student } from './sessions.ts';
@@ -102,6 +103,8 @@ export interface CollectModule {
   id: string;
   title: string;
   kind: CollectKind;
+  /** An Active Feedback activity: questions with no key, marked by the teacher by hand. */
+  feedback?: boolean;
   /** Questions with their keys (teacher only). */
   questions?: { id: string; kind: string; text: string; choices: string[]; answer: string; match?: string; sort?: unknown; grid?: any }[];
 }
@@ -141,7 +144,7 @@ export async function runAnswers(db: any, run: LiveRun): Promise<{ modules: Coll
   for (const m of lesson.modules as any[]) {
     const kind = collectKind(m);
     if (!kind) continue;
-    const entry: CollectModule = { id: m.id, title: m.title, kind };
+    const entry: CollectModule = { id: m.id, title: m.title, kind, ...(isFeedbackActivity(m) ? { feedback: true } : {}) };
     if (kind === 'questions') {
       entry.questions = (m.config.questions ?? []).map((q: any) => ({
         id: q.id,

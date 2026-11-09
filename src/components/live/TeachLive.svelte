@@ -187,6 +187,8 @@
       <p>// this delivery has ended.</p>
       <a class="underline hover:text-[var(--accent)]" href="/teach">&lt;- [lessons]</a>
     </section>
+    <!-- What it collected; Active Feedback can still be marked (it shows when students look back). -->
+    <AnswersPanel runId={run.id} />
   {:else if !lesson || !rs}
     <p class={label}>connecting to the room...</p>
   {:else}
@@ -213,6 +215,7 @@
         <p class="text-sm">// the lesson has ended. students see "the lesson is over".</p>
         <a class="underline hover:text-[var(--accent)]" href="/teach">&lt;- [lessons]</a>
       </section>
+      <AnswersPanel runId={run.id} />
     {:else}
       <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] items-start">
         <div class="space-y-4 min-w-0">

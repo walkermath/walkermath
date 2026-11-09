@@ -220,7 +220,10 @@
       <summary class="cursor-pointer {label}">taught ({past.length})</summary>
       <ul class="mt-2 space-y-1">
         {#each past as r (r.id)}
-          <li class={label}>{niceDate(r.date)} · {r.period} · {r.className}</li>
+          <li class={label}>
+            {niceDate(r.date)} · {r.period} · {r.className}
+            <a class="ml-2 underline hover:text-[var(--accent)]" href="/teach/live?run={r.id}" title="What students handed in; mark Active Feedback answers">[answers &amp; feedback]</a>
+          </li>
         {/each}
       </ul>
     </details>

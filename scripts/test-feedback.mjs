@@ -107,3 +107,28 @@ test('export lists the instructions, links and questions; library copies get fre
   assert.equal(copied.text, 'What does 0.8413 mean here?');
   assert.notEqual(copied.id, m.config.questions[0].id);
 });
+
+const { cleanFeedbackInput, isRevised, FEEDBACK_MESSAGE_MAX } = await import('../src/lib/lesson/feedback.ts');
+
+test("the teacher's feedback request is checked", () => {
+  const base = { moduleId: 'm', aliasId: 'a', questionId: 'q' };
+  assert.deepEqual(cleanFeedbackInput({ ...base, mark: 'partial', message: '  Close!\r\nTry again. ' }), { ...base, mark: 'partial', message: 'Close!\nTry again.' });
+  assert.deepEqual(cleanFeedbackInput({ ...base, mark: null, message: 'just a note' }), { ...base, mark: null, message: 'just a note' });
+  assert.deepEqual(cleanFeedbackInput({ ...base, mark: '' }), { ...base, mark: null, message: '' }, 'empty = clear');
+  assert.deepEqual(cleanFeedbackInput({ ...base, mark: 'right', message: 'a\u0000b' }), { ...base, mark: 'right', message: 'ab' });
+  assert.equal(typeof cleanFeedbackInput({ ...base, mark: 'excellent' }), 'string');
+  assert.equal(typeof cleanFeedbackInput({ ...base, mark: 'right', message: 'x'.repeat(FEEDBACK_MESSAGE_MAX + 1) }), 'string');
+  assert.equal(typeof cleanFeedbackInput({ ...base, message: ['hi'] }), 'string');
+  assert.equal(typeof cleanFeedbackInput({ moduleId: 'm', aliasId: 'a' }), 'string');
+  assert.equal(typeof cleanFeedbackInput({ ...base, questionId: 'x'.repeat(65) }), 'string');
+  assert.equal(typeof cleanFeedbackInput(null), 'string');
+});
+
+test('revised: the answer changed after it was marked', () => {
+  const fb = { mark: 'wrong', message: '', answer: '0.5', at: 1 };
+  assert.equal(isRevised(fb, '0.5'), false);
+  assert.equal(isRevised(fb, ' 0.5 '), false, 'spacing does not count');
+  assert.equal(isRevised(fb, '0.84'), true);
+  assert.equal(isRevised(fb, ''), true, 'cleared');
+  assert.equal(isRevised(undefined, '0.84'), false, 'nothing marked yet');
+});
