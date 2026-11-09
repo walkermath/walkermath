@@ -234,7 +234,7 @@
       ? [-3, -2, -1, 0, 1, 2, 3].map((k) => ({ k, v: pop.mu + k * se })).filter((t) => t.v >= 0.5 && t.v <= 10.5)
       : [],
   );
-  const sampH = $derived(PAD_T + PLOT_H + (zTicks.length ? 46 : 24));
+  const sampH = $derived(PAD_T + PLOT_H + (zTicks.length ? 56 : 24)); // z labels sit at +49, plus room below
   const binFlagged = (i: number) => {
     if (!showZ || !zOk) return false;
     const { lo, hi } = binEdges(i, n);
