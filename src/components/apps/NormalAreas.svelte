@@ -239,16 +239,19 @@
   }
 
   // ---- worked steps ----
-  /** standardizing one cutoff: "z = (76 − 70) / 10 = 0.60" */
-  function standardize(z: number): string {
+  // Worked steps are lists of parts: the first on its own line, then "= part" on a new line each,
+  // so a long chain reads down the box instead of scrolling across it.
+
+  /** standardizing one cutoff: z = (x − μ) / σ, = (76 − 70) / 10, = 0.60 */
+  function standardize(z: number): string[] {
     const x = fx(toX(z));
-    if (scale === 'x') return `z = (x − μ) / σ = (${x} − ${num(mu)}) / ${num(sigma)} = ${fz(z)}`;
-    return `z = (x̄ − μ) / (σ/√n) = (${x} − ${num(mu)}) / (${num(sigma)}/√${nSize}) = (${x} − ${num(mu)}) / ${num(spread)} = ${fz(z)}`;
+    if (scale === 'x') return ['z = (x − μ) / σ', `(${x} − ${num(mu)}) / ${num(sigma)}`, fz(z)];
+    return ['z = (x̄ − μ) / (σ/√n)', `(${x} − ${num(mu)}) / (${num(sigma)}/√${nSize})`, `(${x} − ${num(mu)}) / ${num(spread)}`, fz(z)];
   }
-  /** un-standardizing one cutoff: "x = μ + z·σ = 70 + 1.28 × 10 = 82.82" */
-  function unstandardize(z: number): string {
-    if (scale === 'x') return `x = μ + z·σ = ${num(mu)} + (${fz(z)}) × ${num(sigma)} = ${fx(toX(z))}`;
-    return `x̄ = μ + z·(σ/√n) = ${num(mu)} + (${fz(z)}) × ${num(spread)} = ${fx(toX(z))}`;
+  /** un-standardizing one cutoff: x = μ + z·σ, = 70 + 1.28 × 10, = 82.82 */
+  function unstandardize(z: number): string[] {
+    if (scale === 'x') return ['x = μ + z·σ', `${num(mu)} + (${fz(z)}) × ${num(sigma)}`, fx(toX(z))];
+    return ['x̄ = μ + z·(σ/√n)', `${num(mu)} + (${fz(z)}) × ${num(spread)}`, fx(toX(z))];
   }
 
   const L = $derived(letter);
@@ -275,7 +278,7 @@
     const b = fz(zb);
     switch (region) {
       case 'left':
-        return [`P(Z < ${a})`, `${f4(A)}`];
+        return [`P(Z < ${a})`, f4(A)];
       case 'right':
         return [`P(Z > ${a})`, `1 − P(Z < ${a})`, `1 − ${f4(A)}`, f4(1 - A)];
       case 'between':
@@ -305,20 +308,20 @@
     }
   });
   /** [find the cutoff]: turning the area into left areas, then z */
-  const inverseSteps = $derived.by(() => {
+  const inverseSteps: string[][] = $derived.by(() => {
     const t = f4(targetArea);
     switch (region) {
       case 'left':
-        return [`area to the left = ${t}`, `z = invNorm(${t}) = ${fz(za)}`];
+        return [['area to the left', t], ['z', `invNorm(${t})`, fz(za)]];
       case 'right':
-        return [`area to the right = ${t}`, `area to the left = 1 − ${t} = ${f4(1 - targetArea)}`, `z = invNorm(${f4(1 - targetArea)}) = ${fz(za)}`];
+        return [['area to the right', t], ['area to the left', `1 − ${t}`, f4(1 - targetArea)], ['z', `invNorm(${f4(1 - targetArea)})`, fz(za)]];
       case 'between': {
         const tail = (1 - targetArea) / 2;
-        return [`middle area = ${t}`, `each tail = (1 − ${t}) / 2 = ${f4(tail)}`, `z = invNorm(${f4(1 - tail)}) = ${fz(zb)}, so the cutoffs are z = ±${fz(zb)}`];
+        return [['middle area', t], ['each tail', `(1 − ${t}) / 2`, f4(tail)], ['z', `±invNorm(${f4(1 - tail)})`, `±${fz(zb)}`]];
       }
       case 'outside': {
         const tail = targetArea / 2;
-        return [`both tails together = ${t}`, `each tail = ${t} / 2 = ${f4(tail)}`, `z = invNorm(${f4(1 - tail)}) = ${fz(zb)}, so the cutoffs are z = ±${fz(zb)}`];
+        return [['both tails together', t], ['each tail', `${t} / 2`, f4(tail)], ['z', `±invNorm(${f4(1 - tail)})`, `±${fz(zb)}`]];
       }
     }
   });
@@ -341,6 +344,16 @@
     }
   });
 </script>
+
+<!-- one worked equation: the first part, then "= part" on its own line for each step after it -->
+{#snippet eq(parts: string[], boldLast: boolean)}
+  <div class="eq">
+    <p>{parts[0]}</p>
+    {#each parts.slice(1) as part, i}
+      <p class="cont">= {#if boldLast && i === parts.length - 2}<b class="answer">{part}</b>{:else}{part}{/if}</p>
+    {/each}
+  </div>
+{/snippet}
 
 <div class="max-w-3xl mx-auto space-y-4 font-mono text-sm">
   <section class="panel space-y-3">
@@ -417,6 +430,13 @@
       </div>
     {/if}
 
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs text-[var(--text-muted)]">68–95–99.7 rule:</span>
+      {#each [1, 2, 3] as k (k)}
+        <button class="btn" onclick={() => empirical(k)}>[within {k} SD]</button>
+      {/each}
+    </div>
+
     <!-- the curve -->
     <figure>
       <svg bind:this={svgEl} viewBox={`0 0 ${W} ${H}`} class="w-full h-auto curve-svg" class:grabbing={dragging >= 0}
@@ -461,23 +481,21 @@
         {#if scale !== 'z'}
           <p class="muted">standardize:</p>
           {#each cuts as c, i (i)}
-            <p class="indent">{standardize(c)}</p>
+            {@render eq(standardize(c), false)}
           {/each}
         {/if}
-        <p class="muted mt-1">area:</p>
-        <p class="indent">
-          {statement}{#each chainShown as step, i}{#if i < chainShown.length - 1}<span class="step"> = {step}</span>{:else}<span class="step"> = <b class="answer">{step}</b></span>{/if}{/each}
-        </p>
+        <p class="muted mt-2">area:</p>
+        {@render eq([statement, ...chainShown], true)}
         <p class="sentence">{sentence}</p>
       {:else}
         <p class="muted">cutoff:</p>
-        {#each inverseSteps as step}
-          <p class="indent">{step}</p>
+        {#each inverseSteps as parts, i}
+          {@render eq(parts, scale === 'z' && i === inverseSteps.length - 1)}
         {/each}
         {#if scale !== 'z'}
-          <p class="muted mt-1">un-standardize:</p>
+          <p class="muted mt-2">un-standardize:</p>
           {#each cuts as c, i (i)}
-            <p class="indent">{unstandardize(c)}</p>
+            {@render eq(unstandardize(c), true)}
           {/each}
         {/if}
         <p class="sentence">{inverseSentence}</p>
@@ -485,12 +503,6 @@
     </div>
   </section>
 
-  <section class="panel py-3 flex flex-wrap items-center gap-2">
-    <span class="text-xs text-[var(--text-muted)]">68–95–99.7 rule:</span>
-    {#each [1, 2, 3] as k (k)}
-      <button class="btn" onclick={() => empirical(k)}>[within {k} SD]</button>
-    {/each}
-  </section>
 </div>
 
 <style>
@@ -564,11 +576,14 @@
     color: var(--text-muted);
     font-size: 0.75rem;
   }
-  .work .indent {
+  .work .eq {
     padding-left: 1rem;
   }
-  .work .step {
-    white-space: nowrap;
+  .work .eq + .eq {
+    margin-top: 0.4rem;
+  }
+  .work .eq .cont {
+    padding-left: 2ch;
   }
   .work .answer {
     color: var(--accent);
