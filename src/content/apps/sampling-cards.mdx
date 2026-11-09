@@ -12,7 +12,7 @@ import SamplingCards from '../../components/apps/SamplingCards.svelte';
   </summary>
   <div class="mt-4 text-sm text-[var(--text-primary)] space-y-3 leading-relaxed">
     <p><b>Tutorial mode.</b> On your first visit the app opens one step at a time, with a guide telling you what to try next. Turn it off at the top right to see every control at once (your choice is remembered on this device).</p>
-    <p><b>Population.</b> Tap cards to add them to or remove them from the population. Each card's value is its number: ace = 1, J/Q/K = 10. The histogram shows the population's distribution with its mean μ and standard deviation σ.</p>
+    <p><b>Population.</b> It starts as A through 10 in every suit (40 cards, every value equally likely). Tap cards to add them to or remove them from the population. Each card's value is its number: ace = 1, J/Q/K = 10. The histogram shows the population's distribution with its mean μ and standard deviation σ.</p>
     <p><b>Samples.</b> Choose a sample size n and draw. Each sample draws n cards <i>with replacement</i> (each card goes back before the next draw) and records the sample mean x̄. Every x̄ goes into the sampling distribution histogram.</p>
     <p><b>Predict, then reveal.</b> Compare the mean and SD of your x̄'s with what theory says: mean = μ and standard error = σ/√n.</p>
     <p><b>z-scores.</b> Turn on <i>show z-scores</i> to see z = (x̄ − μ) / (σ/√n) for each sample. Samples with |z| &gt; 2 are flagged. Tap any sample to see its average and z-score worked out, and hover a histogram bar to outline its samples.</p>

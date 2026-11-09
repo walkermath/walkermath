@@ -29,10 +29,13 @@ export const cardLabel = (id: CardId) => `${RANKS[rankOf(id)]}${SUITS[suitOf(id)
 export const cardName = (id: CardId) => `${RANK_NAMES[rankOf(id)]} of ${SUIT_NAMES[suitOf(id)]}`;
 export const isRed = (id: CardId) => suitOf(id) === 1 || suitOf(id) === 2;
 
+/** A through 10 in every suit (no face cards): 4 cards of each value 1..10, a flat population. The default. */
+export const A_TO_10: CardId[] = ALL_CARDS.filter((c) => rankOf(c) <= 9);
+
 /** Starting populations a student (or later, a lesson) can pick. */
 export const PRESETS: { id: string; label: string; cards: CardId[] }[] = [
+  { id: 'a-10', label: 'A–10', cards: A_TO_10 },
   { id: 'deck', label: 'full deck', cards: ALL_CARDS },
-  { id: 'a-10', label: 'A–10', cards: ALL_CARDS.filter((c) => rankOf(c) <= 9) },
   { id: 'hearts', label: 'only ♥', cards: ALL_CARDS.filter((c) => suitOf(c) === 1) },
   { id: 'low', label: 'A–5 only', cards: ALL_CARDS.filter((c) => rankOf(c) <= 4) },
   { id: 'aces-tens', label: 'aces + 10s', cards: ALL_CARDS.filter((c) => cardValue(c) === 1 || rankOf(c) === 9) },

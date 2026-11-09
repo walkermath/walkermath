@@ -14,13 +14,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
-    ALL_CARDS, PRESETS, SUITS, SUIT_NAMES, MAX_N, MIN_N, UNUSUAL_Z, cardLabel, cardName, cardValue,
+    ALL_CARDS, A_TO_10, PRESETS, SUITS, SUIT_NAMES, MAX_N, MIN_N, UNUSUAL_Z, cardLabel, cardName, cardValue,
     isRed, rankOf, suitOf, RANKS, clampN, meanSd, populationStats, drawSample, standardError, zScore,
     isUnusual, binSampleMeans, binEdges, binOfSum, sumsPerBin, normalPdf, populationLabel, type CardId, type Sample,
   } from '../../lib/stats/cardDeck';
 
   let {
-    initialCards = ALL_CARDS,
+    initialCards = A_TO_10,
     initialN = 3,
     tutorial: tutorialProp = undefined,
   }: {
@@ -67,10 +67,7 @@
   onMount(() => {
     if (tutorialProp !== undefined) return;
     try {
-      if (localStorage.getItem(TUTORIAL_KEY) === 'off') {
-        tutorial = false;
-        if (!samples.length) popEditing = true;
-      }
+      if (localStorage.getItem(TUTORIAL_KEY) === 'off') tutorial = false;
     } catch {
       /* storage blocked: stay in tutorial mode */
     }
@@ -104,7 +101,7 @@
   /** long samples the student expanded to see every card */
   let expanded: Set<number> = $state.raw(new Set());
   /** the population editor is open (it folds to a summary line after the first draw) */
-  let popEditing = $state(!(tutorialProp ?? true));
+  let popEditing = $state(true);
   /** the newest single-draw sample, animated dropping into its histogram bar */
   let drop: { id: number; bin: number; mean: number } | null = $state(null);
   /** histogram bar under the pointer (its samples are outlined in the list) */
@@ -277,7 +274,9 @@
   const guide = $derived.by(() => {
     if (pop.size === 0) return 'The population is empty. Pick a preset or tap cards in the rest of the deck to add them.';
     if (progress === 1 && !samples.length)
-      return `The population is ${popName === 'full deck' ? 'a full deck' : popName}: ${pop.size} cards. A card's value is its number (A = 1, J/Q/K = 10), and its histogram is below. A sample is ${n} cards drawn at random. Press [draw a sample].`;
+      return popEditing
+        ? 'First, look at the population above. When it looks right, press [use this population].'
+        : `A sample is ${n} cards drawn at random from the population (each card goes back before the next draw). Press [draw a sample].`;
     if (!samples.length) return `Draw samples to build a new sampling distribution for n = ${n}.`;
     const drew = last ? `${drewText(last)} Their average is x̄ = ${fmt(last.mean)}. ` : '';
     if (progress === 2)
@@ -289,6 +288,13 @@
     if (!revealed)
       return `n = ${n} now. Predict first: will the x̄'s spread out more or less than before? Draw lots of samples, then reveal theory to check. Tap any sample to see its average and z-score worked out.`;
     return `Theory: the x̄'s center at μ = ${fmt(pop.mu)} with a spread of σ/√n = ${fmt(se)}. Yours: ${fmt(observed.mean)} and ${samples.length > 1 ? fmt(observed.sd) : '—'}. Now change n (this distribution is saved for comparing), and tap any sample to see its z-score worked out.`;
+  });
+
+  /** step 1, while the population editor is open: what the population is */
+  const popGuide = $derived.by(() => {
+    if (pop.size === 0) return 'The population is empty. Pick a preset or tap cards in the rest of the deck to add them.';
+    const name = popName === 'full deck' ? 'a full deck' : popName === 'A–10' ? 'A through 10 in every suit' : popName;
+    return `This is the population: ${name}, ${pop.size} cards. A card's value is its number (A = 1, J/Q/K = 10). The histogram shows how many cards have each value; its center is μ = ${fmt(pop.mu)} and its spread is σ = ${fmt(pop.sigma)}. You can tap cards to change it, or use a preset. When it looks right, press [use this population].`;
   });
 
   // ---- worked x̄ and z for a tapped sample ----
@@ -427,11 +433,14 @@
           {#each PRESETS as p (p.id)}
             <button class="btn" onclick={() => applyPreset(p.cards)}>[{p.label}]</button>
           {/each}
-          {#if pop.size > 0}
-            <button class="btn primary" onclick={() => (popEditing = false)}>[done]</button>
-          {/if}
         </div>
       </div>
+
+      {#if tutorial && progress === 1}
+        <div class="guide">
+          <p>{popGuide}</p>
+        </div>
+      {/if}
 
       <div class="flex flex-col sm:flex-row gap-3 items-start">
         <!-- the population: the big cards -->
@@ -495,6 +504,12 @@
       </div>
 
       {@render popHist(PLOT_H)}
+
+      {#if pop.size > 0}
+        <div class="flex justify-end">
+          <button class="btn draw-btn fit" onclick={() => (popEditing = false)}>[use this population ↓]</button>
+        </div>
+      {/if}
     </section>
   {:else}
     <section class="panel py-3 flex flex-wrap items-center justify-between gap-2">
@@ -958,6 +973,11 @@
     border-color: var(--accent);
     color: var(--accent);
     background: color-mix(in srgb, var(--accent) 8%, var(--bg-surface));
+  }
+  @media (min-width: 640px) {
+    .btn.draw-btn.fit {
+      width: auto;
+    }
   }
   .link:disabled {
     opacity: 0.4;
