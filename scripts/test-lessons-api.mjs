@@ -103,6 +103,8 @@ const reportOptionsR = await load('functions/api/teach/reports/options.js');
 const liveR = await load('functions/api/live/[runId].js');
 const answersR = await load('functions/api/class/answers.js');
 const runAnswersR = await load('functions/api/teach/runs/[runId]/answers.js');
+const runFeedbackR = await load('functions/api/teach/runs/[runId]/feedback.js');
+const classFeedbackR = await load('functions/api/class/feedback.js');
 const classLive = await load('functions/api/class/live.js');
 const classLessonsR = await load('functions/api/class/lessons/index.js');
 const classLessonOneR = await load('functions/api/class/lessons/[runId].js');
@@ -984,6 +986,108 @@ console.log('coliseum in lessons');
   assert.deepEqual(await body(await postScore()), { kept: true, posted: false, name: null });
   assert.equal(boardRows().length, 1);
   ok('turning posting off stops new posts; scores are still kept for the teacher');
+}
+
+console.log('active feedback');
+{
+  const signInAs = async (a) => cookieOf(await call(signin, 'POST', req('/api/class/signin', { method: 'POST', body: { passcode: cls.passcode, alias: a.alias, pin: a.pin } }), {}, classMw), '__Host-wm_student');
+  const a = aliases[9];
+  const b = aliases[10];
+  const sc = await signInAs(a);
+  const sc2 = await signInAs(b);
+  const idOf = (x) => env.DB.sql.prepare('SELECT id FROM student_aliases WHERE alias = ?').get(x.alias).id;
+
+  // A lesson whose middle module is an Active Feedback activity with two keyless questions.
+  let l = (await body(await call(lessonsIdx, 'POST', T('/api/teach/lessons', { method: 'POST', body: { title: 'Normal curve day' } }), {}, teachMw))).lesson;
+  const q1 = crypto.randomUUID();
+  const q2 = crypto.randomUUID();
+  l.modules.splice(1, 0, { id: crypto.randomUUID(), type: 'activity', title: 'Explore the curve', plannedSec: 600, pacing: 'flex', minSec: null, onTimeUp: 'hold',
+    config: { category: 'feedback', instructions: 'Open the app.', links: [{ label: 'Normal curve', url: 'https://walkermath.com/apps/normal' }], doneTap: false, coliseumId: '',
+      questions: [{ id: q1, kind: 'text', text: 'What does the shaded area mean?', choices: [], answer: 'sneaky key' }, { id: q2, kind: 'number', text: 'P(Z < 1)?', choices: [], answer: '' }] } });
+  l = (await body(await call(lessonOne, 'PUT', T(`/api/teach/lessons/${l.id}`, { method: 'PUT', body: { ...l, baseUpdatedAt: l.updatedAt } }), { lessonId: l.id }, teachMw))).lesson;
+  const fm = l.modules[1];
+  assert.equal(fm.config.questions[0].answer, '', 'no key is kept on a feedback question');
+  const day = new Date(Date.now() + 4 * 86400_000).toISOString().slice(0, 10);
+  const run = (await body(await call(runsIdx, 'POST', T(`/api/teach/lessons/${l.id}/runs`, { method: 'POST', body: { classId: cls.id, date: day, startTime: '14:00', endTime: '14:50' } }), { lessonId: l.id }, teachMw))).runs.find((r) => r.date === day);
+
+  const FB = (b2, cookie = jar.teacher) => call(runFeedbackR, 'POST', req(`/api/teach/runs/${run.id}/feedback`, { method: 'POST', body: b2, cookie }), { runId: run.id }, teachMw);
+  const give = (b2) => FB({ moduleId: fm.id, aliasId: idOf(a), questionId: q1, ...b2 });
+  assert.equal((await give({ mark: 'right' })).status, 409, 'not before the lesson starts');
+
+  await call(startR, 'POST', T(`/api/teach/runs/${run.id}/start`, { method: 'POST', body: {} }), { runId: run.id }, teachMw);
+  await call(liveR, 'POST', T(`/api/live/${run.id}`, { method: 'POST', body: { cmd: { type: 'next' } } }), { runId: run.id });
+  const A = (cookie, answers) => call(answersR, 'POST', req('/api/class/answers', { method: 'POST', cookie, body: { runId: run.id, moduleId: fm.id, answers } }), {}, classMw);
+  assert.equal((await A(sc, { [q1]: 'the chance Z is below 1', [q2]: '0.84' })).status, 200, 'students answer the activity');
+  assert.equal((await A(sc, { done: '1' })).status, 400, 'no done tap');
+  assert.equal((await A(sc2, { [q2]: '0.5' })).status, 200);
+
+  const panel = await body(await call(runAnswersR, 'GET', T(`/api/teach/runs/${run.id}/answers`), { runId: run.id }, teachMw));
+  const pm = panel.modules.find((m) => m.id === fm.id);
+  assert.equal(pm.kind, 'questions');
+  assert.equal(pm.feedback, true, 'flagged for the marking view');
+  assert.equal(panel.rows.find((r) => r.aliasId === idOf(a)).correct[q1], null, 'nothing auto-marked');
+  assert.deepEqual(panel.feedback, []);
+  ok('students answer an Active Feedback activity; the control panel sees it, unmarked');
+
+  const r1 = await give({ mark: 'partial', message: 'Close! Which side of 1 is shaded?' });
+  assert.equal(r1.status, 200);
+  const fb1 = (await body(r1)).feedback;
+  assert.deepEqual([fb1.mark, fb1.message, fb1.answer], ['partial', 'Close! Which side of 1 is shaded?', 'the chance Z is below 1'], 'the answer is kept as it was marked');
+  assert.equal((await FB({ moduleId: fm.id, aliasId: idOf(b), questionId: q2, mark: null, message: 'Look at the table again.' })).status, 200, 'a message with no mark');
+  assert.equal((await FB({ moduleId: fm.id, aliasId: idOf(b), questionId: q1, mark: 'wrong' })).status, 200, 'feedback on an unanswered question is fine');
+  assert.equal((await give({ mark: 'great' })).status, 400);
+  assert.equal((await give({ mark: 'right', message: 'x'.repeat(401) })).status, 400, 'messages are short');
+  assert.equal((await give({ mark: 'right', message: 42 })).status, 400);
+  assert.equal((await FB({ moduleId: fm.id, aliasId: idOf(a), questionId: 'nope', mark: 'right' })).status, 404, 'a real question of this run');
+  assert.equal((await FB({ moduleId: l.modules[0].id, aliasId: idOf(a), questionId: q1, mark: 'right' })).status, 404, 'only Active Feedback activities');
+  assert.equal((await FB({ moduleId: fm.id, aliasId: 'someone-else', questionId: q1, mark: 'right' })).status, 404, 'a student of this class');
+  const other = await signInTeacher('brett@example.com', 'g-2');
+  assert.equal((await FB({ moduleId: fm.id, aliasId: idOf(a), questionId: q1, mark: 'right' }, other.session)).status, 404, 'not another teacher');
+  assert.equal((await FB({ moduleId: fm.id, aliasId: idOf(a), questionId: q1, mark: 'right' }, sc)).status, 401, 'not a student');
+  ok('the teacher marks answers ✓ ◐ ✗ and/or sends a message; everything is checked');
+
+  const mine = async (cookie) => (await body(await call(classFeedbackR, 'GET', req(`/api/class/feedback?run=${run.id}`, { cookie }), {}, classMw))).feedback;
+  const seenA = await mine(sc);
+  assert.deepEqual(Object.keys(seenA), [fm.id]);
+  assert.equal(seenA[fm.id][q1].mark, 'partial');
+  assert.equal(seenA[fm.id][q1].message, 'Close! Which side of 1 is shaded?');
+  assert.equal(seenA[fm.id][q2], undefined);
+  const seenB = await mine(sc2);
+  assert.deepEqual([seenB[fm.id][q2].mark, seenB[fm.id][q2].message, seenB[fm.id][q1].mark], [null, 'Look at the table again.', 'wrong']);
+  assert.ok(!JSON.stringify(seenB).includes('Close!'), "never a classmate's feedback");
+  assert.equal((await call(classFeedbackR, 'GET', req(`/api/class/feedback?run=${run.id}`), {}, classMw)).status, 401);
+  ok('each student sees only their own marks and messages');
+
+  assert.equal((await A(sc, { [q1]: 'the chance Z is below 1, the left side', [q2]: '0.84' })).status, 200, 'the student revises after the mark');
+  const panel2 = await body(await call(runAnswersR, 'GET', T(`/api/teach/runs/${run.id}/answers`), { runId: run.id }, teachMw));
+  const f = panel2.feedback.find((x) => x.aliasId === idOf(a) && x.questionId === q1);
+  const row = panel2.rows.find((r) => r.aliasId === idOf(a) && r.moduleId === fm.id);
+  assert.notEqual(f.answer, row.answers[q1], 'the panel can tell the answer changed since it was marked');
+  const again = (await body(await give({ mark: 'right', message: '' }))).feedback;
+  assert.equal(again.answer, 'the chance Z is below 1, the left side', 'marking again takes the new answer');
+  assert.equal((await mine(sc))[fm.id][q1].message, '', 'a newer mark replaces the last');
+  assert.equal((await body(await give({ mark: null, message: '' }))).feedback, null);
+  assert.deepEqual(await mine(sc), {}, 'clearing both removes it');
+  await give({ mark: 'right', message: 'Nice.' });
+  ok('a revised answer shows as revised; feedback can be changed or cleared');
+
+  await call(endR, 'POST', T(`/api/teach/runs/${run.id}/end`, { method: 'POST', body: {} }), { runId: run.id }, teachMw);
+  assert.equal((await FB({ moduleId: fm.id, aliasId: idOf(b), questionId: q2, mark: 'right', message: 'Got it after class.' })).status, 200, 'marking after class');
+  const back = (cookie) => call(classLessonOneR, 'GET', req(`/api/class/lessons/${run.id}`, { cookie }), { runId: run.id }, classMw);
+  const pastA = (await body(await back(sc))).lesson;
+  assert.equal(pastA.feedback[fm.id][q1].message, 'Nice.');
+  assert.equal(pastA.answers[fm.id][q1], 'the chance Z is below 1, the left side');
+  const pastB = (await body(await back(sc2))).lesson;
+  assert.deepEqual([pastB.feedback[fm.id][q2].mark, pastB.feedback[fm.id][q2].message], ['right', 'Got it after class.']);
+  assert.ok(!JSON.stringify(pastB).includes('Nice.'));
+  assert.equal((await call(classFeedbackR, 'GET', req(`/api/class/feedback?run=${run.id}`, { cookie: sc }), {}, classMw)).status, 404, 'the live route closes with the lesson');
+  ok('feedback can be given after class and shows when the student looks back');
+
+  const n = () => env.DB.sql.prepare('SELECT COUNT(*) n FROM feedback WHERE run_id = ?').get(run.id).n;
+  assert.equal(n(), 3);
+  env.DB.sql.prepare('DELETE FROM lesson_runs WHERE id = ?').run(run.id);
+  assert.equal(n(), 0, 'deleted with the delivery');
+  ok('feedback is deleted with its delivery');
 }
 
 console.log('allowlist and clean-up');

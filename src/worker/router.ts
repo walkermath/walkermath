@@ -14,6 +14,7 @@ import * as authCallback from '../../functions/api/auth/google/callback.js';
 import * as authLogout from '../../functions/api/auth/logout.js';
 import * as classMw from '../../functions/api/class/_middleware.js';
 import * as classAnswers from '../../functions/api/class/answers.js';
+import * as classFeedback from '../../functions/api/class/feedback.js';
 import * as classBoardName from '../../functions/api/class/board-name.js';
 import * as classLessons from '../../functions/api/class/lessons/index.js';
 import * as classLessonOne from '../../functions/api/class/lessons/[runId].js';
@@ -48,6 +49,7 @@ import * as teachReportOptions from '../../functions/api/teach/reports/options.j
 import * as teachRuns from '../../functions/api/teach/runs.js';
 import * as teachRunAnswers from '../../functions/api/teach/runs/[runId]/answers.js';
 import * as teachRunEnd from '../../functions/api/teach/runs/[runId]/end.js';
+import * as teachRunFeedback from '../../functions/api/teach/runs/[runId]/feedback.js';
 import * as teachRunOne from '../../functions/api/teach/runs/[runId]/index.js';
 import * as teachRunStart from '../../functions/api/teach/runs/[runId]/start.js';
 
@@ -77,6 +79,7 @@ export const ROUTES: Route[] = [
 
   r('/api/class/answers', 'class/answers.js', classAnswers),
   r('/api/class/board-name', 'class/board-name.js', classBoardName),
+  r('/api/class/feedback', 'class/feedback.js', classFeedback),
   r('/api/class/lessons', 'class/lessons/index.js', classLessons),
   r('/api/class/lessons/:runId', 'class/lessons/[runId].js', classLessonOne),
   r('/api/class/live', 'class/live.js', classLive),
@@ -112,6 +115,7 @@ export const ROUTES: Route[] = [
   r('/api/teach/runs/:runId', 'teach/runs/[runId]/index.js', teachRunOne),
   r('/api/teach/runs/:runId/answers', 'teach/runs/[runId]/answers.js', teachRunAnswers),
   r('/api/teach/runs/:runId/end', 'teach/runs/[runId]/end.js', teachRunEnd),
+  r('/api/teach/runs/:runId/feedback', 'teach/runs/[runId]/feedback.js', teachRunFeedback),
   r('/api/teach/runs/:runId/start', 'teach/runs/[runId]/start.js', teachRunStart)
 ];
 

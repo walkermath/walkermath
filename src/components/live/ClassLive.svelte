@@ -12,6 +12,7 @@
   import { ANSWER_GRACE_MS, lessonLeftMs, livePage, moduleLeftMs, pagesOf, type RoomState } from '../../lib/lesson/room.ts';
   import { InkStore, inkHandlers } from '../../lib/lesson/inkStore.svelte.ts';
   import { answerSpec, isAnswered, type Answers } from '../../lib/lesson/answers.ts';
+  import type { FeedbackByModule } from '../../lib/lesson/feedback.ts';
   import { clockAt, connectLive, countdown, type LiveConnection, type LiveLesson, type Transport } from '../../lib/lesson/liveClient.ts';
   import LiveModule, { type SaveState } from './LiveModule.svelte';
   import PageView from './PageView.svelte';
@@ -52,6 +53,7 @@
     loadNotes();
     addEventListener('beforeunload', warnUnsaved);
     document.addEventListener('visibilitychange', flushIfHidden);
+    document.addEventListener('visibilitychange', feedbackOnReturn);
   });
   onDestroy(() => {
     conn?.close();
@@ -60,7 +62,9 @@
     if (typeof window !== 'undefined') {
       removeEventListener('beforeunload', warnUnsaved);
       document.removeEventListener('visibilitychange', flushIfHidden);
+      document.removeEventListener('visibilitychange', feedbackOnReturn);
     }
+    if (feedbackTimer) clearInterval(feedbackTimer);
   });
 
   /* ---------------- "I'm stuck" ---------------- */
@@ -103,6 +107,23 @@
   const TYPING_PAUSE_MS = 2000;
   const RETRY_MS = 4000;
 
+  /* ---------------- Active Feedback: the teacher's marks and messages on my answers ---------------- */
+  let feedback = $state<FeedbackByModule>({});
+  let feedbackTimer: ReturnType<typeof setInterval> | null = null;
+  const FEEDBACK_CHECK_MS = 8000;
+
+  async function loadFeedback() {
+    if (!runId) return;
+    try {
+      const res = await fetch(`/api/class/feedback?run=${encodeURIComponent(runId)}`, { credentials: 'same-origin', cache: 'no-store' });
+      if (res.ok) feedback = (await res.json()).feedback ?? {};
+    } catch {
+      // offline: keep what's shown
+    }
+  }
+  /** Coming back to this tab (from the app the activity links to): check for feedback right away. */
+  const feedbackOnReturn = () => document.visibilityState === 'visible' && onFeedbackActivity && loadFeedback();
+
   async function loadMine() {
     try {
       const res = await fetch(`/api/class/answers?run=${encodeURIComponent(runId)}`, { credentials: 'same-origin', cache: 'no-store' });
@@ -112,6 +133,7 @@
       for (const [id, v] of Object.entries<any>(data.answers ?? {})) if (!dirty.has(id) && !inflight.has(id)) next[id] = v.answers ?? {};
       mine = next;
       marks = data.marks ?? {};
+      loadFeedback();
     } catch {
       // offline: what's on screen stays; saving retries
     }
@@ -201,6 +223,17 @@
   const shownIndex = $derived(rs ? (viewing ?? rs.index) : 0);
   const onLive = $derived(!!rs && shownIndex === rs.index);
   const current = $derived(lesson ? lesson.modules[shownIndex] : null);
+  /** On an Active Feedback activity, check every few seconds (only while this tab is showing). */
+  const onFeedbackActivity = $derived(current?.type === 'activity' && current.config?.category === 'feedback');
+  $effect(() => {
+    if (!onFeedbackActivity) return;
+    loadFeedback();
+    feedbackTimer = setInterval(() => document.visibilityState === 'visible' && loadFeedback(), FEEDBACK_CHECK_MS);
+    return () => {
+      if (feedbackTimer) clearInterval(feedbackTimer);
+      feedbackTimer = null;
+    };
+  });
   /** Modules the class has reached (including ones left or skipped past); later ones stay closed. */
   const reachable = (i: number) => !!rs && (i <= rs.index || !!rs.done?.[i] || (rs.took?.[i] ?? 0) > 0);
   const open = (i: number) => {
@@ -425,6 +458,7 @@
             {runId}
             answers={mine[current.id] ?? {}}
             marks={editable(shownIndex) ? undefined : marks[current.id]}
+            feedback={feedback[current.id]}
             editable={editable(shownIndex)}
             saveState={saves[current.id] ?? ''}
             onanswer={(a, flush) => current && edit(current.id, a, flush)}
