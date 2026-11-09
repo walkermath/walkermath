@@ -294,7 +294,7 @@
   const popGuide = $derived.by(() => {
     if (pop.size === 0) return 'The population is empty. Pick a preset or tap cards in the rest of the deck to add them.';
     const name = popName === 'full deck' ? 'a full deck' : popName === 'A–10' ? 'A through 10 in every suit' : popName;
-    return `This is the population: ${name}, ${pop.size} cards. A card's value is its number (A = 1, J/Q/K = 10). The histogram shows how many cards have each value; its center is μ = ${fmt(pop.mu)} and its spread is σ = ${fmt(pop.sigma)}. You can tap cards to change it, or use a preset. When it looks right, press [use this population].`;
+    return `This is the population: ${name}, ${pop.size} cards. A card's value is its number (A = 1, J/Q/K = 10). The histogram shows how many cards have each value; its center is μ = ${fmt(pop.mu)} and its spread is σ = ${fmt(pop.sigma)}. You can tap cards to change it, or use a preset. When it looks right, press [use this population] below.`;
   });
 
   // ---- worked x̄ and z for a tapped sample ----
