@@ -103,6 +103,7 @@ const reportOptionsR = await load('functions/api/teach/reports/options.js');
 const liveR = await load('functions/api/live/[runId].js');
 const answersR = await load('functions/api/class/answers.js');
 const runAnswersR = await load('functions/api/teach/runs/[runId]/answers.js');
+const runTextR = await load('functions/api/teach/runs/[runId]/text.js');
 const runFeedbackR = await load('functions/api/teach/runs/[runId]/feedback.js');
 const classFeedbackR = await load('functions/api/class/feedback.js');
 const classLive = await load('functions/api/class/live.js');
@@ -1130,6 +1131,80 @@ console.log('active feedback');
   env.DB.sql.prepare('DELETE FROM lesson_runs WHERE id = ?').run(run.id);
   assert.equal(n(), 0, 'deleted with the delivery');
   ok('feedback is deleted with its delivery');
+}
+
+console.log('fixing notes after teaching');
+{
+  const signInAs = async (a) => cookieOf(await call(signin, 'POST', req('/api/class/signin', { method: 'POST', body: { passcode: cls.passcode, alias: a.alias, pin: a.pin } }), {}, classMw), '__Host-wm_student');
+  const sc = await signInAs(aliases[11]);
+  const slideA = crypto.randomUUID();
+  const slideB = crypto.randomUUID();
+  const kq = crypto.randomUUID();
+  const typo = 'Complete the square: $-(b/2a)^2$ is subtracted.';
+  const fixed = 'Complete the square: $-\\frac{b^2}{4a}$ is subtracted.';
+  let l = (await body(await call(lessonsIdx, 'POST', T('/api/teach/lessons', { method: 'POST', body: { title: 'Quadratic formula' } }), {}, teachMw))).lesson;
+  l.modules = [
+    { id: crypto.randomUUID(), type: 'notes', title: 'Derivation', plannedSec: 600, pacing: 'flex', minSec: null, onTimeUp: 'hold', config: { slides: [{ id: slideA, kind: 'markdown', markdown: typo }, { id: slideB, kind: 'markdown', markdown: 'Second page.' }] } },
+    { id: crypto.randomUUID(), type: 'prompt', title: 'Check', plannedSec: 300, pacing: 'flex', minSec: null, onTimeUp: 'hold', config: { category: 'check-in', questions: [{ id: kq, kind: 'number', text: '2 + 2?', choices: [], answer: '4' }] } }
+  ];
+  l = (await body(await call(lessonOne, 'PUT', T(`/api/teach/lessons/${l.id}`, { method: 'PUT', body: { ...l, baseUpdatedAt: l.updatedAt } }), { lessonId: l.id }, teachMw))).lesson;
+  const nm = l.modules[0];
+  const day = new Date(Date.now() + 5 * 86400_000).toISOString().slice(0, 10);
+  const run = (await body(await call(runsIdx, 'POST', T(`/api/teach/lessons/${l.id}/runs`, { method: 'POST', body: { classId: cls.id, date: day, startTime: '15:00', endTime: '15:50' } }), { lessonId: l.id }, teachMw))).runs.find((r) => r.date === day);
+  const TX = (method, b2, cookie = jar.teacher) => call(runTextR, method, req(`/api/teach/runs/${run.id}/text`, { method, body: b2, cookie }), { runId: run.id }, teachMw);
+  const edit = (markdown, extra = {}) => TX('POST', { edits: [{ moduleId: nm.id, slideId: slideA, markdown }], ...extra });
+  const seen = async () => (await body(await call(classLessonOneR, 'GET', req(`/api/class/lessons/${run.id}`, { cookie: sc }), { runId: run.id }, classMw))).lesson ?? null;
+
+  assert.equal((await edit(fixed)).status, 409, 'a delivery that has not been taught is fixed by editing the lesson');
+  await call(startR, 'POST', T(`/api/teach/runs/${run.id}/start`, { method: 'POST', body: {} }), { runId: run.id }, teachMw);
+  assert.equal((await edit(fixed)).status, 409, 'not while live either');
+  await call(endR, 'POST', T(`/api/teach/runs/${run.id}/end`, { method: 'POST', body: {} }), { runId: run.id }, teachMw);
+
+  const got = await body(await TX('GET'));
+  assert.deepEqual(got.modules.map((m) => m.title), ['Derivation'], 'only Notes pages are listed');
+  assert.equal(got.modules[0].slides[0].markdown, typo);
+  assert.equal(JSON.stringify(got).includes('"4"'), false, 'no answer keys in the editor');
+  const stored = () => JSON.parse(env.DB.sql.prepare('SELECT snapshot_json FROM lesson_runs WHERE id = ?').get(run.id).snapshot_json);
+  ok('the editor lists the Notes pages as taught, and only for finished deliveries');
+
+  // Checked before anything changes.
+  const lengthBefore = JSON.stringify(stored());
+  assert.equal((await TX('POST', { edits: [] })).status, 400);
+  assert.equal((await TX('POST', { edits: [{ moduleId: nm.id, slideId: 'nope', markdown: 'x' }] })).status, 400, 'a real page');
+  assert.equal((await TX('POST', { edits: [{ moduleId: l.modules[1].id, slideId: kq, markdown: 'x' }] })).status, 400, 'not a question');
+  assert.equal((await edit(42)).status, 400);
+  assert.equal((await edit('x'.repeat(8001))).status, 400, 'one page has a length limit');
+  assert.equal((await TX('POST', { edits: [{ moduleId: nm.id, slideId: slideA, markdown: 'a' }, { moduleId: nm.id, slideId: slideA, markdown: 'b' }] })).status, 400, 'a page once');
+  const other = await signInTeacher('brett@example.com', 'g-2');
+  assert.equal((await TX('POST', { edits: [{ moduleId: nm.id, slideId: slideA, markdown: fixed }] }, other.session)).status, 404, 'not another teacher');
+  assert.equal((await TX('GET', undefined, other.session)).status, 404);
+  assert.equal((await TX('POST', { edits: [{ moduleId: nm.id, slideId: slideA, markdown: fixed }] }, sc)).status, 401, 'not a student');
+  assert.equal(JSON.stringify(stored()), lengthBefore, 'refused edits change nothing');
+  ok('bad edits are refused, nobody else can make them');
+
+  // The student's past-lesson view still has the typo until it is fixed; then it has the fix.
+  const textOf = async () => (await seen()).modules[0].pages.map((p) => p.markdown);
+  assert.deepEqual(await textOf(), [typo, 'Second page.']);
+  const keysBefore = JSON.stringify(stored().modules[1]);
+  const r = await body(await edit(fixed));
+  assert.deepEqual([r.changed, r.lessonFixed, r.lessonSkipped], [1, 0, 0], 'the lesson itself is untouched unless asked');
+  assert.deepEqual(await textOf(), [fixed, 'Second page.'], 'students now see the corrected notes');
+  assert.equal(JSON.stringify(stored().modules[1]), keysBefore, 'questions and keys are exactly as taught');
+  assert.equal(JSON.stringify(stored().modules.map((m) => [m.id, m.type, m.title])), JSON.stringify(l.modules.map((m) => [m.id, m.type, m.title])), 'the structure is exactly as taught');
+  const lessonNow = async () => (await body(await call(lessonOne, 'GET', T(`/api/teach/lessons/${l.id}`), { lessonId: l.id }, teachMw))).lesson;
+  assert.equal((await lessonNow()).modules[0].config.slides[0].markdown, typo, 'the source lesson still has the typo');
+  assert.equal((await body(await edit(fixed))).changed, 0, 'saving the same text again is a no-op');
+  ok('a fix reaches what students see under past lessons, and nothing else in the delivery changes');
+
+  // Also fix the lesson: only pages still reading as they did when taught.
+  const again = 'Complete the square: $-\\frac{b^2}{4a}$ is subtracted (fixed twice).';
+  const r2 = await body(await TX('POST', { alsoLesson: true, edits: [{ moduleId: nm.id, slideId: slideA, markdown: again }, { moduleId: nm.id, slideId: slideB, markdown: 'Second page, tidied.' }] }));
+  // Page B still read as taught in the lesson, so it was fixed there; page A had been left as the typo
+  // while this delivery's copy was already corrected, so it no longer matches and is left alone.
+  assert.deepEqual([r2.changed, r2.lessonFixed, r2.lessonSkipped], [2, 1, 1]);
+  assert.deepEqual((await lessonNow()).modules[0].config.slides.map((x) => x.markdown), [typo, 'Second page, tidied.']);
+  assert.deepEqual(await textOf(), [again, 'Second page, tidied.']);
+  ok('the source lesson is fixed too when asked, but only pages you have not changed since');
 }
 
 console.log('allowlist and clean-up');

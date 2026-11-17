@@ -51,6 +51,7 @@ import * as teachRunAnswers from '../../functions/api/teach/runs/[runId]/answers
 import * as teachRunEnd from '../../functions/api/teach/runs/[runId]/end.js';
 import * as teachRunFeedback from '../../functions/api/teach/runs/[runId]/feedback.js';
 import * as teachRunOne from '../../functions/api/teach/runs/[runId]/index.js';
+import * as teachRunText from '../../functions/api/teach/runs/[runId]/text.js';
 import * as teachRunStart from '../../functions/api/teach/runs/[runId]/start.js';
 
 type Handler = (context: any) => Response | Promise<Response>;
@@ -116,7 +117,8 @@ export const ROUTES: Route[] = [
   r('/api/teach/runs/:runId/answers', 'teach/runs/[runId]/answers.js', teachRunAnswers),
   r('/api/teach/runs/:runId/end', 'teach/runs/[runId]/end.js', teachRunEnd),
   r('/api/teach/runs/:runId/feedback', 'teach/runs/[runId]/feedback.js', teachRunFeedback),
-  r('/api/teach/runs/:runId/start', 'teach/runs/[runId]/start.js', teachRunStart)
+  r('/api/teach/runs/:runId/start', 'teach/runs/[runId]/start.js', teachRunStart),
+  r('/api/teach/runs/:runId/text', 'teach/runs/[runId]/text.js', teachRunText)
 ];
 
 /* ---------------- matching ---------------- */

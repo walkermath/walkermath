@@ -19,6 +19,7 @@
   import { onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
   import { clock12, clockMinutes, mmss } from '../../lib/lesson/time.ts';
+  import FixNotes from './FixNotes.svelte';
   import { btn, btnDanger, btnMain, field, heading, label, niceDate, panel, todayIso } from './ui.ts';
 
   type Cls = { id: string; name: string; period: string; bellStart: string | null; bellEnd: string | null; archived: boolean };
@@ -35,6 +36,7 @@
   let error = $state('');
   let busy = $state(false);
   let editing = $state<string | null>(null); // run id, or 'new'
+  let fixing = $state<string | null>(null); // a taught run whose notes are being corrected
   let draft = $state<Draft>({ classId: '', date: todayIso(), startTime: '', endTime: '' });
 
   const openClasses = $derived(classes.filter((c) => !c.archived));
@@ -223,6 +225,10 @@
           <li class={label}>
             {niceDate(r.date)} · {r.period} · {r.className}
             <a class="ml-2 underline hover:text-[var(--accent)]" href="/teach/live?run={r.id}" title="What students handed in; mark Active Feedback answers">[answers &amp; feedback]</a>
+            <button type="button" class="ml-2 underline hover:text-[var(--accent)] cursor-pointer" onclick={() => (fixing = fixing === r.id ? null : r.id)} title="Correct a typo in the notes students see under past lessons">[fix notes]</button>
+            {#if fixing === r.id}
+              <FixNotes runId={r.id} onclose={() => (fixing = null)} />
+            {/if}
           </li>
         {/each}
       </ul>
