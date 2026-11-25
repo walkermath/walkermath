@@ -16,6 +16,7 @@ import remarkMath from 'remark-math';
 import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
 import { unified } from 'unified';
+import { rehypeGlossary } from '../glossary.ts';
 
 /* Allow class="" on every allowed tag (the notes' diagrams are Tailwind classes), and nothing else
    beyond the default safe set. Tag-specific className rules are dropped so '*' decides. */
@@ -53,29 +54,41 @@ function remarkMathInHtml() {
   return (tree: any) => walk(tree);
 }
 
-const processor = unified()
-  .use(remarkParse)
-  .use(remarkGfm)
-  .use(remarkMath)
-  .use(remarkMathInHtml)
-  .use(remarkRehype, { allowDangerousHtml: true })
-  .use(rehypeRaw)
-  .use(rehypeSanitize, schema as any)
-  .use(rehypeKatex, { throwOnError: false, strict: false })
-  .use(rehypeStringify);
+const build = (glossary: boolean) => {
+  const p = unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkMath)
+    .use(remarkMathInHtml)
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypeRaw)
+    .use(rehypeSanitize, schema as any)
+    .use(rehypeKatex, { throwOnError: false, strict: false });
+  // After sanitizing (so its spans are kept) and after KaTeX (whose markup it skips).
+  if (glossary) p.use(rehypeGlossary);
+  return p.use(rehypeStringify);
+};
+const processor = build(false);
+const glossaryProcessor = build(true);
 
 const cache = new Map<string, string>();
 
-export function renderMarkdown(md: string): string {
-  const hit = cache.get(md);
+/**
+ * One slide's or question's Markdown as safe HTML. `glossary`: mark vocabulary for the dotted
+ * underline (src/lib/glossary.ts). Used for question text, instructions and slides; left off for
+ * answer choices, card sort cards and grid cells, where a tap must select, not open a definition.
+ */
+export function renderMarkdown(md: string, opts: { glossary?: boolean } = {}): string {
+  const key = (opts.glossary ? 'g|' : 'p|') + md;
+  const hit = cache.get(key);
   if (hit !== undefined) return hit;
   let html: string;
   try {
-    html = String(processor.processSync(md));
+    html = String((opts.glossary ? glossaryProcessor : processor).processSync(md));
   } catch {
     html = `<pre>${escapeHtml(md)}</pre>`;
   }
   if (cache.size > 200) cache.clear();
-  cache.set(md, html);
+  cache.set(key, html);
   return html;
 }

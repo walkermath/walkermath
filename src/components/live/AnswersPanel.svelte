@@ -319,7 +319,7 @@
         {#if waitingCount}<b class="text-[var(--accent)]">{waitingCount} waiting.</b>{/if}
       </p>
     {:else if onspotlight && shown && shown.kind !== 'tap' && shown.kind !== 'coliseum'}
-      <p class={label}>// click an answer to show it on the projector (no name), or [results → screen] for a question's tally.</p>
+      <p class="{label} help-text">// click an answer to show it on the projector (no name), or [results → screen] for a question's tally.</p>
     {/if}
 
     {#if !shown}

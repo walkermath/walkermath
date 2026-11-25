@@ -294,7 +294,7 @@
         {#each BREAKDOWNS as b (b.value)}
           <label class="flex items-start gap-2 cursor-pointer text-xs">
             <input type="radio" name="breakdown" value={b.value} bind:group={breakdown} />
-            <span><span class="font-bold">{b.label}</span> <span class={label}>// {b.hint}</span></span>
+            <span><span class="font-bold">{b.label}</span> <span class="{label} help-text">// {b.hint}</span></span>
           </label>
         {/each}
       </div>
@@ -302,7 +302,7 @@
         <input type="checkbox" bind:checked={analysis} disabled={!withQuestions.length} />
         <span>
           <span class="font-bold">question analysis</span>
-          <span class={label}>// one extra sheet: a row per question, with percent correct overall and by period, and the most common wrong answers</span>
+          <span class="{label} help-text">// one extra sheet: a row per question, with percent correct overall and by period, and the most common wrong answers</span>
         </span>
       </label>
       {#if analysis}

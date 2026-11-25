@@ -177,7 +177,7 @@
                 </li>
               {/each}
             </ul>
-            <p class="text-xs text-[var(--text-muted)]">// the notes and boards from class, and your own answers.</p>
+            <p class="text-xs text-[var(--text-muted)] help-text">// the notes and boards from class, and your own answers.</p>
           </div>
         {/if}
       </section>

@@ -88,7 +88,7 @@
   <p class="{label} font-mono">loading the lesson...</p>
 {:else}
   <div class="grid gap-6 lg:grid-cols-[17rem_minmax(0,1fr)] items-start font-mono">
-    <aside class="space-y-4 lg:sticky lg:top-4">
+    <aside class="space-y-4 lg:sticky lg:top-16">
       <a class="text-xs underline hover:text-[var(--accent)]" href="/class">&lt;- [my lessons]</a>
       <div>
         <h1 class="text-xl font-bold leading-tight">{lesson.run.title}</h1>

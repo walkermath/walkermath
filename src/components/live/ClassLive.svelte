@@ -355,14 +355,14 @@
     <p>// the lesson is over. nice work.</p>
     <p>
       <a class="underline hover:text-[var(--accent)]" href="/class/lesson?run={encodeURIComponent(runId)}">[look back at this lesson]</a>
-      <span class={label}>// the notes, the boards and your answers (ready a moment after it ends)</span>
+      <span class="{label} help-text">// the notes, the boards and your answers (ready a moment after it ends)</span>
     </p>
     <a class="underline hover:text-[var(--accent)]" href="/class">&lt;- [class]</a>
   </div>
 {:else}
   <div class="grid gap-6 lg:grid-cols-[17rem_minmax(0,1fr)] items-start">
     <!-- sidebar -->
-    <aside class="space-y-4 lg:sticky lg:top-4">
+    <aside class="space-y-4 lg:sticky lg:top-16">
       <section class="rounded-md border border-[var(--line)] bg-[var(--bg-surface)]">
         <button
           type="button"
@@ -472,7 +472,7 @@
         <header class="flex flex-wrap justify-between items-end gap-3 pb-3 border-b border-[var(--line)]">
           <div>
             <h1 class="text-xl font-bold">{current.title}</h1>
-            <div class="text-xs {label}">// {MODULE_TYPES[current.type].hint}</div>
+            <div class="text-xs {label} help-text">// {MODULE_TYPES[current.type].hint}</div>
           </div>
           {#if onLive}
             <div class="text-2xl font-bold tabular-nums {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</div>

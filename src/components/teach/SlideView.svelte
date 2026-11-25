@@ -39,7 +39,8 @@
 
   let width = $state(0);
   let content = $state<HTMLDivElement | null>(null);
-  const html = $derived(renderMarkdown(markdown));
+  // Vocabulary is marked; it's underlined only where the site's help script runs (not the projector).
+  const html = $derived(renderMarkdown(markdown, { glossary: true }));
   const scale = $derived(width > 0 ? width / SLIDE_W : 0);
 
   /** Shrinks the text until it fits (a few rounds of halving the gap), then reports. */

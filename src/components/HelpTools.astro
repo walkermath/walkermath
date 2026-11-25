@@ -1,0 +1,153 @@
+---
+// src/components/HelpTools.astro
+// Two helpers on every page that uses the site layout (not the projector, not embeds):
+//
+//   [?]  Top left. Shows the explanatory lines (anything with class "help-text") that are hidden by
+//        default so screens stay uncluttered. Off unless turned on; remembered per browser. The
+//        <html> class is set before first paint by the inline script in Layout.astro.
+//
+//   Vocabulary  Lesson text marks glossary terms (src/lib/glossary.ts). This script underlines the
+//        FIRST of each term on the screen (class "gloss-on"), makes it tappable, and opens its
+//        definition in a small popover. Later repeats stay plain. It only changes classes and
+//        attributes on those spans, never the page's structure, so it can't fight Svelte.
+---
+
+<button
+  id="help-toggle"
+  type="button"
+  class="fixed top-4 left-4 z-50 bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] hover:text-[var(--accent)] px-3 py-2 rounded-md shadow-md cursor-pointer text-sm font-bold font-mono"
+  aria-pressed="false"
+  title="Show help text"
+>[?]</button>
+
+<div
+  id="gloss-pop"
+  class="hidden fixed z-[60] max-w-xs p-3 rounded-md border-2 border-[var(--accent)] bg-[var(--bg-surface)] shadow-lg text-sm font-mono"
+  role="dialog"
+  aria-live="polite"
+>
+  <div class="flex justify-between items-start gap-3">
+    <span id="gloss-term" class="font-bold"></span>
+    <button id="gloss-x" type="button" class="text-[var(--text-muted)] hover:text-[var(--accent)] cursor-pointer" aria-label="Close">x</button>
+  </div>
+  <p id="gloss-def" class="mt-1"></p>
+</div>
+
+<script>
+  import { glossaryEntry } from '../lib/glossary.ts';
+
+  /* ---------- [?] help text ---------- */
+  const KEY = 'help-on';
+  const toggle = document.getElementById('help-toggle');
+  const setHelp = (on: boolean) => {
+    document.documentElement.classList.toggle('help-on', on);
+    toggle?.setAttribute('aria-pressed', String(on));
+    toggle?.setAttribute('title', on ? 'Hide help text' : 'Show help text');
+    if (toggle) toggle.textContent = on ? '[?] on' : '[?]';
+  };
+  setHelp(document.documentElement.classList.contains('help-on'));
+  toggle?.addEventListener('click', () => {
+    const on = !document.documentElement.classList.contains('help-on');
+    setHelp(on);
+    try {
+      localStorage.setItem(KEY, on ? '1' : '0');
+    } catch {
+      // storage blocked: it just won't be remembered
+    }
+  });
+
+  /* ---------- vocabulary ---------- */
+  const pop = document.getElementById('gloss-pop')!;
+  const popTerm = document.getElementById('gloss-term')!;
+  const popDef = document.getElementById('gloss-def')!;
+  let openFor: HTMLElement | null = null;
+
+  /** Underline the first of each term on the screen; leave repeats (and hidden or preview copies) plain. */
+  function refresh() {
+    const seen = new Set<string>();
+    for (const el of document.querySelectorAll<HTMLElement>('.gloss')) {
+      const id = el.dataset.gloss ?? '';
+      // Thumbnails and the small live-board preview are not for reading: skip them.
+      const shown = !!glossaryEntry(id) && !el.closest('.pointer-events-none, [inert], [aria-hidden="true"]') && el.getClientRects().length > 0;
+      const first = shown && !seen.has(id);
+      if (first) seen.add(id);
+      el.classList.toggle('gloss-on', first);
+      if (first) {
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('role', 'button');
+        el.setAttribute('aria-label', `${el.textContent}: show what it means`);
+      } else {
+        el.removeAttribute('tabindex');
+        el.removeAttribute('role');
+        el.removeAttribute('aria-label');
+      }
+    }
+    if (openFor && !openFor.classList.contains('gloss-on')) close();
+  }
+  let queued = false;
+  const schedule = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      refresh();
+    });
+  };
+  new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+  schedule();
+
+  function open(el: HTMLElement) {
+    const entry = glossaryEntry(el.dataset.gloss);
+    if (!entry) return;
+    openFor = el;
+    popTerm.textContent = entry.term;
+    popDef.textContent = entry.def;
+    pop.classList.remove('hidden');
+    // Below the word if it fits, otherwise above; kept on screen.
+    const r = el.getBoundingClientRect();
+    const w = pop.offsetWidth;
+    const h = pop.offsetHeight;
+    const left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+    const top = r.bottom + 6 + h < window.innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6);
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+  }
+  function close() {
+    openFor = null;
+    pop.classList.add('hidden');
+  }
+
+  // Capture phase, so a term inside something clickable opens its definition instead.
+  document.addEventListener(
+    'click',
+    (e) => {
+      const target = e.target as HTMLElement | null;
+      const term = target?.closest?.('.gloss-on') as HTMLElement | null;
+      if (term) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (openFor === term) close();
+        else open(term);
+        return;
+      }
+      if (openFor && !pop.contains(target)) close();
+    },
+    true
+  );
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && openFor) {
+      const back = openFor;
+      close();
+      back.focus();
+      return;
+    }
+    const term = (e.target as HTMLElement | null)?.closest?.('.gloss-on') as HTMLElement | null;
+    if (term && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      open(term);
+    }
+  });
+  document.getElementById('gloss-x')?.addEventListener('click', close);
+  window.addEventListener('scroll', () => openFor && close(), { passive: true, capture: true });
+  window.addEventListener('resize', () => openFor && close());
+</script>

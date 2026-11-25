@@ -451,7 +451,7 @@
           {/if}
         </div>
       {:else if q.kind === 'math' && keyless}
-        <p class="text-xs {label}">// students type ^ for powers, sqrt() for roots and i for the imaginary unit.</p>
+        <p class="text-xs {label} help-text">// students type ^ for powers, sqrt() for roots and i for the imaginary unit.</p>
       {:else if q.kind === 'math'}
         <div class="space-y-1">
           <label class="flex items-center gap-2">

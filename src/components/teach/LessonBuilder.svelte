@@ -311,7 +311,7 @@
 {:else}
   <div class="space-y-6 text-xs">
     <!-- action bar -->
-    <div class="flex flex-wrap items-center gap-2 sticky top-0 z-10 py-2 bg-[var(--bg-primary)]">
+    <div class="flex flex-wrap items-center gap-2 sticky top-0 z-10 py-2 pl-14 xl:pl-0 bg-[var(--bg-primary)]">
       <a href="/teach" class="hover:text-[var(--accent)]">&lt;- [lessons]</a>
       <span class="flex-1"></span>
       {#if dirty}
@@ -651,7 +651,7 @@
               {#if p.result.spareSec > 0}
                 <p class={label}>// {mmss(p.result.spareSec)} spare for you to place.</p>
               {/if}
-              <p class={label}>// the bell doesn't move: locked modules keep their time and flex modules share the rest.</p>
+              <p class="{label} help-text">// the bell doesn't move: locked modules keep their time and flex modules share the rest.</p>
             {:else}
               <p class={label}>add at least two modules to try this.</p>
             {/if}
@@ -664,7 +664,7 @@
     {#if selected === 'lesson' || selectedIndex < 0}
       <WhenPanel lessonId={lesson.id} durationSec={lesson.durationSec} archived={lesson.archived} bind:runs />
       {#if lesson.modules.length === 0}
-        <p class={label}>// add a bellwork and exit ticket with the slots at each end, and everything else with the + tile.</p>
+        <p class="{label} help-text">// add a bellwork and exit ticket with the slots at each end, and everything else with the + tile.</p>
       {/if}
     {:else}
       {#key selected}

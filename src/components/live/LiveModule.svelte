@@ -154,7 +154,7 @@
       >
         {mine.done === '1' ? "[✓ done]" : "[I'm done]"}
       </button>
-      {#if editable && mine.done === '1'}<span class="text-xs {label}">// tap again to undo</span>{/if}
+      {#if editable && mine.done === '1'}<span class="text-xs {label} help-text">// tap again to undo</span>{/if}
     </div>
     {@render status()}
   {/if}
@@ -185,7 +185,7 @@
             <span class="ml-2 text-sm text-[var(--bad)]">✗ not right</span>
           {/if}
         </div>
-        <div class="slide-text">{@html renderMarkdown(q.text)}</div>
+        <div class="slide-text">{@html renderMarkdown(q.text, { glossary: true })}</div>
         {#if q.kind === 'choice'}
           <ul class="space-y-1" role={student ? 'radiogroup' : undefined}>
             {#each q.choices as choice, ci}
@@ -362,7 +362,7 @@
     {@render questionList()}
   {:else}
     {#if c.instructions}
-      <div class="p-4 rounded border border-[var(--line)] bg-[var(--bg-surface)] slide-text">{@html renderMarkdown(c.instructions)}</div>
+      <div class="p-4 rounded border border-[var(--line)] bg-[var(--bg-surface)] slide-text">{@html renderMarkdown(c.instructions, { glossary: true })}</div>
     {/if}
     {#if module.type === 'activity' && c.category === 'coliseum' && c.coliseumId}
       <iframe
@@ -396,13 +396,13 @@
         </label>
         {@render status()}
       {:else}
-        <p class={label}>// students type a short answer here.</p>
+        <p class="{label} help-text">// students type a short answer here.</p>
       {/if}
     {:else if spec?.kind === 'tap'}
       {#if student}
         {@render doneTap()}
       {:else}
-        <p class={label}>// students tap [I'm done] here.</p>
+        <p class="{label} help-text">// students tap [I'm done] here.</p>
       {/if}
     {/if}
   {/if}
