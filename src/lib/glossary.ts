@@ -1,11 +1,16 @@
 // src/lib/glossary.ts
-// The shared vocabulary list behind the dotted underlines. One definition per term, written once and
-// used everywhere lesson text is rendered (questions, instructions, slides), never typed into a lesson.
+// Vocabulary for the dotted underlines. Definitions come in LAYERS, most specific first:
+//   lesson terms (a teacher's own, saved with the lesson)  >  page terms (a notes page, app or game)
+//   >  this site glossary. mergeGlossaries() combines layers; a more specific entry with the same id
+//   replaces the less specific one completely.
 //
 // How it shows up:
 //   - rehypeGlossary() runs inside renderMarkdown (src/lib/lesson/markdown.ts) when a screen asks for
-//     it. It wraps the first match of each term in a fragment as <span class="gloss" data-gloss="id">.
-//   - The site-wide script in HelpTools.astro underlines only the FIRST of each term on the screen
+//     it. It wraps the first match of each term in a fragment as
+//       <span class="gloss" data-gloss="id" data-term="Term" data-def="definition">
+//     so the word CARRIES its definition. Anything can write that span by hand (a Svelte <Term>, an
+//     .mdx note): the popover does not care where the definition came from.
+//   - The site-wide script in HelpTools.astro underlines only the FIRST of each id on the screen
 //     (class "gloss-on"), makes it tappable, and opens the definition in a small popover.
 //   - Pages without that script (the projector) show the words as plain text.
 //
@@ -63,22 +68,50 @@ export const GLOSSARY: GlossaryEntry[] = [
 const byId = new Map(GLOSSARY.map((e) => [e.id, e]));
 export const glossaryEntry = (id: string | null | undefined): GlossaryEntry | undefined => (id ? byId.get(id) : undefined);
 
+/** Layers of entries, least specific first: a later entry with the same id replaces an earlier one. */
+export function mergeGlossaries(...layers: (GlossaryEntry[] | undefined)[]): GlossaryEntry[] {
+  const merged = new Map<string, GlossaryEntry>();
+  for (const layer of layers) for (const e of layer ?? []) merged.set(e.id, e);
+  return [...merged.values()];
+}
+
 /* ---------------- matching ---------------- */
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** Every written form, longest first (so "like terms" wins over "term"), mapped to its entry id. */
-const FORMS: { text: string; id: string }[] = GLOSSARY.flatMap((e) => [e.term, ...(e.also ?? [])].map((text) => ({ text, id: e.id }))).sort(
-  (a, b) => b.text.length - a.text.length
-);
-const FORM_ID = new Map(FORMS.map((f) => [f.text.toLowerCase(), f.id]));
-// Whole words: not inside another word, and not glued to a hyphenated word ("re-sample"). Group 1 is
-// the character before (or the start), group 2 the term. No lookbehind: older iPad Safari can't parse
-// it, and a regex that fails to load would break every lesson's text.
-const FORM_RE = new RegExp(`(^|[^\\p{L}\\p{N}_-])(${FORMS.map((f) => escapeRe(f.text)).join('|')})(?![\\p{L}\\p{N}_-])`, 'giu');
+/** Everything needed to find one dictionary's terms in text. Build once per dictionary. */
+export interface Matcher {
+  entries: Map<string, GlossaryEntry>;
+  forms: { text: string; id: string }[];
+  formId: Map<string, string>;
+  caseSensitive: Set<string>;
+  re: RegExp | null;
+}
 
-/** Upper-case-only forms (GCF, LCM, SD) match only as written, so "sd" in a word or "gcf" typed loosely is left alone. */
-const CASE_SENSITIVE = new Set(FORMS.filter((f) => f.text.length <= 4 && f.text === f.text.toUpperCase()).map((f) => f.text));
+export function buildMatcher(entries: GlossaryEntry[]): Matcher {
+  const usable = entries.filter((e) => e.id && e.term.trim() && e.def.trim());
+  // Every written form, longest first (so "like terms" wins over "term"), mapped to its entry id.
+  const forms = usable
+    .flatMap((e) => [e.term, ...(e.also ?? [])].filter((t) => t.trim()).map((text) => ({ text, id: e.id })))
+    .sort((a, b) => b.text.length - a.text.length);
+  // Whole words: not inside another word, and not glued to a hyphenated word ("re-sample"). Group 1
+  // is the character before (or the start), group 2 the term. No lookbehind: older iPad Safari can't
+  // parse it, and a regex that fails to load would break every lesson's text.
+  const re = forms.length
+    ? new RegExp(`(^|[^\\p{L}\\p{N}_-])(${forms.map((f) => escapeRe(f.text)).join('|')})(?![\\p{L}\\p{N}_-])`, 'giu')
+    : null;
+  return {
+    entries: new Map(usable.map((e) => [e.id, e])),
+    forms,
+    formId: new Map(forms.map((f) => [f.text.toLowerCase(), f.id])),
+    // Short all-capitals forms (GCF, LCM, SD) match only as written, so "sd" inside a word is left alone.
+    caseSensitive: new Set(forms.filter((f) => f.text.length <= 4 && f.text === f.text.toUpperCase()).map((f) => f.text)),
+    re
+  };
+}
+
+/** The site glossary's matcher. */
+export const SITE_MATCHER = buildMatcher(GLOSSARY);
 
 /** Elements whose text is never searched. */
 const SKIP_TAGS = new Set(['code', 'pre', 'a', 'button', 'script', 'style', 'kbd', 'samp', 'svg', 'math', 'input', 'textarea', 'select', 'label']);
@@ -91,24 +124,32 @@ type HNode = { type: string; tagName?: string; value?: string; properties?: Reco
  * Splits one text value into text and glossary spans. `used` holds entry ids already wrapped in this
  * fragment; each id is wrapped at most once per fragment.
  */
-export function splitText(value: string, used: Set<string>): HNode[] | null {
+export function splitText(value: string, used: Set<string>, matcher: Matcher = SITE_MATCHER): HNode[] | null {
+  const re = matcher.re;
+  if (!re) return null;
   const out: HNode[] = [];
   let last = 0;
   let changed = false;
-  FORM_RE.lastIndex = 0;
-  for (let m = FORM_RE.exec(value); m; m = FORM_RE.exec(value)) {
+  re.lastIndex = 0;
+  for (let m = re.exec(value); m; m = re.exec(value)) {
     const text = m[2];
     const start = m.index + m[1].length;
     // The character before was consumed: step back so a term right after this one can still match.
-    FORM_RE.lastIndex = start + text.length;
-    const id = FORM_ID.get(text.toLowerCase());
-    if (!id || used.has(id)) continue;
-    const exact = FORMS.find((f) => f.text.toLowerCase() === text.toLowerCase())?.text ?? text;
-    if (CASE_SENSITIVE.has(exact) && text !== exact) continue;
+    re.lastIndex = start + text.length;
+    const id = matcher.formId.get(text.toLowerCase());
+    const entry = id ? matcher.entries.get(id) : undefined;
+    if (!id || !entry || used.has(id)) continue;
+    const exact = matcher.forms.find((f) => f.text.toLowerCase() === text.toLowerCase())?.text ?? text;
+    if (matcher.caseSensitive.has(exact) && text !== exact) continue;
     used.add(id);
     changed = true;
     if (start > last) out.push({ type: 'text', value: value.slice(last, start) });
-    out.push({ type: 'element', tagName: 'span', properties: { className: ['gloss'], dataGloss: id }, children: [{ type: 'text', value: text }] });
+    out.push({
+      type: 'element',
+      tagName: 'span',
+      properties: { className: ['gloss'], dataGloss: id, dataTerm: entry.term, dataDef: entry.def },
+      children: [{ type: 'text', value: text }]
+    });
     last = start + text.length;
   }
   if (!changed) return null;
@@ -117,13 +158,13 @@ export function splitText(value: string, used: Set<string>): HNode[] | null {
 }
 
 /** Walks a HAST tree and wraps glossary terms in place. Exported for tests. */
-export function markGlossary(tree: HNode, used: Set<string> = new Set()): HNode {
+export function markGlossary(tree: HNode, used: Set<string> = new Set(), matcher: Matcher = SITE_MATCHER): HNode {
   const walk = (node: HNode) => {
     if (!node.children) return;
     const next: HNode[] = [];
     for (const child of node.children) {
       if (child.type === 'text' && typeof child.value === 'string') {
-        const parts = splitText(child.value, used);
+        const parts = splitText(child.value, used, matcher);
         if (parts) next.push(...parts);
         else next.push(child);
         continue;
@@ -142,8 +183,9 @@ export function markGlossary(tree: HNode, used: Set<string> = new Set()): HNode 
 }
 
 /** The rehype plugin for renderMarkdown. Runs after sanitizing, so its spans are kept. */
-export function rehypeGlossary() {
+export function rehypeGlossary(options?: { matcher?: Matcher }) {
+  const matcher = options?.matcher ?? SITE_MATCHER;
   return (tree: any) => {
-    markGlossary(tree as HNode);
+    markGlossary(tree as HNode, new Set(), matcher);
   };
 }

@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GLOSSARY, glossaryEntry, markGlossary, splitText } from '../src/lib/glossary.ts';
+import { GLOSSARY, buildMatcher, glossaryEntry, markGlossary, mergeGlossaries, splitText } from '../src/lib/glossary.ts';
 
 const text = (value) => ({ type: 'text', value });
 const el = (tagName, children, properties = {}) => ({ type: 'element', tagName, properties, children });
@@ -89,4 +89,35 @@ test('text with no terms is returned untouched', () => {
   const child = tree.children[0];
   markGlossary(tree);
   assert.equal(tree.children[0], child);
+});
+
+test('a marked word carries its own term and definition', () => {
+  const tree = el('p', [text('The slope is 2.')]);
+  markGlossary(tree);
+  const span = tree.children[1];
+  assert.equal(span.properties.dataGloss, 'slope');
+  assert.equal(span.properties.dataTerm, 'slope');
+  assert.equal(span.properties.dataDef, glossaryEntry('slope').def);
+});
+
+test('a lesson\'s own terms are matched, and override the site glossary by id', () => {
+  const lesson = [
+    { id: 'leading-coefficient', term: 'leading coefficient', also: ['leading coefficients'], def: 'The number in front of the highest power.' },
+    { id: 'mean', term: 'mean', def: 'My own wording of mean.' }
+  ];
+  const matcher = buildMatcher(mergeGlossaries(GLOSSARY, lesson));
+  const tree = el('p', [text('The leading coefficients and the mean.')]);
+  markGlossary(tree, new Set(), matcher);
+  assert.deepEqual(wrapped(tree), [['leading-coefficient', 'leading coefficients'], ['mean', 'mean']]);
+  assert.equal(tree.children[3].properties.dataDef, 'My own wording of mean.');
+  // the site glossary alone knows only "coefficient", not the whole phrase
+  const siteOnly = splitText('leading coefficient', new Set());
+  assert.equal(siteOnly?.[1].properties.dataGloss, 'coefficient');
+  assert.equal(siteOnly?.[0].value, 'leading ');
+  assert.equal(mergeGlossaries(GLOSSARY, lesson).filter((e) => e.id === 'mean').length, 1);
+});
+
+test('entries missing a term or a definition are ignored, and an empty dictionary matches nothing', () => {
+  const matcher = buildMatcher([{ id: 'x', term: 'blank def', def: '  ' }, { id: 'y', term: '', def: 'no term' }]);
+  assert.equal(splitText('blank def and no term', new Set(), matcher), null);
 });
