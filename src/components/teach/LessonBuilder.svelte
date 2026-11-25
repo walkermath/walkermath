@@ -423,7 +423,7 @@
         </div>
 
         <div class="space-y-1">
-          <span class={label}>resources / extra (links students can open any time)</span>
+          <span class={label}>resources / extra <span class="help-text">(links students can open any time)</span></span>
           {#each lesson.resources as link, li}
             <div class="flex gap-2 items-center">
               <input class="{field} p-1 w-40" bind:value={link.label} maxlength={LIMITS.linkLabel} placeholder="label" />

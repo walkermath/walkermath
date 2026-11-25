@@ -208,7 +208,7 @@
   {:else if lessons.length}
     <section class="{panel} space-y-3">
       <h3 class={heading}>// deliveries and columns</h3>
-      <p class="text-xs {label}">open a lesson to pick its periods. a dash means that lesson doesn't have the column.</p>
+      <p class="text-xs {label} help-text">open a lesson to pick its periods. a dash means that lesson doesn't have the column.</p>
       <div class="overflow-x-auto">
         <table class="text-xs border-collapse">
           <thead>
