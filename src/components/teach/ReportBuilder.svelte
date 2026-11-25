@@ -208,7 +208,7 @@
   {:else if lessons.length}
     <section class="{panel} space-y-3">
       <h3 class={heading}>// deliveries and columns</h3>
-      <p class="text-xs {label}">open a lesson to pick its periods. a dash means that lesson doesn't have the column.</p>
+      <p class="text-xs {label} help-text">open a lesson to pick its periods. a dash means that lesson doesn't have the column.</p>
       <div class="overflow-x-auto">
         <table class="text-xs border-collapse">
           <thead>
@@ -294,7 +294,7 @@
         {#each BREAKDOWNS as b (b.value)}
           <label class="flex items-start gap-2 cursor-pointer text-xs">
             <input type="radio" name="breakdown" value={b.value} bind:group={breakdown} />
-            <span><span class="font-bold">{b.label}</span> <span class={label}>// {b.hint}</span></span>
+            <span><span class="font-bold">{b.label}</span> <span class="{label} help-text">// {b.hint}</span></span>
           </label>
         {/each}
       </div>
@@ -302,7 +302,7 @@
         <input type="checkbox" bind:checked={analysis} disabled={!withQuestions.length} />
         <span>
           <span class="font-bold">question analysis</span>
-          <span class={label}>// one extra sheet: a row per question, with percent correct overall and by period, and the most common wrong answers</span>
+          <span class="{label} help-text">// one extra sheet: a row per question, with percent correct overall and by period, and the most common wrong answers</span>
         </span>
       </label>
       {#if analysis}

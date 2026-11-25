@@ -203,7 +203,7 @@
               {:else if (shrunk[slide.id] ?? 1) < 0.85}
                 <p class="text-[var(--warn)]">// the text is shrunk to {Math.round((shrunk[slide.id] ?? 1) * 100)}% to fit the page. split it with a line of --- if that's too small to read.</p>
               {:else}
-                <p class={label}>// {slide && !slide.markdown.trim() ? 'blank: a blackboard to write on in class. type to make it a slide.' : 'what students see, and what you write over in class.'} a line of --- starts a new page.</p>
+                <p class="{label} help-text">// {slide && !slide.markdown.trim() ? 'blank: a blackboard to write on in class. type to make it a slide.' : 'what students see, and what you write over in class.'} a line of --- starts a new page.</p>
               {/if}
             </div>
           </div>

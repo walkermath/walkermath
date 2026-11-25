@@ -1,5 +1,6 @@
 ---
 import FloatingNav from '../components/FloatingNav.astro';
+import HelpTools from '../components/HelpTools.astro';
 import LiveFlag from '../components/LiveFlag.astro';
 import '../styles/global.css';
 import 'katex/dist/katex.min.css';
@@ -8,9 +9,11 @@ interface Props {
   title: string;
   /** Wider page for tools like the lesson builder. */
   wide?: boolean;
+  /** Nearly the whole screen, with slimmer margins: the live lesson screens. */
+  full?: boolean;
 }
 
-const { title, wide = false } = Astro.props;
+const { title, wide = false, full = false } = Astro.props;
 ---
 
 <!doctype html>
@@ -20,9 +23,26 @@ const { title, wide = false } = Astro.props;
     <meta name="viewport" content="width=device-width" />
     <link rel="icon" type="image/svg+xml" href="/favicon.png" />
     <title>{title}</title>
+    <script is:inline>
+      // [?] help text is off unless this browser turned it on (HelpTools.astro). Set before first
+      // paint so hidden help lines never flash.
+      try {
+        if (localStorage.getItem('help-on') === '1') document.documentElement.classList.add('help-on');
+      } catch {
+        // storage blocked: help stays off
+      }
+    </script>
   </head>
-  <body class:list={['min-h-screen p-6 md:p-12 mx-auto', wide ? 'max-w-6xl' : 'max-w-4xl']}>
+  <body
+    class:list={[
+      'min-h-screen mx-auto',
+      // pt-16 on every page: the fixed [?] (top left) and [menu] (top right) end about 3.25rem down.
+      full ? 'px-4 pb-4 pt-16 md:px-8 md:pb-8 max-w-[1600px]' : 'px-6 pb-6 pt-16 md:px-12 md:pb-12',
+      !full && (wide ? 'max-w-6xl' : 'max-w-4xl')
+    ]}
+  >
     <FloatingNav />
+    <HelpTools />
     <LiveFlag />
     <slot />
   </body>

@@ -117,7 +117,7 @@
   <div class="flex flex-wrap justify-between items-center gap-3">
     <div>
       <div class={heading}>// when</div>
-      <div class="{label} mt-1">each class period that gets this lesson. picking a class fills in its bell times.</div>
+      <div class="{label} mt-1 help-text">each class period that gets this lesson. picking a class fills in its bell times.</div>
     </div>
     {#if !archived && editing === null}
       <button type="button" class={btnMain} onclick={startNew} disabled={busy || openClasses.length === 0}>[+ add a class]</button>

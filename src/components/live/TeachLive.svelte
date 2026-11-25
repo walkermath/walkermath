@@ -267,7 +267,7 @@
                   <span>page {rs.page + 1} of {pageCount}</span>
                   <button type="button" class={btn} onclick={() => send({ type: 'page', page: (rs?.page ?? 0) + 1 })} disabled={rs.page >= pageCount - 1}>[page &gt;]</button>
                   <button type="button" class={btn} onclick={() => send({ type: 'addBoard', id: newBoardId() })} title="A blank blackboard right after this page">[+ blackboard]</button>
-                  <span class={label}>// left / right arrow keys turn pages. write on pages in the [presenter].</span>
+                  <span class="{label} help-text">// left / right arrow keys turn pages. write on pages in the [presenter].</span>
                 </div>
               {:else}
                 <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-[var(--line)]">
@@ -278,7 +278,7 @@
                     <button type="button" class={btn} onclick={() => send({ type: 'page', page: Math.min(rs?.page ?? 0, pages.length - 1) })}>[show board]</button>
                   {/if}
                   <button type="button" class={btn} onclick={() => send({ type: 'addBoard', id: newBoardId() })} title="A scratch blackboard for this module">[+ board]</button>
-                  <span class={label}>// a scratch board for going over answers or an example; write on it in the [presenter].</span>
+                  <span class="{label} help-text">// a scratch board for going over answers or an example; write on it in the [presenter].</span>
                 </div>
               {/if}
             </section>
@@ -342,7 +342,7 @@
             </ol>
             <div class="pt-2 border-t border-[var(--line)] space-y-1">
               <div class={label}>finishes {clockAt(plannedEnd)} · bell {clockAt(rs.endsAt)}</div>
-              <div class={label}>// ✓ time ran out (stays at 0:00) · ‖ left part-way (keeps its time)</div>
+              <div class="{label} help-text">// ✓ time ran out (stays at 0:00) · ‖ left part-way (keeps its time)</div>
               {#if rs.overSec > 0}
                 <div class="text-[var(--warn)]">// {mmss(rs.overSec)} over: skip a module ([go]) or shorten one.</div>
               {:else if rs.spareSec > 0}

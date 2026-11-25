@@ -1,7 +1,6 @@
 <!-- src/components/teach/ModuleSettings.svelte -->
 <!-- The settings panel under the tile chain for the open module: timing, then its type's content. -->
 <script lang="ts">
-  import { onMount } from 'svelte';
   import {
     ACTIVITY_CATEGORIES,
     MIDDLE_PROMPT_CATEGORIES,
@@ -58,10 +57,8 @@
 
   const info = $derived(MODULE_TYPES[module.type]);
 
-  /* The explanations under flex / locked / move on / hold are folded away by default so the options
-     themselves stay readable; [ ? ] opens them. The choice is remembered on this device (a convenience
-     only: it works without storage). */
-  let hintsOpen = $state(false);
+  /* The explanations under flex / locked / move on / hold are help-text: the site-wide [?] (top
+     left, HelpTools.astro) shows them. */
   /* Coliseum Practice: the challenges to pick from (built with the site, like the notes list). */
   type Challenge = { id: string; title: string; description: string; topic: string };
   let challenges = $state<Challenge[] | null>(null);
@@ -85,22 +82,6 @@
     }
     return [...groups];
   });
-
-  onMount(() => {
-    try {
-      hintsOpen = localStorage.getItem('wm_module_hints') === 'open';
-    } catch {
-      // storage blocked: keep the default
-    }
-  });
-  function toggleHints() {
-    hintsOpen = !hintsOpen;
-    try {
-      localStorage.setItem('wm_module_hints', hintsOpen ? 'open' : 'closed');
-    } catch {
-      // ignore
-    }
-  }
 
   /** Picking an activity category renames the module only while it still has a stock title. */
   const STOCK_TITLES = new Set(ACTIVITY_CATEGORIES.map((c) => c.title as string));
@@ -278,7 +259,7 @@
         {@const keys = sortKeys(q)}
         <div class="space-y-3">
           <div class="space-y-1">
-            <div class={label}>groups (students put each card in one)</div>
+            <div class={label}>groups <span class="help-text">(students put each card in one)</span></div>
             {#each q.sort.groups as _, gi}
               <div class="flex items-center gap-2">
                 <input class="{field} p-1" bind:value={q.sort.groups[gi]} maxlength={SORT_LIMITS.group} placeholder="Group {gi + 1}" />
@@ -451,7 +432,7 @@
           {/if}
         </div>
       {:else if q.kind === 'math' && keyless}
-        <p class="text-xs {label}">// students type ^ for powers, sqrt() for roots and i for the imaginary unit.</p>
+        <p class="text-xs {label} help-text">// students type ^ for powers, sqrt() for roots and i for the imaginary unit.</p>
       {:else if q.kind === 'math'}
         <div class="space-y-1">
           <label class="flex items-center gap-2">
@@ -531,16 +512,7 @@
     </label>
   </div>
 
-  <div class="flex items-center justify-between gap-3">
-    <div class={heading}>// timing</div>
-    <button
-      type="button"
-      class="hover:text-[var(--accent)] cursor-pointer"
-      aria-expanded={hintsOpen}
-      onclick={toggleHints}
-      title={hintsOpen ? 'Hide the explanations' : 'Show what these options mean'}>[ ? ]</button
-    >
-  </div>
+  <div class={heading}>// timing</div>
 
   <div class="grid gap-4 sm:grid-cols-2">
     <fieldset class="space-y-2">
@@ -549,7 +521,7 @@
         <input type="radio" name="pacing-{module.id}" checked={module.pacing === 'flex'} onchange={() => setPacing('flex')} />
         <span>
           <b>flex</b> <span class={label}>({mmss(floorOf(module))} to {mmss(capOf(module))})</span>
-          {#if hintsOpen}<span class="block {label}">shares overruns and spare time with the other flex modules</span>{/if}
+          <span class="block {label} help-text">shares overruns and spare time with the other flex modules</span>
         </span>
       </label>
       {#if module.pacing === 'flex'}
@@ -562,14 +534,14 @@
             max={module.plannedSec}
             placeholder={mmss(floorOf({ ...module, minSec: null }))}
           />
-          {#if hintsOpen}<span class={label}>(blank = half)</span>{/if}
+          <span class="{label} help-text">(blank = half)</span>
         </label>
       {/if}
       <label class="flex items-start gap-2 cursor-pointer">
         <input type="radio" name="pacing-{module.id}" checked={module.pacing === 'locked'} onchange={() => setPacing('locked')} />
         <span>
           <b>locked</b>
-          {#if hintsOpen}<span class="block {label}">always gets its planned time (good for an exit ticket)</span>{/if}
+          <span class="block {label} help-text">always gets its planned time (good for an exit ticket)</span>
         </span>
       </label>
     </fieldset>
@@ -580,14 +552,14 @@
         <input type="radio" name="tu-{module.id}" checked={module.onTimeUp === 'auto'} onchange={() => (module.onTimeUp = 'auto')} />
         <span>
           <b>move on</b>
-          {#if hintsOpen}<span class="block {label}">collect answers and go to the next module</span>{/if}
+          <span class="block {label} help-text">collect answers and go to the next module</span>
         </span>
       </label>
       <label class="flex items-start gap-2 cursor-pointer">
         <input type="radio" name="tu-{module.id}" checked={module.onTimeUp === 'hold'} onchange={() => (module.onTimeUp = 'hold')} />
         <span>
           <b>hold</b>
-          {#if hintsOpen}<span class="block {label}">collect answers, show "time's up", wait for you</span>{/if}
+          <span class="block {label} help-text">collect answers, show "time's up", wait for you</span>
         </span>
       </label>
     </fieldset>

@@ -67,6 +67,23 @@
   margin-top: 1.5rem !important;
   margin-bottom: 1.5rem !important;
   }
+
+  /* [?] help (HelpTools.astro): explanatory lines are hidden until the toggle is on. */
+  html:not(.help-on) .help-text { display: none !important; }
+
+  /* Vocabulary (src/lib/glossary.ts): only the first of each term on screen is marked, and only
+     where the help script runs, so the projector shows plain words. */
+  .gloss-on {
+    text-decoration-line: underline;
+    text-decoration-style: dotted;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.2em;
+    text-decoration-color: var(--text-muted);
+    cursor: help;
+    border-radius: 2px;
+  }
+  .gloss-on:hover, .gloss-on:focus-visible { text-decoration-color: var(--accent); outline: none; }
+  .gloss-on:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
 }
 /* Pre-written slides (SlideView.svelte): Tailwind's reset flattens headings and lists, so slides set
    their own type, sized for a projector. In the components layer so a note's own utility classes

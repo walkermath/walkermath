@@ -16,6 +16,7 @@ import remarkMath from 'remark-math';
 import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
 import { unified } from 'unified';
+import { GLOSSARY, SITE_MATCHER, buildMatcher, mergeGlossaries, rehypeGlossary, type GlossaryEntry, type Matcher } from '../glossary.ts';
 
 /* Allow class="" on every allowed tag (the notes' diagrams are Tailwind classes), and nothing else
    beyond the default safe set. Tag-specific className rules are dropped so '*' decides. */
@@ -53,29 +54,58 @@ function remarkMathInHtml() {
   return (tree: any) => walk(tree);
 }
 
-const processor = unified()
-  .use(remarkParse)
-  .use(remarkGfm)
-  .use(remarkMath)
-  .use(remarkMathInHtml)
-  .use(remarkRehype, { allowDangerousHtml: true })
-  .use(rehypeRaw)
-  .use(rehypeSanitize, schema as any)
-  .use(rehypeKatex, { throwOnError: false, strict: false })
-  .use(rehypeStringify);
+const build = (matcher: Matcher | null) => {
+  const p = unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkMath)
+    .use(remarkMathInHtml)
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypeRaw)
+    .use(rehypeSanitize, schema as any)
+    .use(rehypeKatex, { throwOnError: false, strict: false });
+  // After sanitizing (so its spans are kept) and after KaTeX (whose markup it skips).
+  if (matcher) p.use(rehypeGlossary, { matcher });
+  return p.use(rehypeStringify);
+};
+const processor = build(null);
+const siteProcessor = build(SITE_MATCHER);
+/** Processors for a layered dictionary (a lesson's own terms over the site's), by the layer's content. */
+const layered = new Map<string, ReturnType<typeof build>>();
+
+function processorFor(glossary: boolean | GlossaryEntry[] | undefined): { key: string; p: ReturnType<typeof build> } {
+  if (!glossary) return { key: 'p', p: processor };
+  if (glossary === true || glossary.length === 0) return { key: 'g', p: siteProcessor };
+  const key = 'l' + JSON.stringify(glossary);
+  let p = layered.get(key);
+  if (!p) {
+    if (layered.size > 20) layered.clear();
+    p = build(buildMatcher(mergeGlossaries(GLOSSARY, glossary)));
+    layered.set(key, p);
+  }
+  return { key, p };
+}
 
 const cache = new Map<string, string>();
 
-export function renderMarkdown(md: string): string {
-  const hit = cache.get(md);
+/**
+ * One slide's or question's Markdown as safe HTML. `glossary`: mark vocabulary for the dotted
+ * underline (src/lib/glossary.ts): `true` for the site glossary, or a list of terms (a lesson's or
+ * page's own) layered over it. Used for question text, instructions and slides; left off for answer
+ * choices, card sort cards and grid cells, where a tap must select, not open a definition.
+ */
+export function renderMarkdown(md: string, opts: { glossary?: boolean | GlossaryEntry[] } = {}): string {
+  const { key: which, p } = processorFor(opts.glossary);
+  const key = which + '|' + md;
+  const hit = cache.get(key);
   if (hit !== undefined) return hit;
   let html: string;
   try {
-    html = String(processor.processSync(md));
+    html = String(p.processSync(md));
   } catch {
     html = `<pre>${escapeHtml(md)}</pre>`;
   }
   if (cache.size > 200) cache.clear();
-  cache.set(md, html);
+  cache.set(key, html);
   return html;
 }

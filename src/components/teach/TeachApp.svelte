@@ -81,7 +81,7 @@
   <header class="border-b border-[var(--border-color)] pb-6 flex flex-wrap justify-between items-end gap-4">
     <div>
       <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">walkerMath\teach</h1>
-      <p class="text-xs text-[var(--text-muted)] mt-1">// lessons, classes and live delivery</p>
+      <p class="text-xs text-[var(--text-muted)] mt-1 help-text">// lessons, classes and live delivery</p>
       {#if teacher}
         <nav class="flex gap-4 text-sm mt-3">
           {#each TABS.filter((t) => !t.admin || teacher?.isAdmin) as t}
