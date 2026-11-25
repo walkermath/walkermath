@@ -21,12 +21,12 @@
 
   /* Live lessons for this class: checked every few seconds while signed in, so the join button
      appears when the teacher starts. */
-  let live = $state<{ id: string; lessonTitle: string }[]>([]);
+  let live = $state<{ id: string; lessonTitle: string; startsAt?: number }[]>([]);
   let liveTimer: ReturnType<typeof setInterval> | null = null;
   async function checkLive() {
     if (!student) return;
     try {
-      const runs = (await api<{ runs: { id: string; lessonTitle: string }[] }>('/api/class/live')).runs;
+      const runs = (await api<{ runs: { id: string; lessonTitle: string; startsAt?: number }[] }>('/api/class/live')).runs;
       // A lesson starting or ending changes the lists below too.
       if (runs.map((r) => r.id).join() !== live.map((r) => r.id).join()) loadLessons();
       live = runs;
@@ -45,6 +45,7 @@
       // the list is a convenience; the live button above still works
     }
   }
+  const startClock = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   const time = (hhmm: string) => {
     const [h, m] = hhmm.split(':').map(Number);
     return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
@@ -147,7 +148,9 @@
       {#if live.length}
         <div class="space-y-2">
           {#each live as r (r.id)}
-            <a href="/class/live?run={r.id}" class="{btnMain} block text-center">[join live lesson: {r.lessonTitle}]</a>
+            <a href="/class/live?run={r.id}" class="{btnMain} block text-center"
+              >[join live lesson: {r.lessonTitle}]{#if r.startsAt && r.startsAt > Date.now()}<span class="block text-xs font-normal">starts at {startClock(r.startsAt)}</span>{/if}</a
+            >
           {/each}
         </div>
       {:else}

@@ -418,18 +418,21 @@ export class LessonRoom extends DurableObject<Env> {
       return new Response(null, { status: 101, webSocket: client });
     }
 
-    // Start (or reopen) the room. Idempotent: a room that's already running is left as it is.
+    // Open (or reopen) the room: waiting until its start time, or running. Idempotent: a room that
+    // already exists is left as it is.
     if (request.method === 'POST' && url.pathname === '/init') {
       if (who.role !== 'teacher') return json({ error: 'Forbidden' }, 403);
       const existing = await this.load();
       if (existing) return json({ state: existing.state, serverNow: Date.now() });
-      const body = (await request.json()) as { runId: string; title: string; resources?: Link[]; modules: RoomModule[]; endsAt: number };
+      const body = (await request.json()) as { runId: string; title: string; resources?: Link[]; modules: RoomModule[]; endsAt: number; startsAt?: number };
       const lesson: Lesson = { title: body.title, resources: body.resources ?? [], modules: body.modules };
       const entries: Record<string, unknown> = { meta: { title: lesson.title, resources: lesson.resources, count: lesson.modules.length } };
       lesson.modules.forEach((m, i) => (entries[`m:${i}`] = m));
       await this.ctx.storage.put(entries);
       this.lesson = lesson;
-      const state = startRoom(body.runId, lesson.modules, body.endsAt, Date.now());
+      // With a start time still ahead the room waits (early join) and its alarm starts it then.
+      const startsAt = Number.isFinite(body.startsAt) ? body.startsAt : undefined;
+      const state = startRoom(body.runId, lesson.modules, body.endsAt, Date.now(), startsAt);
       await this.save(state);
       return json({ state, serverNow: Date.now() });
     }
@@ -467,7 +470,8 @@ export class LessonRoom extends DurableObject<Env> {
     // "I'm stuck": a student raises or lowers their own hand; the teacher can lower anyone's.
     if (request.method === 'POST' && url.pathname === '/hand') {
       const loaded = await this.load();
-      if (!loaded || loaded.state.status !== 'live') return json({ error: 'Not started' }, 409);
+      // Before the lesson too: a student stuck on an early Bellwork can ask for help.
+      if (!loaded || loaded.state.status === 'ended') return json({ error: 'Not started' }, 409);
       const body = (await request.json().catch(() => null)) as { on?: unknown; aliasId?: unknown } | null;
       const on = body?.on === true;
       if (who.role === 'student' && who.who) {
@@ -512,7 +516,7 @@ export class LessonRoom extends DurableObject<Env> {
     // feedback -> that student's devices fetch it. Only a nudge goes through here, never the content.
     if (request.method === 'POST' && url.pathname === '/nudge') {
       const loaded = await this.load();
-      if (!loaded || loaded.state.status !== 'live') return json({ ok: false });
+      if (!loaded || loaded.state.status === 'ended') return json({ ok: false });
       const body = (await request.json().catch(() => null)) as { kind?: unknown; aliasId?: unknown } | null;
       if (body?.kind === 'answers') this.broadcast(JSON.stringify({ type: 'answers' }), 'teacher');
       else if (body?.kind === 'feedback' && typeof body.aliasId === 'string' && body.aliasId) await this.feedbackFor(body.aliasId.slice(0, 64));

@@ -1,11 +1,11 @@
 // functions/api/teach/classes/[classId]/index.js
 //   GET    -> { class, aliases }
-//   PATCH  { name?, period?, bellStart?, bellEnd?, archived?, leaderboardPosting? } -> { class }
+//   PATCH  { name?, period?, bellStart?, bellEnd?, archived?, leaderboardPosting?, earlyJoinMin? } -> { class }
 //   DELETE -> removes the class, its aliases and their sessions (sandbox clean-up, or a class made by mistake)
 
 import { cleanClassName, isBellTime, isPeriod } from '../../../../../src/lib/classroom.ts';
 import { fail, json, readJson } from '../../../../../src/lib/server/http.ts';
-import { listAliases, ownedClass } from '../../../../../src/lib/server/classes.ts';
+import { EARLY_JOIN, earlyMin, listAliases, ownedClass } from '../../../../../src/lib/server/classes.ts';
 
 const notFound = () => fail('Class not found.', 404);
 
@@ -42,11 +42,16 @@ export async function onRequestPatch({ request, env, data, params }) {
   }
   if ('archived' in body) next.archived = !!body.archived;
   if ('leaderboardPosting' in body) next.leaderboardPosting = body.leaderboardPosting === true;
+  if ('earlyJoinMin' in body) {
+    const n = Number(body.earlyJoinMin);
+    if (!Number.isInteger(n) || n < EARLY_JOIN.min || n > EARLY_JOIN.max) return fail(`Early join is ${EARLY_JOIN.min} to ${EARLY_JOIN.max} minutes.`);
+    next.earlyJoinMin = earlyMin(n);
+  }
 
   await env.DB.prepare(
-    'UPDATE classes SET name = ?2, period = ?3, bell_start = ?4, bell_end = ?5, archived = ?6, leaderboard_posting = ?7 WHERE id = ?1'
+    'UPDATE classes SET name = ?2, period = ?3, bell_start = ?4, bell_end = ?5, archived = ?6, leaderboard_posting = ?7, early_join_min = ?8 WHERE id = ?1'
   )
-    .bind(cls.id, next.name, next.period, next.bellStart, next.bellEnd, next.archived ? 1 : 0, next.leaderboardPosting ? 1 : 0)
+    .bind(cls.id, next.name, next.period, next.bellStart, next.bellEnd, next.archived ? 1 : 0, next.leaderboardPosting ? 1 : 0, next.earlyJoinMin)
     .run();
   return json({ class: await ownedClass(env.DB, data.teacher.id, cls.id) });
 }

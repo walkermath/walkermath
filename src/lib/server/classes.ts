@@ -8,6 +8,15 @@ import { hmacHex, newId } from './crypto.ts';
 export const MAX_ALIASES_PER_CLASS = 80;
 export const MAX_ALIASES_PER_REQUEST = 60;
 
+/** Early join: minutes before the start time students may join. */
+export const EARLY_JOIN = { min: 0, max: 10, default: 3 } as const;
+/** A stored or typed value as whole minutes in range (the default when missing, e.g. before migration 0013). */
+export function earlyMin(v: unknown): number {
+  const n = Number(v);
+  if (v === null || v === undefined || v === '' || !Number.isFinite(n)) return EARLY_JOIN.default;
+  return Math.min(EARLY_JOIN.max, Math.max(EARLY_JOIN.min, Math.round(n)));
+}
+
 export interface ClassRow {
   id: string;
   name: string;
@@ -18,6 +27,8 @@ export interface ClassRow {
   archived: boolean;
   /** Lesson game scores also go to the public leaderboard (off until the teacher turns it on). */
   leaderboardPosting: boolean;
+  /** Minutes before a delivery's start time that students may join (0-10). */
+  earlyJoinMin: number;
   createdAt: number;
   activeAliases?: number;
 }
@@ -31,6 +42,7 @@ export const toClass = (r: any): ClassRow => ({
   bellEnd: r.bell_end ?? null,
   archived: !!r.archived,
   leaderboardPosting: !!r.leaderboard_posting,
+  earlyJoinMin: earlyMin(r.early_join_min),
   createdAt: r.created_at,
   ...(r.active_aliases !== undefined ? { activeAliases: Number(r.active_aliases) } : {})
 });

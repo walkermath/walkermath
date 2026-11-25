@@ -313,7 +313,12 @@
     browsing = lesson.modules[rs.index]?.type === 'notes' ? null : teacherPage.id;
   }
   /** The student can change their answers to module i: it's the live module and its time hasn't run out. */
-  const editable = (i: number) => !!rs && rs.status === 'live' && i === rs.index && !rs.holding;
+  const editable = (i: number) =>
+    !!rs && ((rs.status === 'live' && i === rs.index && !rs.holding) || (rs.status === 'waiting' && i === 0 && !!rs.earlyWork));
+  /** Before the lesson: the room is open but no clock runs yet. */
+  const waiting = $derived(rs?.status === 'waiting');
+  /** Time until the lesson starts (0 once it's due; a held lesson stays at 0 until the teacher starts it). */
+  const startsIn = $derived(rs?.status === 'waiting' && rs.startsAt ? Math.max(0, rs.startsAt - now) : 0);
 
   /** The module has been running and has closed (moved on from, or its time ran out). Skipped ones never ran. */
   const closed = (i: number) =>
@@ -399,7 +404,7 @@
                   {#if unseenFb.includes(m.id)}
                     <span class="text-[var(--accent)] font-bold" title="New feedback from your teacher" aria-label="New feedback from your teacher">✉</span>
                   {/if}
-                  {#if i === rs.index}
+                  {#if i === rs.index && !waiting}
                     <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
                   {/if}
                 </button>
@@ -418,7 +423,9 @@
               onclick={() => open(rs.index)}
             >
               <span class="truncate">{onLive ? '>' : '↩'} {live.title}</span>
-              <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
+              {#if !waiting}
+                <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
+              {/if}
             </button>
           </div>
         {/if}
@@ -474,14 +481,27 @@
             <h1 class="text-xl font-bold">{current.title}</h1>
             <div class="text-xs {label} help-text">// {MODULE_TYPES[current.type].hint}</div>
           </div>
-          {#if onLive}
+          {#if waiting}
+            <div class="text-right">
+              <div class="text-xs {label}">{startsIn > 0 ? 'starts in' : 'starting soon'}</div>
+              <div class="text-2xl font-bold tabular-nums">{startsIn > 0 ? countdown(startsIn) : '--:--'}</div>
+            </div>
+          {:else if onLive}
             <div class="text-2xl font-bold tabular-nums {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</div>
           {:else}
             <div class="text-xs {label}">{rs.done?.[shownIndex] ? 'time ran out' : 'not live'}</div>
           {/if}
         </header>
 
-        {#if onLive}
+        {#if waiting}
+          <p class="p-3 rounded border border-[var(--accent)] text-sm">
+            {#if rs.earlyWork}
+              // you're early. you can start the bellwork now; the clock starts at {rs.startsAt ? clockAt(rs.startsAt) : 'the bell'}.
+            {:else}
+              // you're early. the lesson starts at {rs.startsAt ? clockAt(rs.startsAt) : 'the bell'}.
+            {/if}
+          </p>
+        {:else if onLive}
           {#if rs.pausedAt}
             <p class="p-3 rounded border border-[var(--warn)] text-[var(--warn)] text-sm">// paused by your teacher.</p>
           {:else if rs.holding}
@@ -489,6 +509,7 @@
           {/if}
         {/if}
 
+        {#if !waiting || rs.earlyWork}
         {#key current.id}
           <LiveModule
             module={current}
@@ -508,6 +529,7 @@
           />
           <PersonalNote {runId} moduleId={current.id} bind:text={() => notes[current!.id] ?? '', (v) => (notes[current!.id] = v)} />
         {/key}
+        {/if}
       </main>
     {/if}
   </div>

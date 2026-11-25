@@ -207,8 +207,10 @@
         <span class={transport === 'socket' ? 'text-[var(--ok)]' : transport === 'offline' ? 'text-[var(--warn)]' : label}>
           ● {transport === 'socket' ? 'live' : transport === 'polling' ? 'live (slow mode)' : transport}
         </span>
-        {#if rs.status === 'live'}
+        {#if rs.status !== 'ended'}
           <a class={btnMain} href="/teach/present?run={run.id}" target="_blank" rel="noopener" title="The projector screen, where you write on the board">[presenter ↗]</a>
+        {/if}
+        {#if rs.status === 'live'}
           <button type="button" class={btnDanger} onclick={end} disabled={busy}>[end lesson]</button>
         {/if}
       </div>
@@ -225,6 +227,34 @@
         <div class="space-y-4 min-w-0">
           <!-- the current module -->
           {#if current}
+            {#if rs.status === 'waiting'}
+              <!-- Before the lesson: students can join (and start an opening Bellwork); no clock runs yet. -->
+              <section class="{panel} space-y-4">
+                <div class="flex flex-wrap justify-between items-start gap-3">
+                  <div>
+                    <div class={heading}>// before the lesson</div>
+                    <div class="text-xl font-bold mt-1">first up: {current.title}</div>
+                    <div class="mt-1 {label}">
+                      {rs.earlyWork ? 'students who are here can start the bellwork; its clock starts with the lesson.' : 'students who are here see a countdown.'}
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-5xl font-bold tabular-nums leading-none">{rs.held ? '--:--' : countdown(Math.max(0, (rs.startsAt ?? now) - now))}</div>
+                    <div class="mt-1 {rs.held ? 'text-[var(--warn)]' : label}">
+                      {rs.held ? 'held: starts when you press [start now]' : `starts by itself at ${rs.startsAt ? clockAt(rs.startsAt) : 'the start time'}`}
+                    </div>
+                  </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class={btnMain} onclick={() => send({ type: 'start' })}>[start now]</button>
+                  {#if rs.held}
+                    <button type="button" class={btn} onclick={() => send({ type: 'hold', on: false })} title="Start by itself at the start time (now, if it has passed)">[release hold]</button>
+                  {:else}
+                    <button type="button" class={btn} onclick={() => send({ type: 'hold', on: true })} title="Don't start by itself: wait for [start now]">[hold]</button>
+                  {/if}
+                </div>
+              </section>
+            {:else}
             <section class="{panel} space-y-4">
               <div class="flex flex-wrap justify-between items-start gap-3">
                 <div>
@@ -282,6 +312,7 @@
                 </div>
               {/if}
             </section>
+            {/if}
 
             {#if mineCurrent?.teacherNotes}
               <section class="{panel} space-y-1">

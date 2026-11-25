@@ -246,6 +246,19 @@
       <p>// the lesson has ended.</p>
       <a class="underline hover:text-[var(--accent)]" href="/teach">[lessons]</a>
     </div>
+  {:else if rs.status === 'waiting'}
+    <!-- Before the lesson: a big countdown for the room, and what's first. -->
+    <div class="m-auto p-6 space-y-4 text-center">
+      <div class="text-2xl font-bold">{lesson.title}</div>
+      {#if rs.held}
+        <div class="text-lg {label}">starting soon</div>
+      {:else}
+        <div class="{label}">starts in</div>
+        <div class="text-8xl font-bold tabular-nums">{countdown(Math.max(0, (rs.startsAt ?? now) - now))}</div>
+      {/if}
+      <div class="text-lg">first up: {lesson.modules[0]?.title}{rs.earlyWork ? ' (you can start now)' : ''}</div>
+      <a class="{tool} {toolOff} inline-block" href="/teach/live?run={run.id}" target="_blank" rel="noopener">panel ↗</a>
+    </div>
   {:else}
     <!-- top bar: where we are, the clock, the screen -->
     <header class="flex items-center gap-3 px-3 py-1.5 border-b border-[var(--line)]">

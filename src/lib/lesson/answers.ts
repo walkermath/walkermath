@@ -110,15 +110,16 @@ export type SubmissionCheck =
 
 /**
  * The room's decision on a student's submission: the module must exist, take answers, and be open
- * (its clock running, not paused, or just stopped).
+ * (its clock running, not paused, or just stopped; or, before the lesson, an early Bellwork).
  */
 export function checkSubmission(state: RoomState, modules: RoomModule[], moduleId: unknown, input: unknown, now: number): SubmissionCheck {
-  if (state.status !== 'live') return { ok: false, status: 409, error: 'The lesson is over.', closed: true };
+  if (state.status === 'ended') return { ok: false, status: 409, error: 'The lesson is over.', closed: true };
   const index = typeof moduleId === 'string' ? modules.findIndex((m) => m.id === moduleId) : -1;
   if (index < 0) return { ok: false, status: 404, error: 'No such module.' };
   const spec = answerSpec(modules[index]);
   if (!spec) return { ok: false, status: 400, error: 'This module does not take answers.' };
   if (!answersOpen(state, index, now)) {
+    if (state.status === 'waiting') return { ok: false, status: 409, error: "The lesson hasn't started yet." };
     return { ok: false, status: 409, error: 'This module is closed. Your earlier answers are saved.', closed: true };
   }
   const answers = cleanAnswers(spec, input);

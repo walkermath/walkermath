@@ -1,10 +1,11 @@
 // src/lib/server/live.ts
-// Starting, ending and connecting to live lessons. The clock itself runs in the LessonRoom
+// Opening, starting, ending and connecting to live lessons. The clock itself runs in the LessonRoom
 // Durable Object (src/worker/LessonRoom.ts); these helpers decide who may reach which room and hand the
 // room what it needs: the lesson's modules, student-safe (no answer keys, no private notes).
 
 import { MODULE_TYPES, publicModule } from '../lesson/modules.ts';
 import type { RoomModule } from '../lesson/room.ts';
+import { earlyMin } from './classes.ts';
 import { getLesson, type Lesson } from './lessons.ts';
 import type { Student, Teacher } from './sessions.ts';
 
@@ -20,10 +21,12 @@ export interface LiveRun {
   scheduledStart: number;
   scheduledEnd: number;
   startedAt: number | null;
+  /** The class's early-join window, in minutes. */
+  earlyJoinMin: number;
 }
 
 const RUN = `SELECT r.id, r.lesson_id, r.class_id, r.status, r.scheduled_start, r.scheduled_end, r.started_at,
-                    l.title AS lesson_title, l.teacher_id, c.name AS class_name, c.period
+                    l.title AS lesson_title, l.teacher_id, c.name AS class_name, c.period, c.early_join_min
                FROM lesson_runs r
                JOIN lessons l ON l.id = r.lesson_id
                JOIN classes c ON c.id = r.class_id`;
@@ -39,7 +42,8 @@ const toLiveRun = (r: any): LiveRun => ({
   status: r.status,
   scheduledStart: r.scheduled_start,
   scheduledEnd: r.scheduled_end,
-  startedAt: r.started_at ?? null
+  startedAt: r.started_at ?? null,
+  earlyJoinMin: earlyMin(r.early_join_min)
 });
 
 export async function getLiveRun(db: any, runId: unknown): Promise<LiveRun | null> {
@@ -52,6 +56,29 @@ export async function getLiveRun(db: any, runId: unknown): Promise<LiveRun | nul
 export async function liveRunsForClass(db: any, classId: string): Promise<LiveRun[]> {
   const { results } = await db.prepare(`${RUN} WHERE r.class_id = ?1 AND r.status = 'live' ORDER BY r.started_at DESC`).bind(classId).all();
   return results.map(toLiveRun);
+}
+
+/** Is `now` inside a scheduled delivery's early-join window (from N minutes before its start until its bell)? */
+export const inJoinWindow = (run: Pick<LiveRun, 'scheduledStart' | 'scheduledEnd' | 'earlyJoinMin'>, now: number) =>
+  now >= run.scheduledStart - run.earlyJoinMin * 60_000 && now < run.scheduledEnd;
+
+/**
+ * Opens a class's scheduled deliveries whose early-join window has come (best effort: one that
+ * can't open is tried again on the next call). Called when students check for lessons to join, so
+ * a lesson opens, and then starts itself at its start time, without the teacher pressing anything.
+ * Nobody looking means nothing opens. The first look widens the query by the longest window (10 min).
+ */
+export async function openDueRuns(env: any, classId: string, now = Date.now()): Promise<void> {
+  if (!env.LESSON_ROOM) return;
+  const { results } = await env.DB.prepare(
+    `${RUN} WHERE r.class_id = ?1 AND r.status = 'scheduled' AND r.scheduled_start <= ?2 AND r.scheduled_end > ?3`
+  )
+    .bind(classId, now + 10 * 60_000, now)
+    .all();
+  for (const run of results.map(toLiveRun)) {
+    if (!inJoinWindow(run, now)) continue;
+    await startRun(env, run, now).catch(() => null);
+  }
 }
 
 /** Who may reach a run's room: its teacher always; a student of its class while it's live. */
@@ -107,8 +134,11 @@ export function roomHeaders(role: 'teacher' | 'student', teacher: Teacher | null
 }
 
 /**
- * Starts a run (or reopens its room if it's already live). The lesson is copied into the run
- * (snapshot_json), so editing the lesson later doesn't change a delivery that has started.
+ * Opens a run (or reopens its room if it's already open). Before its start time the room waits
+ * (students may join, an opening Bellwork may be started early) and starts itself at the start
+ * time; after it, the lesson starts now. Either way the run is 'live' here, which is what lets
+ * students in. The lesson is copied into the run (snapshot_json) when it opens, so editing the
+ * lesson later doesn't change this delivery.
  */
 export async function startRun(env: any, run: LiveRun, now = Date.now()): Promise<{ ok: true; room: any } | { ok: false; error: string; status: number }> {
   if (run.status === 'ended') return { ok: false, error: 'This delivery has already ended.', status: 409 };
@@ -128,7 +158,8 @@ export async function startRun(env: any, run: LiveRun, now = Date.now()): Promis
       title: lesson.title,
       resources: lesson.resources,
       modules: roomModules(lesson),
-      endsAt: run.scheduledEnd
+      endsAt: run.scheduledEnd,
+      startsAt: run.scheduledStart
     })
   });
   if (!res.ok) return { ok: false, error: 'The live room could not start.', status: 502 };

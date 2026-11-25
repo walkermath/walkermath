@@ -15,6 +15,8 @@
     bellEnd: string | null;
     archived: boolean;
     leaderboardPosting: boolean;
+    /** Minutes before a delivery's start time that students may join. */
+    earlyJoinMin: number;
     activeAliases?: number;
   };
   type Alias = { id: string; alias: string; retired: boolean; devices: number; boardName: string | null };
@@ -129,6 +131,13 @@
         return;
       }
       current = (await api<{ class: Cls }>(`/api/teach/classes/${current.id}`, { method: 'PATCH', body: { leaderboardPosting: on } })).class;
+      await loadClasses();
+    });
+
+  const setEarlyJoin = (min: number) =>
+    run(async () => {
+      if (!current) return;
+      current = (await api<{ class: Cls }>(`/api/teach/classes/${current.id}`, { method: 'PATCH', body: { earlyJoinMin: min } })).class;
       await loadClasses();
     });
 
@@ -370,6 +379,22 @@
               // off: scores are kept for you only. on: they also post under each student's generated leaderboard name
               (never their lesson alias). test classes never post.
             </span>
+          </span>
+        </label>
+        <label class="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--border-color)]">
+          <span>students can join</span>
+          <select
+            class="px-2 py-1 rounded border border-[var(--border-color)] bg-[var(--bg-primary)]"
+            value={current.earlyJoinMin ?? 3}
+            disabled={busy}
+            onchange={(e) => setEarlyJoin(Number((e.currentTarget as HTMLSelectElement).value))}
+          >
+            {#each [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as m}
+              <option value={m}>{m === 0 ? 'at the start time' : `${m} min early`}</option>
+            {/each}
+          </select>
+          <span class="block w-full text-[var(--text-muted)] help-text">
+            // a lesson opens this early and starts by itself at its start time. if it opens with a bellwork, students can start it early; its clock still starts on time.
           </span>
         </label>
       </form>
