@@ -21,8 +21,14 @@ test('renderMarkdown: plain by default, site terms on request, lesson terms laye
 
 test('renderMarkdown: a definition with quotes or tags cannot break out of its attribute', () => {
   const html = renderMarkdown('a thing here', { glossary: [{ id: 't', term: 'thing', def: '"><img src=x onerror=alert(1)>' }] });
-  assert.ok(!/<img/i.test(html), html);
-  assert.ok(html.includes('data-gloss="t"'));
+  // The quote is escaped, so the whole definition stays inside data-def as text...
+  const def = html.match(/data-def="([^"]*)"/);
+  assert.ok(def, html);
+  assert.equal(def[1], '&#x22;><img src=x onerror=alert(1)>');
+  // ...and with attribute values taken out, no real tag from the definition is left in the markup.
+  const markup = html.replace(/="[^"]*"/g, '=""');
+  assert.ok(!/<img/i.test(markup), markup);
+  assert.equal(markup, '<p>a <span class="" data-gloss="" data-term="" data-def="">thing</span> here</p>');
 });
 
 test('renderMarkdown: math, code and links are not marked', () => {
