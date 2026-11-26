@@ -26,7 +26,9 @@
   let transport = $state<Transport>('connecting');
   let gone = $state<string | null>(null);
   let now = $state(Date.now());
-  let showList = $state(true);
+  // The module list starts open on a wide screen (it sits beside the module) and folded on a phone
+  // or narrow window (it sits above it, pushing the module down). Students can open or fold it.
+  let showList = $state(typeof window === 'undefined' || window.matchMedia('(min-width: 1024px)').matches);
   let conn: LiveConnection | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   const ink = new InkStore();
