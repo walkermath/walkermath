@@ -24,6 +24,7 @@ import {
   type RoomModule,
   type RoomState
 } from '../lib/lesson/room.ts';
+import { cleanChecklist } from '../lib/lesson/checklist.ts';
 import { INK_LIMITS, PAGE_ID, applyInk, parseInkOp, type InkOp, type Stroke } from '../lib/lesson/ink.ts';
 
 export interface Env {
@@ -53,10 +54,12 @@ const STORAGE_BATCH = 128;
 type Role = 'teacher' | 'student' | 'test';
 type Who = { role: Role; who: string; name: string; at?: number };
 /** `hand`: when the student tapped "I'm stuck" (epoch ms), or null. */
-type RosterRow = { aliasId: string; alias: string; devices: number; here: boolean; hand: number | null };
+/** `ready`: the student has finished the class's readiness checklist (kept in the room only). */
+type RosterRow = { aliasId: string; alias: string; devices: number; here: boolean; hand: number | null; ready: boolean };
 type Link = { label: string; url: string };
 /** What every device gets once: the title, the lesson's Resources links and the student-safe modules. */
-type Lesson = { title: string; resources: Link[]; modules: RoomModule[] };
+/** `checklist`: the class's readiness checklist, copied in when the delivery opened. */
+type Lesson = { title: string; resources: Link[]; modules: RoomModule[]; checklist: string[] };
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -81,6 +84,8 @@ export class LessonRoom extends DurableObject<Env> {
   private seen: Map<string, string> | null = null;
   /** "I'm stuck": alias id -> when the hand went up. Kept in storage under 'hands'. */
   private hands: Map<string, number> | null = null;
+  /** Students who finished the readiness checklist. Kept in storage under 'ready' (the room only). */
+  private ready: Set<string> | null = null;
   /** Active Feedback: a counter per student that goes up each time the teacher marks or messages them
    *  (kept in storage under 'fbrev'), so slow-mode devices know to fetch their feedback. */
   private fbRev: Map<string, number> | null = null;
@@ -108,10 +113,15 @@ export class LessonRoom extends DurableObject<Env> {
     }
     if (this.state && !this.lesson) {
       // Modules are stored one per key: a long Notes module can be tens of KB on its own.
-      const meta = await this.ctx.storage.get<{ title: string; resources?: Link[]; count: number }>('meta');
+      const meta = await this.ctx.storage.get<{ title: string; resources?: Link[]; count: number; checklist?: string[] }>('meta');
       const keys = Array.from({ length: meta?.count ?? 0 }, (_, i) => `m:${i}`);
       const found = keys.length ? await this.ctx.storage.get<RoomModule>(keys) : new Map();
-      this.lesson = { title: meta?.title ?? '', resources: meta?.resources ?? [], modules: keys.map((k) => found.get(k)!).filter(Boolean) };
+      this.lesson = {
+        title: meta?.title ?? '',
+        resources: meta?.resources ?? [],
+        modules: keys.map((k) => found.get(k)!).filter(Boolean),
+        checklist: cleanChecklist(meta?.checklist)
+      };
     }
     return this.state && this.lesson ? { state: this.state, lesson: this.lesson } : null;
   }
@@ -137,6 +147,26 @@ export class LessonRoom extends DurableObject<Env> {
   private async loadSeen(): Promise<Map<string, string>> {
     if (!this.seen) this.seen = new Map(Object.entries((await this.ctx.storage.get<Record<string, string>>('seen')) ?? {}));
     return this.seen;
+  }
+
+  private async loadReady(): Promise<Set<string>> {
+    if (!this.ready) this.ready = new Set((await this.ctx.storage.get<string[]>('ready')) ?? []);
+    return this.ready;
+  }
+
+  /** A student finished (or un-ticked) the readiness checklist: the teacher's count updates. */
+  private async setReady(aliasId: string, on: boolean) {
+    const ready = await this.loadReady();
+    if (on === ready.has(aliasId)) return;
+    if (on) ready.add(aliasId);
+    else ready.delete(aliasId);
+    await this.ctx.storage.put('ready', [...ready]);
+    this.broadcast(await this.rosterMsg(), 'teacher');
+    // The student's other devices tick it too.
+    const msg = JSON.stringify({ type: 'ready', on });
+    for (const ws of this.ctx.getWebSockets('student')) {
+      if ((ws.deserializeAttachment() as Who | null)?.who === aliasId) this.send(ws, msg);
+    }
   }
 
   private async loadHands(): Promise<Map<string, number>> {
@@ -218,7 +248,8 @@ export class LessonRoom extends DurableObject<Env> {
     const now = Date.now();
     const rows = new Map<string, RosterRow>();
     const hands = await this.loadHands();
-    for (const [aliasId, alias] of await this.loadSeen()) rows.set(aliasId, { aliasId, alias, devices: 0, here: false, hand: hands.get(aliasId) ?? null });
+    const ready = await this.loadReady();
+    for (const [aliasId, alias] of await this.loadSeen()) rows.set(aliasId, { aliasId, alias, devices: 0, here: false, hand: hands.get(aliasId) ?? null, ready: ready.has(aliasId) });
     for (const ws of this.ctx.getWebSockets('student')) {
       if (ws === closing) continue;
       const a = ws.deserializeAttachment() as Who | null;
@@ -231,7 +262,7 @@ export class LessonRoom extends DurableObject<Env> {
         }
         continue;
       }
-      const row = rows.get(a.who) ?? { aliasId: a.who, alias: a.name, devices: 0, here: false, hand: hands.get(a.who) ?? null };
+      const row = rows.get(a.who) ?? { aliasId: a.who, alias: a.name, devices: 0, here: false, hand: hands.get(a.who) ?? null, ready: ready.has(a.who) };
       row.devices++;
       row.here = true;
       rows.set(a.who, row);
@@ -241,7 +272,7 @@ export class LessonRoom extends DurableObject<Env> {
         this.polled.delete(aliasId);
         continue;
       }
-      const row = rows.get(aliasId) ?? { aliasId, alias: p.alias, devices: 0, here: false, hand: hands.get(aliasId) ?? null };
+      const row = rows.get(aliasId) ?? { aliasId, alias: p.alias, devices: 0, here: false, hand: hands.get(aliasId) ?? null, ready: ready.has(aliasId) };
       row.devices = Math.max(row.devices, 1);
       row.here = true;
       rows.set(aliasId, row);
@@ -410,6 +441,7 @@ export class LessonRoom extends DurableObject<Env> {
       if (who.role === 'teacher') this.send(server, await this.rosterMsg());
       else {
         if ((await this.loadHands()).has(who.who)) this.send(server, JSON.stringify({ type: 'hand', on: true }));
+        if ((await this.loadReady()).has(who.who)) this.send(server, JSON.stringify({ type: 'ready', on: true }));
         const fbRev = (await this.loadFbRev()).get(who.who);
         if (fbRev) this.send(server, JSON.stringify({ type: 'feedback', rev: fbRev })); // a device that was away learns what it missed
         await this.markSeen(who.who, who.name);
@@ -424,9 +456,19 @@ export class LessonRoom extends DurableObject<Env> {
       if (who.role !== 'teacher') return json({ error: 'Forbidden' }, 403);
       const existing = await this.load();
       if (existing) return json({ state: existing.state, serverNow: Date.now() });
-      const body = (await request.json()) as { runId: string; title: string; resources?: Link[]; modules: RoomModule[]; endsAt: number; startsAt?: number };
-      const lesson: Lesson = { title: body.title, resources: body.resources ?? [], modules: body.modules };
-      const entries: Record<string, unknown> = { meta: { title: lesson.title, resources: lesson.resources, count: lesson.modules.length } };
+      const body = (await request.json()) as {
+        runId: string;
+        title: string;
+        resources?: Link[];
+        modules: RoomModule[];
+        endsAt: number;
+        startsAt?: number;
+        checklist?: string[];
+      };
+      const lesson: Lesson = { title: body.title, resources: body.resources ?? [], modules: body.modules, checklist: cleanChecklist(body.checklist) };
+      const entries: Record<string, unknown> = {
+        meta: { title: lesson.title, resources: lesson.resources, count: lesson.modules.length, checklist: lesson.checklist }
+      };
       lesson.modules.forEach((m, i) => (entries[`m:${i}`] = m));
       await this.ctx.storage.put(entries);
       this.lesson = lesson;
@@ -463,7 +505,13 @@ export class LessonRoom extends DurableObject<Env> {
         inkRev: await this.loadRev(),
         ...(url.searchParams.get('full') === '1' ? { lesson: loaded.lesson } : {}),
         ...(who.role === 'teacher' ? { students: await this.roster() } : {}),
-        ...(who.role === 'student' ? { hand: (await this.loadHands()).has(who.who), feedbackRev: (await this.loadFbRev()).get(who.who) ?? 0 } : {})
+        ...(who.role === 'student'
+          ? {
+              hand: (await this.loadHands()).has(who.who),
+              ready: (await this.loadReady()).has(who.who),
+              feedbackRev: (await this.loadFbRev()).get(who.who) ?? 0
+            }
+          : {})
       });
     }
 
@@ -483,6 +531,17 @@ export class LessonRoom extends DurableObject<Env> {
         return json({ hand: false });
       }
       return json({ error: 'Forbidden' }, 403);
+    }
+
+    // The readiness checklist: a student says they've finished it (or un-ticked an item).
+    if (request.method === 'POST' && url.pathname === '/ready') {
+      const loaded = await this.load();
+      if (!loaded || loaded.state.status === 'ended') return json({ error: 'Not started' }, 409);
+      if (who.role !== 'student' || !who.who) return json({ error: 'Forbidden' }, 403);
+      const body = (await request.json().catch(() => null)) as { on?: unknown } | null;
+      const on = body?.on === true;
+      await this.setReady(who.who, on);
+      return json({ ready: on });
     }
 
     // Ink over plain HTTP: slow-mode devices fetch pages whose counter moved; a slow-mode teacher writes.

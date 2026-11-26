@@ -1,6 +1,7 @@
 <!-- src/components/teach/ClassManager.svelte -->
 <!-- Classes, passcodes and alias rosters for the signed-in teacher. -->
 <script lang="ts">
+  import { CHECKLIST } from '../../lib/lesson/checklist.ts';
   import { onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
   import { PERIODS } from '../../lib/classroom.ts';
@@ -17,6 +18,8 @@
     leaderboardPosting: boolean;
     /** Minutes before a delivery's start time that students may join. */
     earlyJoinMin: number;
+    /** The readiness checklist students see when they join a lesson. */
+    checklist: string[];
     activeAliases?: number;
   };
   type Alias = { id: string; alias: string; retired: boolean; devices: number; boardName: string | null };
@@ -138,6 +141,25 @@
     run(async () => {
       if (!current) return;
       current = (await api<{ class: Cls }>(`/api/teach/classes/${current.id}`, { method: 'PATCH', body: { earlyJoinMin: min } })).class;
+      await loadClasses();
+    });
+
+  /** The checklist as typed: one item per line (saved when the box loses focus). */
+  let checklistText = $state('');
+  let checklistFor = '';
+  $effect(() => {
+    if (current && current.id !== checklistFor) {
+      checklistFor = current.id;
+      checklistText = (current.checklist ?? []).join('\n');
+    }
+  });
+  const saveChecklist = () =>
+    run(async () => {
+      if (!current) return;
+      const items = checklistText.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (items.join('\n') === (current.checklist ?? []).join('\n')) return;
+      current = (await api<{ class: Cls }>(`/api/teach/classes/${current.id}`, { method: 'PATCH', body: { checklist: items } })).class;
+      checklistText = current.checklist.join('\n');
       await loadClasses();
     });
 
@@ -395,6 +417,20 @@
           </select>
           <span class="block w-full text-[var(--text-muted)] help-text">
             // a lesson opens this early and starts by itself at its start time. if it opens with a bellwork, students can start it early; its clock still starts on time.
+          </span>
+        </label>
+        <label class="block space-y-1 pt-2 border-t border-[var(--border-color)]">
+          <span>readiness checklist <span class="text-[var(--text-muted)]">(one per line, up to {CHECKLIST.items})</span></span>
+          <textarea
+            class="w-full px-2 py-1 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] font-mono"
+            rows="3"
+            placeholder={'Have your journal out\nPencil ready'}
+            bind:value={checklistText}
+            disabled={busy}
+            onblur={saveChecklist}
+          ></textarea>
+          <span class="block text-[var(--text-muted)] help-text">
+            // students tick these when they join. before the start time, the first module waits until they're done; after it, the list flashes on the side but never blocks work. leave empty for none.
           </span>
         </label>
       </form>

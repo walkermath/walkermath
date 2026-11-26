@@ -17,6 +17,8 @@
   import LiveModule, { type SaveState } from './LiveModule.svelte';
   import PageView from './PageView.svelte';
   import PersonalNote from './PersonalNote.svelte';
+  import ReadyChecklist from './ReadyChecklist.svelte';
+  import { checklistMode } from '../../lib/lesson/checklist.ts';
 
   let runId = $state('');
   let lesson = $state<LiveLesson | null>(null);
@@ -43,6 +45,7 @@
         transport = t;
       },
       onHand: (on) => (hand = on),
+      onReady: (on) => (ready = on),
       onFeedback: (rev) => {
         // The first number only says where the counter stands (the page loaded the feedback itself).
         if (lastFbRev !== null && rev !== lastFbRev) loadFeedback(true);
@@ -76,6 +79,11 @@
 
   let hand = $state(false);
   let handBusy = $state(false);
+  /** This student finished the readiness checklist (the room keeps it; other devices follow). */
+  let ready = $state(false);
+  const setReady = async (on: boolean) => {
+    await conn?.ready(on);
+  };
   async function toggleHand() {
     handBusy = true;
     try {
@@ -317,6 +325,8 @@
     !!rs && ((rs.status === 'live' && i === rs.index && !rs.holding) || (rs.status === 'waiting' && i === 0 && !!rs.earlyWork));
   /** Before the lesson: the room is open but no clock runs yet. */
   const waiting = $derived(rs?.status === 'waiting');
+  /** Readiness checklist: 'block' before the lesson (the first module waits), 'nudge' once it runs, or nothing. */
+  const checkMode = $derived(lesson && rs ? checklistMode(lesson.checklist ?? [], ready, rs.status) : null);
   /** Time until the lesson starts (0 once it's due; a held lesson stays at 0 until the teacher starts it). */
   const startsIn = $derived(rs?.status === 'waiting' && rs.startsAt ? Math.max(0, rs.startsAt - now) : 0);
 
@@ -368,6 +378,9 @@
   <div class="grid gap-6 lg:grid-cols-[17rem_minmax(0,1fr)] items-start">
     <!-- sidebar -->
     <aside class="space-y-4 lg:sticky lg:top-16">
+      {#if checkMode === 'nudge' && lesson}
+        <ReadyChecklist items={lesson.checklist ?? []} done={ready} mode="nudge" onready={setReady} />
+      {/if}
       <section class="rounded-md border border-[var(--line)] bg-[var(--bg-surface)]">
         <button
           type="button"
@@ -493,9 +506,14 @@
           {/if}
         </header>
 
+        {#if checkMode === 'block'}
+          <ReadyChecklist items={lesson.checklist ?? []} done={ready} mode="block" onready={setReady} />
+        {/if}
         {#if waiting}
           <p class="p-3 rounded border border-[var(--accent)] text-sm">
-            {#if rs.earlyWork}
+            {#if checkMode === 'block'}
+              // you're early. finish the checklist{rs.earlyWork ? ', then you can start the bellwork' : ''}. the lesson starts at {rs.startsAt ? clockAt(rs.startsAt) : 'the bell'}.
+            {:else if rs.earlyWork}
               // you're early. you can start the bellwork now; the clock starts at {rs.startsAt ? clockAt(rs.startsAt) : 'the bell'}.
             {:else}
               // you're early. the lesson starts at {rs.startsAt ? clockAt(rs.startsAt) : 'the bell'}.
@@ -509,7 +527,7 @@
           {/if}
         {/if}
 
-        {#if !waiting || rs.earlyWork}
+        {#if (!waiting || rs.earlyWork) && checkMode !== 'block'}
         {#key current.id}
           <LiveModule
             module={current}

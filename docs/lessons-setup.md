@@ -103,6 +103,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0010_s
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0011_library.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0012_feedback.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0013_early_join.sql
+npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0014_checklist.sql
 
 # production (once each, when you're ready to deploy): the same commands with --remote
 ```
@@ -123,6 +124,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0013_e
 | `0011_library.sql` | the lesson library: lessons teachers share with each other |
 | `0012_feedback.sql` | your marks and messages on students' answers in Active Feedback activities |
 | `0013_early_join.sql` | per class: how many minutes before the start time students may join (default 3). **Run before deploying the code that uses it**: the live lesson lookups read this column. Not safe to run twice (adds a column). |
+| `0014_checklist.sql` | per class: the readiness checklist students tick when they join a lesson. **Run before deploying** (the live lesson lookups read it). Not safe to run twice. |
 
 ## 4. Try it locally
 

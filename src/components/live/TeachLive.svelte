@@ -141,6 +141,9 @@
   const starts = $derived(rs ? moduleStarts(rs, now) : []);
   const plannedEnd = $derived(rs ? finishesAt(rs, now) : 0);
   const here = $derived(students.filter((s) => s.here));
+  /** The class has a readiness checklist: count who's done it, of those here. */
+  const hasChecklist = $derived(!!lesson?.checklist?.length);
+  const readyHere = $derived(here.filter((s) => s.ready).length);
   /** Students with "I'm stuck" up, longest waiting first. */
   const hands = $derived(students.filter((s) => s.hand).sort((a, b) => (a.hand ?? 0) - (b.hand ?? 0)));
   async function lowerHand(aliasId: string) {
@@ -236,6 +239,9 @@
                     <div class="text-xl font-bold mt-1">first up: {current.title}</div>
                     <div class="mt-1 {label}">
                       {rs.earlyWork ? 'students who are here can start the bellwork; its clock starts with the lesson.' : 'students who are here see a countdown.'}
+                    </div>
+                    <div class="mt-2 text-lg font-bold tabular-nums">
+                      {here.length} here{#if hasChecklist} · <span class={readyHere === here.length && here.length ? 'text-[var(--ok)]' : ''}>{readyHere} of {here.length} ready</span>{/if}
                     </div>
                   </div>
                   <div class="text-right">
@@ -398,7 +404,7 @@
           {/if}
 
           <section class="{panel} space-y-2">
-            <div class={heading}>// here now ({here.length}{gone.length ? ` · ${gone.length} left` : ''})</div>
+            <div class={heading}>// here now ({here.length}{gone.length ? ` · ${gone.length} left` : ''}{hasChecklist ? ` · ${readyHere} ready` : ''})</div>
             {#if students.length === 0}
               <p class={label}>no students connected yet. they join from /class.</p>
             {:else}
@@ -408,7 +414,7 @@
                     class="px-1.5 py-0.5 rounded border border-[var(--line)] {s.here ? '' : label}"
                     title={s.here ? `${s.devices} device${s.devices === 1 ? '' : 's'}` : 'left the lesson (closed the page or lost connection)'}
                   >
-                    <span class={s.here ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}>{s.here ? '●' : '○'}</span> {s.alias}{s.hand ? ' ✋' : ''}
+                    <span class={s.here ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}>{s.here ? '●' : '○'}</span> {s.alias}{s.hand ? ' ✋' : ''}{hasChecklist && s.ready ? ' ✓' : ''}
                   </li>
                 {/each}
               </ul>
