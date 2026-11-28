@@ -32,6 +32,7 @@
     "test:glossary": "node --experimental-strip-types --no-warnings --test scripts/test-glossary.mjs",
     "test:checklist": "node --experimental-strip-types --no-warnings --test scripts/test-checklist.mjs",
     "test:terms": "node --experimental-strip-types --no-warnings --test scripts/test-terms.mjs",
+    "test:questions": "node --experimental-strip-types --no-warnings --test scripts/test-questions.mjs",
     "test:glossary-render": "node --experimental-strip-types --no-warnings --test scripts/test-glossary-render.mjs"
   },
   "dependencies": {
