@@ -47,6 +47,8 @@ import * as teachMe from '../../functions/api/teach/me.js';
 import * as teachReports from '../../functions/api/teach/reports/index.js';
 import * as teachReportOptions from '../../functions/api/teach/reports/options.js';
 import * as teachRuns from '../../functions/api/teach/runs.js';
+import * as teachGrading from '../../functions/api/teach/grading.js';
+import * as teachLessonGrading from '../../functions/api/teach/lessons/[lessonId]/grading.js';
 import * as teachRunAnswers from '../../functions/api/teach/runs/[runId]/answers.js';
 import * as teachRunEnd from '../../functions/api/teach/runs/[runId]/end.js';
 import * as teachRunFeedback from '../../functions/api/teach/runs/[runId]/feedback.js';
@@ -105,6 +107,7 @@ export const ROUTES: Route[] = [
   r('/api/teach/lessons', 'teach/lessons/index.js', teachLessons),
   r('/api/teach/lessons/:lessonId', 'teach/lessons/[lessonId]/index.js', teachLessonOne),
   r('/api/teach/lessons/:lessonId/runs', 'teach/lessons/[lessonId]/runs/index.js', teachLessonRuns),
+  r('/api/teach/lessons/:lessonId/grading', 'teach/lessons/[lessonId]/grading.js', teachLessonGrading),
   r('/api/teach/lessons/:lessonId/runs/:runId', 'teach/lessons/[lessonId]/runs/[runId].js', teachLessonRunOne),
   r('/api/teach/library', 'teach/library/index.js', teachLibrary),
   r('/api/teach/library/:entryId', 'teach/library/[entryId]/index.js', teachLibraryOne),
@@ -113,6 +116,7 @@ export const ROUTES: Route[] = [
   r('/api/teach/reports', 'teach/reports/index.js', teachReports),
   r('/api/teach/reports/options', 'teach/reports/options.js', teachReportOptions),
   r('/api/teach/runs', 'teach/runs.js', teachRuns),
+  r('/api/teach/grading', 'teach/grading.js', teachGrading),
   r('/api/teach/runs/:runId', 'teach/runs/[runId]/index.js', teachRunOne),
   r('/api/teach/runs/:runId/answers', 'teach/runs/[runId]/answers.js', teachRunAnswers),
   r('/api/teach/runs/:runId/end', 'teach/runs/[runId]/end.js', teachRunEnd),
