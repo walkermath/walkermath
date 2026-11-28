@@ -153,6 +153,24 @@
           </label>
           <textarea class={field} rows="3" data-terms bind:value={draft.text} maxlength={QUESTION_LIMITS.text} placeholder="Question (use $...$ for math)"></textarea>
           {#if Editor}<Editor bind:q={draft} {keyless} />{/if}
+          <label class="flex items-center gap-2">
+            <span class={label}>worth</span>
+            <input
+              type="number"
+              class="{field} w-20 p-1"
+              min="0.5"
+              max={QUESTION_LIMITS.points}
+              step="0.5"
+              value={draft.points ?? 1}
+              onchange={(e) => {
+                const n = Number(e.currentTarget.value);
+                if (!draft) return;
+                if (n === 1 || !Number.isFinite(n)) delete draft.points;
+                else draft.points = n;
+              }}
+            />
+            <span class={label}>point{(draft.points ?? 1) === 1 ? '' : 's'}</span>
+          </label>
           {#if error}<p class="text-[var(--bad)]" role="alert">// {error}</p>{/if}
         </div>
 
@@ -167,7 +185,9 @@
           </div>
           {#if !keyless}
             <p class={label} aria-live="polite">
-              {#if !draft.answer}
+              {#if draft.kind === 'long'}
+                // try an answer above to see the box students get.
+              {:else if !draft.answer}
                 // try an answer above. add a key to see whether it's marked right.
               {:else if !tried}
                 // try an answer above to check your key{keyText(draft) ? ` (${keyText(draft)})` : ''}. nothing is sent.
@@ -180,6 +200,7 @@
               {/if}
             </p>
             {#if questionTags(draft).length}<p class={label}>// {questionTags(draft).join(' · ')}</p>{/if}
+            {#if draft.kind === 'long'}<p class={label}>// long answers aren't marked automatically: you grade them after class.</p>{/if}
           {/if}
         </div>
       </div>

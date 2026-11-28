@@ -10,8 +10,9 @@
   import ReportBuilder from './ReportBuilder.svelte';
   import LibraryView from './LibraryView.svelte';
   import TeachLive from '../live/TeachLive.svelte';
+  import GradeLesson from './GradeLesson.svelte';
 
-  type View = 'home' | 'classes' | 'lesson' | 'live' | 'reports' | 'library' | 'teachers';
+  type View = 'home' | 'classes' | 'lesson' | 'live' | 'reports' | 'library' | 'teachers' | 'grade';
   type Teacher = {
     email: string;
     displayName: string;
@@ -127,6 +128,9 @@
       <LessonBuilder />
     {:else if view === 'live'}
       <TeachLive />
+    {:else if view === 'grade'}
+      {@const lessonId = new URLSearchParams(location.search).get('lesson') ?? ''}
+      {#if lessonId}<GradeLesson {lessonId} />{:else}<p class="text-xs text-[var(--text-muted)]">// pick a lesson to grade from the lessons page.</p>{/if}
     {:else if view === 'reports'}
       <ReportBuilder />
     {:else if view === 'library'}

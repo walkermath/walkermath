@@ -105,6 +105,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0012_f
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0013_early_join.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0014_checklist.sql
 npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0015_lesson_terms.sql
+npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0016_grades.sql
 
 # production (once each, when you're ready to deploy): the same commands with --remote
 ```
@@ -127,6 +128,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0015_l
 | `0013_early_join.sql` | per class: how many minutes before the start time students may join (default 3). **Run before deploying the code that uses it**: the live lesson lookups read this column. Not safe to run twice (adds a column). |
 | `0014_checklist.sql` | per lesson: the readiness checklist students tick when they join it (set in the lesson builder). **Run before deploying**: saving a lesson writes this column. Not safe to run twice. |
 | `0015_lesson_terms.sql` | per lesson: its own tooltips (a word and a definition, shown as a dotted underline). **Run before deploying**: saving a lesson writes this column. Not safe to run twice. |
+| `0016_grades.sql` | grades given after class (long answers, overrides of automatic marks) and "release scores". Until it's run, saving a grade fails and the to-grade list stays empty; nothing else changes. Safe to run twice. |
 
 ## 4. Try it locally
 

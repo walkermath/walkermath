@@ -1,0 +1,13 @@
+---
+// src/pages/teach/grade.astro
+// Grading after class for one lesson: /teach/grade?lesson=ID. Static shell; data loads after sign-in.
+import Layout from '../../layouts/Layout.astro';
+import TeachApp from '../../components/teach/TeachApp.svelte';
+import '../../styles/global.css';
+---
+
+<Layout title="walkerMath\\teach\\grade" wide>
+  <main class="py-12">
+    <TeachApp client:only="svelte" view="grade" />
+  </main>
+</Layout>

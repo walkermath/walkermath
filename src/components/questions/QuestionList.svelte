@@ -107,10 +107,15 @@
           <span class="font-bold">Q{qi + 1}</span>
           <span class={label}>{QUESTION_KINDS[q.kind]?.label ?? q.kind}</span>
           {#each questionTags(q) as t}<span class="{label} border border-[var(--line)] rounded px-1">{t}</span>{/each}
+          {#if (q.points ?? 1) !== 1}<span class="{label} border border-[var(--line)] rounded px-1">{q.points} points</span>{/if}
         </div>
         <div class="truncate">{clip(plain(q.text), 140) || '(no question text yet)'}</div>
         {#if !keyless}
-          <div class="truncate {q.answer ? 'text-[var(--ok)]' : label}">{q.answer ? `key: ${clip(keyText(q), 100)}` : 'no key: not marked'}</div>
+          {#if q.kind === 'long'}
+            <div class="truncate {label}">{q.rubric ? `rubric: ${clip(plain(q.rubric), 100)}` : 'graded by you after class'}</div>
+          {:else}
+            <div class="truncate {q.answer ? 'text-[var(--ok)]' : label}">{q.answer ? `key: ${clip(keyText(q), 100)}` : 'no key: not marked'}</div>
+          {/if}
         {/if}
       </button>
       <div class="flex flex-col items-end gap-0.5 shrink-0">

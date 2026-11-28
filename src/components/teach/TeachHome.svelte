@@ -40,17 +40,31 @@
   /** The lesson whose "archive?" prompt is open. */
   let prompting = $state<string | null>(null);
 
+  /** Lessons with long answers to grade or grades to release (see toGradeList on the server). */
+  type ToGrade = {
+    lessonId: string;
+    lessonTitle: string;
+    toGrade: number;
+    toRelease: number;
+    runs: { runId: string; className: string; period: string; date: string; toGrade: number; toRelease: number }[];
+  };
+  let toGrade = $state<ToGrade[]>([]);
+  const waiting = $derived(new Set(toGrade.map((t) => t.lessonId)));
+
   const active = $derived(lessons.filter((l) => !l.archived));
   const archived = $derived(lessons.filter((l) => l.archived));
 
   onMount(async () => {
     try {
-      const [l, r] = await Promise.all([
+      const [l, r, g] = await Promise.all([
         api<{ lessons: Summary[] }>('/api/teach/lessons'),
-        api<{ runs: Run[] }>('/api/teach/runs')
+        api<{ runs: Run[] }>('/api/teach/runs'),
+        // Before migration 0016 is run there's nothing to grade: the list just stays empty.
+        api<{ lessons: ToGrade[] }>('/api/teach/grading').catch(() => ({ lessons: [] as ToGrade[] }))
       ]);
       lessons = l.lessons;
       runs = r.runs;
+      toGrade = g.lessons;
       loaded = true;
     } catch (e) {
       error = (e as Error).message;
@@ -116,7 +130,8 @@
   } catch {
     // no storage (private window): the prompt just shows
   }
-  const prompted = (l: Summary) => l.archivePrompt && (dismissed[l.id] ?? 0) < (l.lastDoneAt ?? 0);
+  // Archive is offered once every delivery is over and nothing waits to be graded or released.
+  const prompted = (l: Summary) => l.archivePrompt && !waiting.has(l.id) && (dismissed[l.id] ?? 0) < (l.lastDoneAt ?? 0);
 
   function dismiss(l: Summary) {
     dismissed = { ...dismissed, [l.id]: l.lastDoneAt ?? Date.now() };
@@ -163,6 +178,24 @@
       </ul>
     {/if}
   </section>
+
+  {#if toGrade.length}
+    <section class="{panel} space-y-3">
+      <div class={heading}>// to grade</div>
+      <ul class="divide-y divide-[var(--border-color)]">
+        {#each toGrade as t (t.lessonId)}
+          <li class="py-2 flex flex-wrap gap-x-4 gap-y-1 items-baseline">
+            <a href="/teach/grade?lesson={t.lessonId}" class="font-bold text-sm hover:text-[var(--accent)]">{t.lessonTitle}</a>
+            <span class={label}>{t.runs.map((r) => r.period).join(', ')}</span>
+            <span class="flex-1"></span>
+            {#if t.toGrade}<span class="text-[var(--warn)]">{t.toGrade} to grade</span>{/if}
+            {#if t.toRelease}<span class={label}>{t.toRelease} to release</span>{/if}
+            <a href="/teach/grade?lesson={t.lessonId}" class={btnMain}>[grade]</a>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
 
   <section class="space-y-3">
     <div class="flex justify-between items-center">

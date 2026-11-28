@@ -24,6 +24,7 @@
     ink: Record<string, any[]>;
     answers: Record<string, Answers>;
     marks: Record<string, Record<string, boolean | null | number>>;
+    points?: Record<string, { released: boolean; total: number; max: number; pending: number; questions: Record<string, { points: number; of: number; status: string; comment?: string }> }>;
     scores: Record<string, { best: number; plays: number }>;
     notes: Record<string, string>;
     feedback?: FeedbackByModule;
@@ -135,6 +136,13 @@
       <section class="space-y-4 min-w-0">
         <header class="flex flex-wrap items-baseline gap-3">
           <h2 class="text-lg font-bold">{current.module.title}</h2>
+          {#if lesson.points?.[current.module.id]}
+            {@const pts = lesson.points[current.module.id]}
+            <p class="text-sm">
+              <span class="font-bold">{pts.total} / {pts.max} points</span>
+              {#if pts.pending}<span class="text-[var(--text-muted)]"> · {pts.pending} answer{pts.pending === 1 ? '' : 's'} not graded yet</span>{/if}
+            </p>
+          {/if}
           {#if lesson.scores[current.module.id]}
             {@const s = lesson.scores[current.module.id]}
             <span class="text-sm {label}">// your best in class: {s.best} ({s.plays} {s.plays === 1 ? 'game' : 'games'})</span>
@@ -153,6 +161,7 @@
             editable={false}
             marks={lesson.marks[current.module.id]}
             feedback={lesson.feedback?.[current.module.id]}
+            points={lesson.points?.[current.module.id]}
           />
           <PersonalNote
             runId={lesson.run.id}

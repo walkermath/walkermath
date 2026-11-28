@@ -53,13 +53,14 @@ export function lessonToMarkdown(lesson: any): string {
     }
     if (m.type === 'prompt' || (m.type === 'activity' && c.category === 'feedback')) {
       (c.questions ?? []).forEach((q: any, qi: number) => {
-        out.push(`**Q${qi + 1}.** ${q.text}`, '');
+        out.push(`**Q${qi + 1}.**${(q.points ?? 1) !== 1 ? ` *(${q.points} points)*` : ''} ${q.text}`, '');
         if (q.kind === 'choice') out.push(...q.choices.map((ch: string, ci: number) => `- ${letter(ci)}. ${ch}`), '');
         if (q.kind === 'grid') out.push(...gridTable(q), '');
         if (q.kind === 'sort' && q.sort) out.push(`Groups: ${q.sort.groups.join(' · ')}`, '', ...q.sort.cards.map((c: string) => `- ${c}`), '');
         const key = keyLine(q);
         const how = q.kind === 'grid' && q.grid?.check === 'area' ? ' (area model: multiplies out to this)' : q.kind === 'math' || q.kind === 'grid' ? (q.match === 'any' ? ' (any equivalent form)' : ' (same form, any order)') : '';
         if (key) out.push(`> Answer: ${key}${how}`, '');
+        if (q.kind === 'long') out.push(q.rubric ? `> Rubric: ${q.rubric}` : '> Long answer: graded by the teacher', '');
       });
     } else if (m.type === 'notes') {
       const pages = (c.slides ?? []).map((s: any) => (s.markdown?.trim() ? s.markdown.trim() : '*(blank board)*'));

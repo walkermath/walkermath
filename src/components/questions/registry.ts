@@ -7,6 +7,7 @@ import type { Component } from 'svelte';
 import type { Question, QuestionKind } from '../../lib/questions/index.ts';
 import ChoiceEditor from './editors/ChoiceEditor.svelte';
 import GridEditor from './editors/GridEditor.svelte';
+import LongEditor from './editors/LongEditor.svelte';
 import MathEditor from './editors/MathEditor.svelte';
 import SortEditor from './editors/SortEditor.svelte';
 import TextEditor from './editors/TextEditor.svelte';
@@ -19,5 +20,6 @@ export const EDITORS: Record<QuestionKind, Component<EditorProps, {}, 'q'>> = {
   math: MathEditor,
   grid: GridEditor,
   sort: SortEditor,
-  choice: ChoiceEditor
+  choice: ChoiceEditor,
+  long: LongEditor
 };

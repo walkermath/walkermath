@@ -39,7 +39,8 @@
     marks,
     feedback,
     onanswer,
-    quiet = false
+    quiet = false,
+    points
   }: {
     module: RoomModule;
     /** The module's pages right now: Notes slides and blackboards, or another module's boards (room.ts pagesOf). */
@@ -70,6 +71,8 @@
     onanswer?: (answers: Answers, flush: boolean) => void;
     /** A teacher's preview (the question editor): no "saved" line, since nothing is sent. */
     quiet?: boolean;
+    /** Past lessons: points per question (after release, the teacher's grades and comments). */
+    points?: { released: boolean; questions: Record<string, { points: number; of: number; status: string; comment?: string }> };
   } = $props();
 
   const label = 'text-[var(--text-muted)]';
@@ -192,7 +195,20 @@
           {:else if typeof marks?.[q.id] === 'number'}
             <span class="ml-2 text-sm text-[var(--warn)]">◐ partly right ({Math.round(Number(marks?.[q.id]) * 100)}%)</span>
           {/if}
+          {#if points?.questions[q.id]}
+            {@const p = points.questions[q.id]}
+            {#if p.status === 'pending'}
+              <span class="ml-2 text-sm font-normal {label}">not graded yet · {p.of} point{p.of === 1 ? '' : 's'}</span>
+            {:else}
+              <span class="ml-2 text-sm font-normal {label}">{p.points} / {p.of} point{p.of === 1 ? '' : 's'}</span>
+            {/if}
+          {/if}
         </div>
+        {#if points?.questions[q.id]?.comment}
+          <p class="text-sm p-2 rounded border-l-4 border-[var(--accent)] bg-[var(--accent)]/5">
+            <span class="{label} text-xs">from your teacher:</span> {points.questions[q.id].comment}
+          </p>
+        {/if}
         <div class="slide-text">{@html renderMarkdown(q.text, { glossary: glossaryFor(lessonTerms()) })}</div>
         {#if q.kind === 'choice' && q.multi}
           {@const picked = (mine[q.id] ?? '') === '' ? [] : (mine[q.id] ?? '').split(',')}
@@ -329,6 +345,18 @@
               oninput={(v) => set(q.id, v, false)}
               onchange={(v) => set(q.id, v, true)}
             />
+          {:else if q.kind === 'long'}
+            <textarea
+              rows="6"
+              class={field}
+              aria-label="Answer to question {i + 1}"
+              placeholder={editable ? 'write your answer in full sentences' : ''}
+              maxlength={ANSWER_LIMITS.long}
+              value={mine[q.id] ?? ''}
+              disabled={!editable}
+              oninput={(e) => set(q.id, e.currentTarget.value, false)}
+              onchange={(e) => set(q.id, e.currentTarget.value, true)}
+            ></textarea>
           {:else}
             <textarea
               rows="2"

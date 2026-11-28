@@ -220,6 +220,7 @@
   {#if past.length}
     <details>
       <summary class="cursor-pointer {label}">taught ({past.length})</summary>
+      <p class="mt-2"><a class="underline hover:text-[var(--accent)]" href="/teach/grade?lesson={lessonId}" title="Grade long answers, give credit for unexpected answers, release scores">[grade this lesson]</a></p>
       <ul class="mt-2 space-y-1">
         {#each past as r (r.id)}
           <li class={label}>
