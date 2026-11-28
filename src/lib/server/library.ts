@@ -53,6 +53,7 @@ const shareable = (l: Lesson) => ({
   standards: l.standards,
   resources: l.resources,
   checklist: l.checklist,
+  terms: l.terms,
   durationSec: l.durationSec,
   modules: l.modules
 });

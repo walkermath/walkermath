@@ -12,6 +12,8 @@ import { cleanSort, newSort, type SortSpec } from './sort.ts';
 import { splitSlides } from './slides.ts';
 import { STEP_SEC } from './time.ts';
 import { cleanChecklist } from './checklist.ts';
+import { cleanTerms } from './terms.ts';
+import type { GlossaryEntry } from '../glossary.ts';
 
 /* ---------------- limits ---------------- */
 
@@ -188,6 +190,8 @@ export interface LessonFields {
   resources: Link[];
   /** The readiness checklist students tick off when they join this lesson (up to 5 short items, may be empty). */
   checklist: string[];
+  /** The lesson's own tooltips (a word and its definition), layered over the site glossary. */
+  terms: GlossaryEntry[];
   durationSec: number;
 }
 
@@ -578,6 +582,7 @@ export function cleanLessonFields(b: any): LessonFields | string {
     standards: cleanLine(b?.standards, LIMITS.standards),
     resources,
     checklist: cleanChecklist(b?.checklist),
+    terms: cleanTerms(b?.terms),
     durationSec
   };
 }

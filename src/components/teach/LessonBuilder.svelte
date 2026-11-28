@@ -3,6 +3,7 @@
 <!-- the open tile's settings, a timeline against the planned duration, and a utility zone on the right -->
 <!-- (collapsed by default) holding the "what if a module runs long" preview. -->
 <script lang="ts">
+  import { provideTerms } from '../../lib/lesson/termsContext.ts';
   import { onMount, tick } from 'svelte';
   import { api, ApiError } from '../../lib/api.ts';
   import {
@@ -28,6 +29,8 @@
   import ModuleSettings from './ModuleSettings.svelte';
   import WhenPanel, { type Run } from './WhenPanel.svelte';
   import { CHECKLIST } from '../../lib/lesson/checklist.ts';
+  import type { GlossaryEntry } from '../../lib/glossary.ts';
+  import TermsEditor from './TermsEditor.svelte';
   import { btn, btnDanger, btnMain, field, heading, label, panel } from './ui.ts';
 
   type Lesson = {
@@ -39,6 +42,7 @@
     standards: string;
     resources: Link[];
     checklist: string[];
+    terms: GlossaryEntry[];
     durationSec: number;
     archived: boolean;
     updatedAt: number;
@@ -47,6 +51,8 @@
   type Note = { id: string; title: string; subject: string | null; unitTitle: string | null };
 
   let lesson = $state<Lesson | null>(null);
+  // The lesson's own tooltips reach every slide and question below.
+  provideTerms(() => lesson?.terms);
   let runs = $state<Run[]>([]);
   let notes = $state<Note[]>([]);
   let savedJson = $state('');
@@ -80,7 +86,7 @@
   let previewMin = $state(2);
 
   const editable = (l: Lesson) =>
-    JSON.stringify({ t: l.title, p: l.topic, o: l.objective, s: l.successCriteria, st: l.standards, r: l.resources, c: l.checklist, d: l.durationSec, m: l.modules });
+    JSON.stringify({ t: l.title, p: l.topic, o: l.objective, s: l.successCriteria, st: l.standards, r: l.resources, c: l.checklist, tm: l.terms, d: l.durationSec, m: l.modules });
   const dirty = $derived(lesson ? editable(lesson) !== savedJson : false);
   const planned = $derived(lesson ? totalSec(lesson.modules) : 0);
   const hasFlex = $derived(lesson ? lesson.modules.some((m) => m.pacing === 'flex') : false);
@@ -143,6 +149,7 @@
           standards: lesson.standards,
           resources: lesson.resources,
           checklist: lesson.checklist,
+          terms: lesson.terms,
           durationSec: lesson.durationSec,
           modules: lesson.modules
         }
@@ -457,6 +464,8 @@
             // students tick these when they join. before the start time, the first module waits until they're done; after it, the list flashes on the side but never blocks work. leave empty for none.
           </p>
         </div>
+
+        <TermsEditor bind:terms={lesson.terms} />
       </div>
     </section>
 

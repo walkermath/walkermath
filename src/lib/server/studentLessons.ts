@@ -5,6 +5,8 @@
 // own answers, marks and game scores. Never anyone else's answers, the answer keys, or the
 // teacher's private notes.
 
+import { cleanTerms } from '../lesson/terms.ts';
+import type { GlossaryEntry } from '../glossary.ts';
 import { isCorrect, type Answers } from '../lesson/answers.ts';
 import type { FeedbackByModule } from '../lesson/feedback.ts';
 import { pagesOf, type Page, type RoomModule } from '../lesson/room.ts';
@@ -61,6 +63,8 @@ export async function classLessons(db: any, s: Student, now = Date.now()): Promi
 export interface PastLesson {
   run: { id: string; title: string; date: string; startTime: string };
   resources: { label: string; url: string }[];
+  /** The lesson's own tooltips, as taught (from the run's snapshot). */
+  terms: GlossaryEntry[];
   /** Each module as students saw it (no keys, no private notes) and its pages as they ended up. */
   modules: { module: RoomModule; pages: Page[] }[];
   /** The teacher's ink, by page id. */
@@ -130,6 +134,7 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
   return {
     run: { id: run.id, title: String(lesson.title ?? ''), date: run.run_date, startTime: run.start_time },
     resources: Array.isArray((lesson as any).resources) ? (lesson as any).resources : [],
+    terms: cleanTerms((lesson as any).terms),
     modules: modules.map((module, i) => ({ module, pages: pages[i] })),
     ink,
     answers,

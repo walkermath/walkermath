@@ -160,7 +160,8 @@ export async function startRun(env: any, run: LiveRun, now = Date.now()): Promis
       modules: roomModules(lesson),
       endsAt: run.scheduledEnd,
       startsAt: run.scheduledStart,
-      checklist: lesson.checklist
+      checklist: lesson.checklist,
+      terms: lesson.terms
     })
   });
   if (!res.ok) return { ok: false, error: 'The live room could not start.', status: 502 };

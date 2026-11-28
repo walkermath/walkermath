@@ -15,11 +15,13 @@
   import { ANSWER_LIMITS, answerSpec, isAnswered, type Answers } from '../../lib/lesson/answers.ts';
   import { MARK_COLOR, MARK_LABEL, MARK_SYMBOL, isRevised, type Feedback } from '../../lib/lesson/feedback.ts';
   import { renderMarkdown } from '../../lib/lesson/markdown.ts';
+  import { glossaryFor, useTerms } from '../../lib/lesson/termsContext.ts';
   import { GRID_BLANK_MAX, blankPositions, joinList, parseList } from '../../lib/lesson/grid.ts';
   import MathInput from './MathInput.svelte';
   import SortQuestion from './SortQuestion.svelte';
   import PageView from './PageView.svelte';
 
+  const lessonTerms = useTerms();
   let {
     module,
     pages = [],
@@ -185,7 +187,7 @@
             <span class="ml-2 text-sm text-[var(--bad)]">✗ not right</span>
           {/if}
         </div>
-        <div class="slide-text">{@html renderMarkdown(q.text, { glossary: true })}</div>
+        <div class="slide-text">{@html renderMarkdown(q.text, { glossary: glossaryFor(lessonTerms()) })}</div>
         {#if q.kind === 'choice'}
           <ul class="space-y-1" role={student ? 'radiogroup' : undefined}>
             {#each q.choices as choice, ci}
@@ -362,7 +364,7 @@
     {@render questionList()}
   {:else}
     {#if c.instructions}
-      <div class="p-4 rounded border border-[var(--line)] bg-[var(--bg-surface)] slide-text">{@html renderMarkdown(c.instructions, { glossary: true })}</div>
+      <div class="p-4 rounded border border-[var(--line)] bg-[var(--bg-surface)] slide-text">{@html renderMarkdown(c.instructions, { glossary: glossaryFor(lessonTerms()) })}</div>
     {/if}
     {#if module.type === 'activity' && c.category === 'coliseum' && c.coliseumId}
       <iframe

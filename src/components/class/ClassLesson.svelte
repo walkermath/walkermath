@@ -3,12 +3,14 @@
 <!-- pages and the teacher's ink (boards added in class too), and only this student's own answers -->
 <!-- and marks. Nothing can be changed here. -->
 <script lang="ts">
+  import { provideTerms } from '../../lib/lesson/termsContext.ts';
   import { onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
   import type { Answers } from '../../lib/lesson/answers.ts';
   import { answerSpec, isAnswered } from '../../lib/lesson/answers.ts';
   import type { FeedbackByModule } from '../../lib/lesson/feedback.ts';
   import type { InkStore } from '../../lib/lesson/inkStore.svelte.ts';
+  import type { GlossaryEntry } from '../../lib/glossary.ts';
   import type { Page, RoomModule } from '../../lib/lesson/room.ts';
   import LiveModule from '../live/LiveModule.svelte';
   import PersonalNote from '../live/PersonalNote.svelte';
@@ -17,6 +19,7 @@
   type Lesson = {
     run: { id: string; title: string; date: string; startTime: string };
     resources: { label: string; url: string }[];
+    terms?: GlossaryEntry[];
     modules: { module: RoomModule; pages: Page[] }[];
     ink: Record<string, any[]>;
     answers: Record<string, Answers>;
@@ -27,6 +30,8 @@
   };
 
   let lesson = $state<Lesson | null>(null);
+  // The lesson's own tooltips reach every slide and question below.
+  provideTerms(() => lesson?.terms);
   let error = $state('');
   let open = $state(0);
   let browsing = $state<string | null>(null);

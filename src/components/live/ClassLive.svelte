@@ -7,6 +7,7 @@
 <!-- The teacher's ink shows on every page; a student reading anything other than the teacher's -->
 <!-- page (or board) gets a small live view of it in the corner, which takes them back. -->
 <script lang="ts">
+  import { provideTerms } from '../../lib/lesson/termsContext.ts';
   import { onDestroy, onMount } from 'svelte';
   import { MODULE_TYPES } from '../../lib/lesson/modules.ts';
   import { ANSWER_GRACE_MS, lessonLeftMs, livePage, moduleLeftMs, pagesOf, type RoomState } from '../../lib/lesson/room.ts';
@@ -22,6 +23,8 @@
 
   let runId = $state('');
   let lesson = $state<LiveLesson | null>(null);
+  // The lesson's own tooltips reach every slide and question below.
+  provideTerms(() => lesson?.terms);
   let rs = $state<RoomState | null>(null);
   let transport = $state<Transport>('connecting');
   let gone = $state<string | null>(null);

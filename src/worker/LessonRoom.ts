@@ -25,6 +25,8 @@ import {
   type RoomState
 } from '../lib/lesson/room.ts';
 import { cleanChecklist } from '../lib/lesson/checklist.ts';
+import { cleanTerms } from '../lib/lesson/terms.ts';
+import type { GlossaryEntry } from '../lib/glossary.ts';
 import { INK_LIMITS, PAGE_ID, applyInk, parseInkOp, type InkOp, type Stroke } from '../lib/lesson/ink.ts';
 
 export interface Env {
@@ -59,7 +61,7 @@ type RosterRow = { aliasId: string; alias: string; devices: number; here: boolea
 type Link = { label: string; url: string };
 /** What every device gets once: the title, the lesson's Resources links and the student-safe modules. */
 /** `checklist`: the lesson's readiness checklist, copied in when the delivery opened. */
-type Lesson = { title: string; resources: Link[]; modules: RoomModule[]; checklist: string[] };
+type Lesson = { title: string; resources: Link[]; modules: RoomModule[]; checklist: string[]; terms: GlossaryEntry[] };
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -113,14 +115,15 @@ export class LessonRoom extends DurableObject<Env> {
     }
     if (this.state && !this.lesson) {
       // Modules are stored one per key: a long Notes module can be tens of KB on its own.
-      const meta = await this.ctx.storage.get<{ title: string; resources?: Link[]; count: number; checklist?: string[] }>('meta');
+      const meta = await this.ctx.storage.get<{ title: string; resources?: Link[]; count: number; checklist?: string[]; terms?: GlossaryEntry[] }>('meta');
       const keys = Array.from({ length: meta?.count ?? 0 }, (_, i) => `m:${i}`);
       const found = keys.length ? await this.ctx.storage.get<RoomModule>(keys) : new Map();
       this.lesson = {
         title: meta?.title ?? '',
         resources: meta?.resources ?? [],
         modules: keys.map((k) => found.get(k)!).filter(Boolean),
-        checklist: cleanChecklist(meta?.checklist)
+        checklist: cleanChecklist(meta?.checklist),
+        terms: cleanTerms(meta?.terms)
       };
     }
     return this.state && this.lesson ? { state: this.state, lesson: this.lesson } : null;
@@ -464,10 +467,11 @@ export class LessonRoom extends DurableObject<Env> {
         endsAt: number;
         startsAt?: number;
         checklist?: string[];
+        terms?: GlossaryEntry[];
       };
-      const lesson: Lesson = { title: body.title, resources: body.resources ?? [], modules: body.modules, checklist: cleanChecklist(body.checklist) };
+      const lesson: Lesson = { title: body.title, resources: body.resources ?? [], modules: body.modules, checklist: cleanChecklist(body.checklist), terms: cleanTerms(body.terms) };
       const entries: Record<string, unknown> = {
-        meta: { title: lesson.title, resources: lesson.resources, count: lesson.modules.length, checklist: lesson.checklist }
+        meta: { title: lesson.title, resources: lesson.resources, count: lesson.modules.length, checklist: lesson.checklist, terms: lesson.terms }
       };
       lesson.modules.forEach((m, i) => (entries[`m:${i}`] = m));
       await this.ctx.storage.put(entries);

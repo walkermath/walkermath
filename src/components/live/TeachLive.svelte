@@ -5,6 +5,7 @@
 <!-- Writing on the board happens on the presenter screen ([presenter], /teach/present); the -->
 <!-- preview here shows the ink as it's written. -->
 <script lang="ts">
+  import { provideTerms } from '../../lib/lesson/termsContext.ts';
   import { gridText } from '../../lib/lesson/grid.ts';
   import { sortText } from '../../lib/lesson/sort.ts';
   import { onDestroy, onMount } from 'svelte';
@@ -41,6 +42,8 @@
   /** The lesson as you wrote it (for your private notes and answer keys); the room only has the public part. */
   let mine = $state<LessonModule[]>([]);
   let lesson = $state<LiveLesson | null>(null);
+  // The lesson's own tooltips reach every slide and question below.
+  provideTerms(() => lesson?.terms);
   let rs = $state<RoomState | null>(null);
   let students = $state<RosterRow[]>([]);
   let transport = $state<Transport>('connecting');

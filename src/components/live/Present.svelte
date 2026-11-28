@@ -6,6 +6,7 @@
 <!-- [board] opens a scratch blackboard, kept with that module. Clicker keys turn pages; the screen -->
 <!-- stays awake. The control panel can stay open on another device; both stay in step. -->
 <script lang="ts">
+  import { provideTerms } from '../../lib/lesson/termsContext.ts';
   import { onDestroy, onMount } from 'svelte';
   import { api, ApiError } from '../../lib/api.ts';
   import { MODULE_TYPES } from '../../lib/lesson/modules.ts';
@@ -23,6 +24,8 @@
 
   let run = $state<Run | null>(null);
   let lesson = $state<LiveLesson | null>(null);
+  // The lesson's own tooltips reach every slide and question below.
+  provideTerms(() => lesson?.terms);
   let rs = $state<RoomState | null>(null);
   let transport = $state<Transport>('connecting');
   let error = $state('');

@@ -133,7 +133,7 @@ env.LESSON_ROOM = {
       if (u.pathname === '/init') {
         if (!r) {
           const b = JSON.parse(init.body);
-          r = { lesson: { title: b.title, resources: b.resources, modules: b.modules, checklist: b.checklist }, state: room.startRoom(b.runId, b.modules, b.endsAt, Date.now()) };
+          r = { lesson: { title: b.title, resources: b.resources, modules: b.modules, checklist: b.checklist, terms: b.terms }, state: room.startRoom(b.runId, b.modules, b.endsAt, Date.now()) };
           rooms.set(id, r);
         }
         return Response.json({ state: r.state, serverNow: Date.now() });
@@ -690,8 +690,9 @@ console.log('live lessons');
   // ...and a Coliseum game in the middle.
   l.modules.splice(1, 0, { id: crypto.randomUUID(), type: 'activity', title: 'GCD race', plannedSec: 300, pacing: 'flex', minSec: null, onTimeUp: 'auto',
     config: { category: 'coliseum', instructions: '', links: [], doneTap: false, coliseumId: 'gcd-racer-60s' } });
-  l = (await body(await call(lessonOne, 'PUT', T(`/api/teach/lessons/${l.id}`, { method: 'PUT', body: { ...l, checklist: ['Journal out', 'Pencil ready'], baseUpdatedAt: l.updatedAt } }), { lessonId: l.id }, teachMw))).lesson;
+  l = (await body(await call(lessonOne, 'PUT', T(`/api/teach/lessons/${l.id}`, { method: 'PUT', body: { ...l, checklist: ['Journal out', 'Pencil ready'], terms: [{ id: 'junk', term: 'Leading coefficient', def: 'The number in front of the highest power.' }, { term: '', def: 'dropped' }], baseUpdatedAt: l.updatedAt } }), { lessonId: l.id }, teachMw))).lesson;
   assert.deepEqual(l.checklist, ['Journal out', 'Pencil ready'], 'the readiness checklist is saved with the lesson');
+  assert.deepEqual(l.terms, [{ id: 'leading-coefficient', term: 'Leading coefficient', def: 'The number in front of the highest power.' }], 'tooltips are saved with the lesson, ids made by the server, blanks dropped');
   const day = new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 10);
   const made = await call(runsIdx, 'POST', T(`/api/teach/lessons/${l.id}/runs`, { method: 'POST', body: { classId: cls.id, date: day, startTime: '13:00', endTime: '13:50' } }), { lessonId: l.id }, teachMw);
   assert.equal(made.status, 201, JSON.stringify(await made.clone().json()));
@@ -717,6 +718,7 @@ console.log('live lessons');
   const view = await body(await call(liveR, 'GET', S(`/api/live/${run.id}?full=1`), { runId: run.id }));
   assert.equal(view.lesson.modules.length, 3);
   assert.deepEqual(view.lesson.checklist, ['Journal out', 'Pencil ready'], "the lesson's checklist reaches the room");
+  assert.equal(view.lesson.terms?.[0]?.id, 'leading-coefficient', "the lesson's tooltips reach the room");
   const seen = JSON.stringify(view.lesson);
   assert.ok(seen.includes('2 + 2?'));
   assert.ok(!seen.includes('"4"') && !seen.includes('answer') && !seen.includes('watch row 3'), 'no answer keys or private notes in the room');
@@ -882,6 +884,7 @@ console.log('live lessons');
   const past = (await body(backRes)).lesson;
   assert.equal(past.run.title, 'Live test');
   assert.equal(past.modules.length, 3);
+  assert.equal(past.terms[0]?.term, 'Leading coefficient', 'the lesson’s tooltips are there as taught');
   assert.deepEqual(past.modules[1].pages.map((p) => [p.id, p.added]), [[board, true]], 'the board added in class is there');
   assert.deepEqual(past.ink[board], [stroke], 'with its ink');
   assert.deepEqual(past.answers[bell.id], { [qid]: '44' });
