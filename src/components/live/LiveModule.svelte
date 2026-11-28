@@ -37,7 +37,8 @@
     saveState = '',
     marks,
     feedback,
-    onanswer
+    onanswer,
+    quiet = false
   }: {
     module: RoomModule;
     /** The module's pages right now: Notes slides and blackboards, or another module's boards (room.ts pagesOf). */
@@ -66,6 +67,8 @@
     feedback?: Record<string, Feedback>;
     /** A change to the answers; `flush` = save now (a choice picked, a field left) rather than after a pause in typing. */
     onanswer?: (answers: Answers, flush: boolean) => void;
+    /** A teacher's preview (the question editor): no "saved" line, since nothing is sent. */
+    quiet?: boolean;
   } = $props();
 
   const label = 'text-[var(--text-muted)]';
@@ -121,7 +124,7 @@
 </script>
 
 {#snippet status()}
-  {#if student && spec}
+  {#if student && spec && !quiet}
     <p class="text-xs {saveState === 'error' ? 'text-[var(--warn)]' : label}" aria-live="polite">
       {#if editable}
         {saveState === 'saving' || saveState === 'pending'
