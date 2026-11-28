@@ -163,7 +163,8 @@ export async function runAnswers(db: any, run: LiveRun): Promise<{ modules: Coll
         ...(q.format ? { format: q.format } : {}),
         ...(q.decimals !== undefined ? { decimals: q.decimals } : {}),
         ...(q.multi ? { multi: true } : {}),
-        ...(q.alts?.length ? { alts: q.alts } : {})
+        ...(q.alts?.length ? { alts: q.alts } : {}),
+        ...(q.points !== undefined ? { points: q.points } : {})
       }));
       keys.set(m.id, entry.questions);
     }

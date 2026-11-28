@@ -113,6 +113,8 @@ const notesR = await load('functions/api/class/notes.js');
 const libraryR = await load('functions/api/teach/library/index.js');
 const libraryOneR = await load('functions/api/teach/library/[entryId]/index.js');
 const libraryCopyR = await load('functions/api/teach/library/[entryId]/copy.js');
+const toGradeR = await load('functions/api/teach/grading.js');
+const gradingR = await load('functions/api/teach/lessons/[lessonId]/grading.js');
 const { lessonToMarkdown, lessonFromMarkdown } = await load('src/lib/lesson/exportMd.ts');
 
 /* ---------- a stand-in for the LessonRoom Durable Object (same state machine, no sockets) ---------- */
@@ -1137,6 +1139,109 @@ console.log('active feedback');
   env.DB.sql.prepare('DELETE FROM lesson_runs WHERE id = ?').run(run.id);
   assert.equal(n(), 0, 'deleted with the delivery');
   ok('feedback is deleted with its delivery');
+}
+
+console.log('grading after class');
+{
+  const signInAs = async (a) => cookieOf(await call(signin, 'POST', req('/api/class/signin', { method: 'POST', body: { passcode: cls.passcode, alias: a.alias, pin: a.pin } }), {}, classMw), '__Host-wm_student');
+  const a = aliases[12];
+  const b = aliases[13];
+  const sa = await signInAs(a);
+  const sb = await signInAs(b);
+  const idOf = (x) => env.DB.sql.prepare('SELECT id FROM student_aliases WHERE alias = ?').get(x.alias).id;
+
+  // Bellwork with a keyed number question worth 2, and a long answer worth 4 with a rubric.
+  let l = (await body(await call(lessonsIdx, 'POST', T('/api/teach/lessons', { method: 'POST', body: { title: 'Discriminant day' } }), {}, teachMw))).lesson;
+  const qn = crypto.randomUUID();
+  const ql = crypto.randomUUID();
+  l.modules[0].config.questions = [
+    { id: qn, kind: 'number', text: 'How many real roots does x^2+1 have?', choices: [], answer: '0', points: 2 },
+    { id: ql, kind: 'long', text: 'Explain how you know.', choices: [], answer: '', rubric: 'Uses the discriminant being negative', points: 4 }
+  ];
+  l = (await body(await call(lessonOne, 'PUT', T(`/api/teach/lessons/${l.id}`, { method: 'PUT', body: { ...l, baseUpdatedAt: l.updatedAt } }), { lessonId: l.id }, teachMw))).lesson;
+  const bw = l.modules[0];
+  assert.deepEqual([bw.config.questions[1].kind, bw.config.questions[1].rubric, bw.config.questions[1].points], ['long', 'Uses the discriminant being negative', 4]);
+  const stored = JSON.parse(env.DB.sql.prepare('SELECT config_json FROM lesson_modules WHERE id = ?').get(bw.id).config_json);
+  assert.ok(!JSON.stringify(stored).includes('discriminant being'), 'the rubric is stored privately, like a key');
+
+  const day = new Date(Date.now() + 5 * 86400_000).toISOString().slice(0, 10);
+  const run = (await body(await call(runsIdx, 'POST', T(`/api/teach/lessons/${l.id}/runs`, { method: 'POST', body: { classId: cls.id, date: day, startTime: '15:00', endTime: '15:50' } }), { lessonId: l.id }, teachMw))).runs.find((r) => r.date === day);
+  await call(startR, 'POST', T(`/api/teach/runs/${run.id}/start`, { method: 'POST', body: {} }), { runId: run.id }, teachMw);
+  const A = (cookie, answers) => call(answersR, 'POST', req('/api/class/answers', { method: 'POST', cookie, body: { runId: run.id, moduleId: bw.id, answers } }), {}, classMw);
+  assert.equal((await A(sa, { [qn]: 'none', [ql]: 'b^2 - 4ac is -4, which is negative' })).status, 200, 'a long answer is taken');
+  assert.equal((await A(sb, { [qn]: '0' })).status, 200);
+  assert.equal((await A(sb, { [ql]: 'x'.repeat(2001) })).status, 400, 'long answers have a limit');
+  const live = await body(await call(liveR, 'GET', req(`/api/live/${run.id}`, { cookie: sa }), { runId: run.id }));
+  assert.ok(!JSON.stringify(live).includes('discriminant being'), 'students never get the rubric');
+
+  const list = async () => (await body(await call(toGradeR, 'GET', T('/api/teach/grading'), {}, teachMw))).lessons;
+  assert.deepEqual(await list(), [], 'nothing waits while the lesson is still going');
+  await call(endR, 'POST', T(`/api/teach/runs/${run.id}/end`, { method: 'POST', body: {} }), { runId: run.id }, teachMw);
+  let waiting = (await list()).find((x) => x.lessonId === l.id);
+  assert.deepEqual([waiting.toGrade, waiting.toRelease, waiting.runs.length], [1, 1, 1], 'one long answer to grade, one module to release');
+  ok('a long answer worth 4 points with a private rubric; once the lesson ends it is on the to-grade list');
+
+  const back = async (cookie) => (await body(await call(classLessonOneR, 'GET', req(`/api/class/lessons/${run.id}`, { cookie }), { runId: run.id }, classMw))).lesson;
+  let pa = await back(sa);
+  assert.deepEqual([pa.points[bw.id].released, pa.points[bw.id].total, pa.points[bw.id].max, pa.points[bw.id].pending], [false, 0, 6, 1], 'before release: automatic points only, the long answer pending');
+  assert.equal(pa.marks[bw.id][qn], false);
+  assert.ok(!JSON.stringify(pa).includes('discriminant being'));
+
+  const view = await body(await call(gradingR, 'GET', T(`/api/teach/lessons/${l.id}/grading`), { lessonId: l.id }, teachMw));
+  assert.equal(view.runs.length, 1);
+  assert.equal(view.runs[0].modules[0].questions[1].rubric, 'Uses the discriminant being negative', 'the teacher sees the rubric');
+  assert.equal(view.runs[0].submissions.length, 2);
+  ok('the student sees automatic points and "pending" before release; the grading screen has everything');
+
+  const G = (grades, cookie = jar.teacher) => call(gradingR, 'POST', req(`/api/teach/lessons/${l.id}/grading`, { method: 'POST', cookie, body: { grades } }), { lessonId: l.id }, teachMw);
+  const one = (x) => ({ runId: run.id, moduleId: bw.id, aliasId: idOf(a), ...x });
+  const saved = await body(await G([one({ questionId: ql, score: 9, comment: 'Yes: the discriminant is negative.' }), one({ questionId: qn, score: 2, comment: '"none" counts.' })]));
+  assert.deepEqual(saved.saved.map((g) => [g.score, g.max]), [[4, 4], [2, 2]], 'points are capped at the question’s worth');
+  assert.equal(saved.saved[0].answer, 'b^2 - 4ac is -4, which is negative', 'the answer is kept as graded');
+  assert.equal((await G([one({ questionId: 'nope', score: 1 })])).status, 404, 'a real question');
+  assert.equal((await G([one({ aliasId: 'someone', questionId: ql, score: 1 })])).status, 404, 'a student of that class');
+  assert.equal((await G([one({ questionId: ql, score: -1 })])).status, 400);
+  assert.equal((await G([one({ questionId: ql, score: 1, comment: 'x'.repeat(401) })])).status, 400, 'comments are short');
+  const other = await signInTeacher('brett@example.com', 'g-2');
+  assert.equal((await G([one({ questionId: ql, score: 1 })], other.session)).status, 404, 'not another teacher');
+  assert.equal((await G([one({ questionId: ql, score: 1 })], sa)).status, 401, 'not a student');
+  waiting = (await list()).find((x) => x.lessonId === l.id);
+  assert.deepEqual([waiting.toGrade, waiting.toRelease], [0, 1], 'graded, still to release');
+  pa = await back(sa);
+  assert.equal(pa.points[bw.id].total, 0, 'nothing shows before release');
+  assert.ok(!JSON.stringify(pa).includes('counts.'), 'nor the comments');
+  ok('the teacher grades the long answer and gives credit for an unexpected right answer; everything is checked');
+
+  const R = (released) => call(gradingR, 'POST', T(`/api/teach/lessons/${l.id}/grading`, { method: 'POST', body: { release: { runIds: [run.id], moduleId: bw.id, released } } }), { lessonId: l.id }, teachMw);
+  assert.equal((await body(await R(true))).changed, 1);
+  assert.equal((await list()).find((x) => x.lessonId === l.id), undefined, 'off the to-grade list once released');
+  pa = await back(sa);
+  assert.deepEqual([pa.points[bw.id].released, pa.points[bw.id].total, pa.points[bw.id].max, pa.points[bw.id].pending], [true, 6, 6, 0]);
+  assert.equal(pa.points[bw.id].questions[ql].comment, 'Yes: the discriminant is negative.');
+  assert.equal(pa.marks[bw.id][qn], true, 'the override turns ✗ into ✓');
+  const pb = await back(sb);
+  assert.deepEqual([pb.points[bw.id].total, pb.points[bw.id].max], [2, 6], 'b: right on the number, no long answer');
+  ok('release: the student sees the points, the comments and the overridden mark');
+
+  const rep = await body(await call(reportR, 'POST', T('/api/teach/reports', { method: 'POST', body: { runIds: [run.id], items: { [l.id]: [`${bw.id}:results`] }, breakdown: 'aggregate', questions: [] } }), {}, teachMw));
+  const sheet = rep.sheets[0];
+  const pc = sheet.columns.findIndex((c) => c.includes('Points (of 6)'));
+  assert.ok(pc > 0, sheet.columns.join(' | '));
+  assert.equal(sheet.rows.find((r) => r[2] === a.alias)[pc], 6);
+  assert.equal(sheet.rows.find((r) => r[2] === b.alias)[pc], 2);
+  assert.ok(!JSON.stringify(rep).includes('counts.'), 'comments are not in reports');
+  ok('reports: a Points column with the grades; comments stay out');
+
+  await G([one({ questionId: qn, score: null })]);
+  pa = await back(sa);
+  assert.deepEqual([pa.points[bw.id].total, pa.marks[bw.id][qn]], [4, false], 'clearing an override goes back to the automatic mark');
+  await R(false);
+  assert.ok((await list()).find((x) => x.lessonId === l.id), 'taking a release back puts it on the list again');
+  const n = () => env.DB.sql.prepare('SELECT (SELECT COUNT(*) FROM grades WHERE run_id = ?1) + (SELECT COUNT(*) FROM grade_releases WHERE run_id = ?1) n').get(run.id).n;
+  assert.equal(n(), 1);
+  env.DB.sql.prepare('DELETE FROM lesson_runs WHERE id = ?').run(run.id);
+  assert.equal(n(), 0, 'deleted with the delivery');
+  ok('grades can be cleared and releases taken back; both are deleted with the delivery');
 }
 
 console.log('fixing notes after teaching');

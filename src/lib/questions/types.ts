@@ -6,7 +6,7 @@ import type { MathMatch } from '../lesson/mathcheck.ts';
 import { MATH_MAX } from '../lesson/mathcheck.ts';
 import type { SortSpec } from '../lesson/sort.ts';
 
-export type QuestionKind = 'text' | 'number' | 'choice' | 'math' | 'grid' | 'sort';
+export type QuestionKind = 'text' | 'number' | 'choice' | 'math' | 'grid' | 'sort' | 'long';
 
 export interface Question {
   id: string;
@@ -32,13 +32,17 @@ export interface Question {
   multi?: boolean;
   /** Short text: other answers that also count as right ("turning point" for "vertex"). Private, like the key. */
   alts?: string[];
+  /** Long answer: what a full-credit answer has (for the teacher, and later the AI grader). Private, like the key. */
+  rubric?: string;
+  /** What the question is worth (default 1). Frozen with the delivery, like the key. */
+  points?: number;
 }
 
 /** Fields that are part of the key: moved to a module's private part and never sent to students. */
-export const KEY_FIELDS = ['answer', 'alts'] as const;
+export const KEY_FIELDS = ['answer', 'alts', 'rubric'] as const;
 
 /** The teacher's side: how long a question's parts may be. */
-export const QUESTION_LIMITS = { text: 2000, choices: 6, choice: 200, answer: 200, alts: 5, decimals: 6 } as const;
+export const QUESTION_LIMITS = { text: 2000, choices: 6, choice: 200, answer: 200, alts: 5, decimals: 6, rubric: 1000, points: 100 } as const;
 
 /** The student's side: how long a typed answer may be. */
 export const ANSWER_LIMITS = {
@@ -46,6 +50,7 @@ export const ANSWER_LIMITS = {
   number: 40,
   math: MATH_MAX,
   short: 1000,
+  long: 2000,
   keys: 50
 } as const;
 
@@ -92,6 +97,8 @@ export interface QuestionKindDef {
   hint: string;
   /** Allowed in Active Feedback (teacher-marked, no key). */
   keyless: boolean;
+  /** Graded by a person (or the AI grader), never by a key: 'pending' until a grade is given. */
+  teacherGraded?: boolean;
   /** The kind's own fields for a new question (id, text and kind are added by the registry). */
   newQuestion(): Partial<Question>;
   /** The teacher's question and key, checked: the kind's own fields, or an error message. */

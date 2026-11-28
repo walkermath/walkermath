@@ -13,6 +13,7 @@
 import { cleanLine, cleanText, isUuid, newUuid } from '../lesson/clean.ts';
 import { choice } from './kinds/choice.ts';
 import { grid } from './kinds/grid.ts';
+import { long } from './kinds/long.ts';
 import { math } from './kinds/math.ts';
 import { number } from './kinds/number.ts';
 import { sort } from './kinds/sort.ts';
@@ -24,9 +25,9 @@ export { numberRule, toNumber } from './kinds/number.ts';
 export { cleanPicks } from './kinds/choice.ts';
 
 /** Every kind, in the order the editor offers them. */
-export const QUESTION_KINDS: Record<QuestionKind, QuestionKindDef> = { text, number, math, grid, sort, choice };
+export const QUESTION_KINDS: Record<QuestionKind, QuestionKindDef> = { text, number, math, grid, sort, choice, long };
 export const QUESTION_KIND_LIST = Object.keys(QUESTION_KINDS) as QuestionKind[];
-/** Kinds an Active Feedback activity can ask (teacher-marked, so no key). */
+/** Kinds an Active Feedback activity can ask (teacher-marked, so no key). Long answer included. */
 export const KEYLESS_KINDS = QUESTION_KIND_LIST.filter((k) => QUESTION_KINDS[k].keyless);
 
 export const isQuestionKind = (v: unknown): v is QuestionKind => typeof v === 'string' && v in QUESTION_KINDS;
@@ -53,14 +54,28 @@ export function cleanQuestion(raw: any, where: string, n: number, keyless = fals
   const own = def.cleanQuestion(raw, base, { where, n, keyless });
   if (typeof own === 'string') return own;
   const q: Question = { id: isUuid(raw?.id) ? raw.id : newUuid(), kind, text: qtext, choices: [], answer: base.answer, ...own } as Question;
+  const points = cleanPoints(raw?.points);
+  if (points !== 1) q.points = points;
   if (keyless) {
     q.answer = '';
     delete q.match;
     delete q.alts;
     delete q.partial;
+    delete q.rubric;
   }
   return q;
 }
+
+/** What a question is worth: 0.5 to 100 in halves; anything else is the default, 1. */
+export function cleanPoints(v: unknown): number {
+  const n = Number(v);
+  if (v === undefined || v === null || v === '' || !Number.isFinite(n)) return 1;
+  const halves = Math.round(n * 2) / 2;
+  return halves >= 0.5 && halves <= QUESTION_LIMITS.points ? halves : 1;
+}
+
+/** A question's worth (default 1). */
+export const pointsOf = (q: Pick<Question, 'points'>): number => q.points ?? 1;
 
 /** A list of questions, checked. */
 export function cleanQuestions(v: unknown, where: string, keyless: boolean, max: number): Question[] | string {
@@ -90,6 +105,8 @@ const BLANK: Grade = { status: 'blank', score: 0, max: 1, source: 'auto' };
 
 /** The one way an answer is graded. Runs against the full question (key included): server side, or the teacher's own preview. */
 export function gradeAnswer(q: Question, answer: string | undefined): Grade {
+  const def = kindOf(q?.kind);
+  if (def.teacherGraded) return answer === undefined || answer.trim() === '' ? BLANK : def.grade(q, answer);
   if (!q?.answer) return UNKEYED;
   if (answer === undefined || answer.trim() === '') return BLANK;
   return kindOf(q.kind).grade(q, answer);

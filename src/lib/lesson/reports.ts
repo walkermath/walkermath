@@ -17,7 +17,8 @@
 // Rows are student aliases, never names. A blank cell means nothing was handed in.
 
 import { answerSpec, isAnswered, type Answers } from './answers.ts';
-import { answerText as questionAnswerText, gradeAnswer, isCorrect, questionsOf, toNumber, type Question } from '../questions/index.ts';
+import { answerText as questionAnswerText, isCorrect, questionsOf, toNumber, type Question } from '../questions/index.ts';
+import { scoreModule, type StoredGrade } from '../questions/score.ts';
 import { MARK_POINTS, MARK_REPORT, type Mark } from './feedback.ts';
 import type { Grid } from './grid.ts';
 import { isFeedbackActivity } from './modules.ts';
@@ -66,6 +67,8 @@ export interface ReportQuestion {
   decimals?: number;
   multi?: boolean;
   alts?: string[];
+  /** What it's worth (default 1). */
+  points?: number;
 }
 
 const KIND_LABEL: Record<ItemKind, string> = {
@@ -95,7 +98,8 @@ export function moduleQuestions(m: ReportModule): ReportQuestion[] {
     ...(q.format ? { format: q.format } : {}),
     ...(q.decimals !== undefined ? { decimals: q.decimals } : {}),
     ...(q.multi ? { multi: true } : {}),
-    ...(q.alts?.length ? { alts: q.alts } : {})
+    ...(q.alts?.length ? { alts: q.alts } : {}),
+    ...(q.points !== undefined ? { points: q.points } : {})
   }));
 }
 
@@ -120,7 +124,7 @@ export function reportItems(modules: ReportModule[]): ReportItem[] {
     });
     if (answerSpec(m)) {
       items.push(item('responses'));
-      if (moduleQuestions(m).some((q) => q.answer !== '')) items.push(item('results'));
+      if (moduleQuestions(m).some((q) => q.answer !== '' || q.kind === 'long')) items.push(item('results'));
       if (isFeedbackActivity(m)) items.push(item('feedback'));
     } else if (isColiseum(m)) {
       items.push(item('coliseum'));
@@ -157,6 +161,8 @@ export interface ReportData {
   joins: { runId: string; aliasId: string; joinedAt: number }[];
   /** The teacher's marks in Active Feedback activities (their messages stay private: never reported). */
   feedback?: { runId: string; moduleId: string; aliasId: string; questionId: string; mark: Mark }[];
+  /** Grades given after class: long answers and overrides of automatic marks (points only; comments are never reported). */
+  grades?: { runId: string; moduleId: string; aliasId: string; questionId: string; score: number; max: number; source: 'teacher' | 'llm'; at: number }[];
 }
 
 export type Breakdown = 'aggregate' | 'period' | 'lesson';
@@ -249,6 +255,11 @@ export function buildReport(data: ReportData, req: ReportRequest): Sheet[] {
     c[f.mark]++;
     markCounts.set(ck, c);
   }
+  const gradesBy = new Map<string, NonNullable<ReportData['grades']>>(); // `${runId}|${moduleId}|${aliasId}`
+  for (const g of data.grades ?? []) {
+    const k = `${g.runId}|${g.moduleId}|${g.aliasId}`;
+    gradesBy.set(k, [...(gradesBy.get(k) ?? []), g]);
+  }
   const touched = new Set<string>(); // aliases with anything in these runs (keeps retired ones that took part)
   for (const k of [...subs.keys(), ...best.keys()]) touched.add(k.split('|')[2]);
   for (const k of marks.keys()) touched.add(k.split('|')[2]);
@@ -304,22 +315,22 @@ export function buildReport(data: ReportData, req: ReportRequest): Sheet[] {
             return moduleQuestions(m).filter((q) => q.answer !== '' && isCorrect(q as Question, a[q.id]) === true).length;
           }
         });
-        // With partial credit on any question: points too (a partly right answer earns its share).
-        if (moduleQuestions(mod!).some((q) => q.answer !== '' && q.partial)) {
+        // Points too, wherever a question isn't simply right-or-wrong for 1: partial credit, other
+        // point values, long answers, or grades given after class (overrides included).
+        const qs = moduleQuestions(mod!) as unknown as Question[];
+        const gradedHere = (data.grades ?? []).some((g) => g.moduleId === item.moduleId);
+        if (gradedHere || qs.some((q) => q.partial || (q.points ?? 1) !== 1 || q.kind === 'long')) {
+          const max = scoreModule(qs, {}).max;
           inst.columns.push({
-            header: head(`Points (of ${total})`),
+            header: head(`Points (of ${max})`),
             value: (run, s) => {
               const m = find(run);
               const a = answersOf(run, s);
               const spec = m && answerSpec(m);
               if (!m || !a || !spec || !isAnswered(spec, a)) return null;
-              const pts = moduleQuestions(m)
-                .filter((q) => q.answer !== '')
-                .reduce((n, q) => {
-                  const g = gradeAnswer(q as Question, a[q.id]);
-                  return n + (g.status === 'right' || g.status === 'partial' ? g.score : 0);
-                }, 0);
-              return Math.round(pts * 100) / 100;
+              const mine: Record<string, StoredGrade> = {};
+              for (const g of gradesBy.get(`${run.id}|${m.id}|${s.id}`) ?? []) mine[g.questionId] = { ...g, comment: '', answer: '' };
+              return scoreModule(moduleQuestions(m) as unknown as Question[], a, mine).total;
             }
           });
         }

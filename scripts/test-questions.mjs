@@ -82,7 +82,7 @@ test('keyless (Active Feedback): only keyless kinds, no key, no matching rule', 
   assert.equal(m.answer, '');
   assert.equal(m.match, undefined);
   assert.equal(Q.cleanQuestion({ kind: 'grid', text: 'g' }, 'F', 1, true).kind, 'text');
-  assert.deepEqual(Q.KEYLESS_KINDS.sort(), ['choice', 'math', 'number', 'text']);
+  assert.deepEqual([...Q.KEYLESS_KINDS].sort(), ['choice', 'long', 'math', 'number', 'text']);
 });
 
 test('student answers are checked by their kind', () => {
@@ -220,4 +220,52 @@ test('other accepted answers (short text), kept private like the key', async () 
   assert.deepEqual(s.private.alts, { [q.id]: ['Turning point', 'apex'] });
   assert.ok(!JSON.stringify(publicModule(m)).includes('apex'), 'never sent to students');
   assert.deepEqual(joinModule(s.config, s.private, 'prompt').questions[0].alts, ['Turning point', 'apex']);
+});
+
+test('long answer: graded by the teacher, pending until then; its rubric stays private', async () => {
+  const q = Q.cleanQuestion({ kind: 'long', text: 'Explain why', rubric: 'Mentions the discriminant', points: 4 }, 'Exit', 1);
+  assert.deepEqual([q.kind, q.answer, q.rubric, q.points], ['long', '', 'Mentions the discriminant', 4]);
+  assert.equal(Q.gradeAnswer(q, 'because b^2-4ac < 0').status, 'pending');
+  assert.equal(Q.gradeAnswer(q, '  ').status, 'blank');
+  assert.equal(Q.isCorrect(q, 'anything'), null, 'no ✓/✗ from a key');
+  assert.deepEqual(Q.cleanAnswer(q, 'x'.repeat(2001)), { error: 'Keep each answer under 2000 characters.' });
+  const { splitModule, publicModule, joinModule } = await import('../src/lib/lesson/modules.ts');
+  const m = { id: 'm', type: 'prompt', title: 'Exit', plannedSec: 300, pacing: 'flex', teacherNotes: '', config: { category: 'exit-ticket', questions: [q] } };
+  assert.ok(!JSON.stringify(publicModule(m)).includes('discriminant'));
+  const s = splitModule(m);
+  assert.equal(joinModule(s.config, s.private, 'prompt').questions[0].rubric, 'Mentions the discriminant');
+});
+
+test('points: 0.5 to 100 in halves, default 1 (and left off when it is 1)', () => {
+  assert.equal(Q.cleanQuestion({ kind: 'text', text: 't', points: 2.5 }, 'B', 1).points, 2.5);
+  assert.equal(Q.cleanQuestion({ kind: 'text', text: 't', points: 1 }, 'B', 1).points, undefined);
+  for (const bad of [0, -1, 101, 'x', null]) assert.equal(Q.cleanQuestion({ kind: 'text', text: 't', points: bad }, 'B', 1).points, undefined, String(bad));
+});
+
+test('scoreModule: stored grades win, then Active Feedback marks, then the key', async () => {
+  const { scoreModule } = await import('../src/lib/questions/score.ts');
+  const qs = [
+    { id: 'a', kind: 'number', text: '2+2', choices: [], answer: '4', points: 2 },
+    { id: 'b', kind: 'text', text: 'shape', choices: [], answer: 'parabola' },
+    { id: 'c', kind: 'long', text: 'why', choices: [], answer: '', points: 4 },
+    { id: 'd', kind: 'text', text: 'opinion', choices: [], answer: '' },
+    { id: 'e', kind: 'sort', text: 's', choices: [], answer: '["0","1","0","1"]', partial: true, sort: { groups: ['A', 'B'], cards: ['p', 'q', 'r', 's'] } }
+  ];
+  const answers = { a: '4', b: 'U shape', c: 'because...', d: 'I like it', e: '["0","1","0","0"]' };
+  const before = scoreModule(qs, answers);
+  assert.deepEqual(
+    before.questions.map((s) => [s.questionId, s.status, s.points, s.of]),
+    [['a', 'right', 2, 2], ['b', 'wrong', 0, 1], ['c', 'pending', 0, 4], ['d', 'unkeyed', 0, 0], ['e', 'partial', 0.75, 1]]
+  );
+  assert.deepEqual([before.total, before.max, before.pending], [2.75, 8, 1]);
+
+  const g = (questionId, score, max, comment = '') => ({ questionId, score, max, comment, source: 'teacher', answer: '', at: 1 });
+  const after = scoreModule(qs, answers, { b: g('b', 0.5, 1, 'close: a U shape is a parabola'), c: g('c', 3, 4, 'good start') });
+  const b = after.questions[1];
+  assert.deepEqual([b.status, b.points, b.overridden, b.auto, b.comment], ['partial', 0.5, true, 'wrong', 'close: a U shape is a parabola']);
+  assert.deepEqual([after.questions[2].status, after.questions[2].points, after.questions[2].overridden], ['partial', 3, undefined]);
+  assert.deepEqual([after.total, after.max, after.pending], [6.25, 8, 0]);
+
+  const fb = scoreModule([{ id: 'f', kind: 'text', text: 't', choices: [], answer: '', points: 2 }], { f: 'x' }, {}, { f: 'partial' });
+  assert.deepEqual([fb.total, fb.max, fb.questions[0].source], [1, 2, 'feedback']);
 });

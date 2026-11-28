@@ -113,7 +113,7 @@ export async function reportData(db: any, teacherId: string, runIds: string[]): 
   const runs = (runRows as any[]).map(toRun);
   const classIds = JSON.stringify([...new Set(runs.map((r) => r.classId))]);
 
-  const [aliases, subs, scores, joins, feedback] = await Promise.all([
+  const [aliases, subs, scores, joins, feedback, grades] = await Promise.all([
     db.prepare('SELECT id, class_id, alias, retired FROM student_aliases WHERE class_id IN (SELECT value FROM json_each(?1))').bind(classIds).all(),
     db.prepare(`SELECT run_id, module_id, alias_id, answers_json FROM submissions WHERE run_id IN (SELECT value FROM json_each(?1))`).bind(ids).all(),
     db
@@ -125,7 +125,8 @@ export async function reportData(db: any, teacherId: string, runIds: string[]): 
       .bind(ids)
       .all(),
     readJoins(db, ids),
-    readFeedback(db, ids)
+    readFeedback(db, ids),
+    readGrades(db, ids)
   ]);
 
   return {
@@ -134,8 +135,31 @@ export async function reportData(db: any, teacherId: string, runIds: string[]): 
     submissions: subs.results.map((s: any) => ({ runId: s.run_id, moduleId: s.module_id, aliasId: s.alias_id, answers: parse(s.answers_json, {}) })),
     scores: scores.results.map((s: any) => ({ runId: s.run_id, moduleId: s.module_id, aliasId: s.alias_id, best: Number(s.best), plays: Number(s.plays) })),
     joins,
-    feedback
+    feedback,
+    grades
   };
+}
+
+/** Grades given after class (points only: comments stay out of reports); none before migration 0016 is run. */
+async function readGrades(db: any, ids: string): Promise<NonNullable<ReportData['grades']>> {
+  try {
+    const { results } = await db
+      .prepare(`SELECT run_id, module_id, alias_id, question_id, score, max, source, updated_at FROM grades WHERE run_id IN (SELECT value FROM json_each(?1))`)
+      .bind(ids)
+      .all();
+    return results.map((g: any) => ({
+      runId: g.run_id,
+      moduleId: g.module_id,
+      aliasId: g.alias_id,
+      questionId: g.question_id,
+      score: Number(g.score),
+      max: Number(g.max),
+      source: g.source === 'llm' ? 'llm' : 'teacher',
+      at: Number(g.updated_at)
+    }));
+  } catch {
+    return [];
+  }
 }
 
 /** The teacher's Active Feedback marks (not the messages); none before migration 0012 is run. */

@@ -12,6 +12,7 @@ import { questionMark, questionsOf, type QuestionMark } from '../questions/index
 import type { FeedbackByModule } from '../lesson/feedback.ts';
 import { pagesOf, type Page, type RoomModule } from '../lesson/room.ts';
 import { studentFeedback } from './feedback.ts';
+import { gradedModules, releasedModules, studentGrades, studentModuleScore } from './grades.ts';
 import { roomModules } from './live.ts';
 import { studentNotes } from './notes.ts';
 import type { Student } from './sessions.ts';
@@ -80,6 +81,21 @@ export interface PastLesson {
   notes: Record<string, string>;
   /** The teacher's marks and messages on this student's answers (Active Feedback), by module id then question id. */
   feedback: FeedbackByModule;
+  /**
+   * Points, by module id, for modules graded after class. Before the teacher releases a module the
+   * student sees only automatic points, and long answers say "not graded yet"; after, the teacher's
+   * points and comments too.
+   */
+  points: Record<string, PastPoints>;
+}
+
+export interface PastPoints {
+  released: boolean;
+  total: number;
+  max: number;
+  /** Long answers not graded (or not released) yet. */
+  pending: number;
+  questions: Record<string, { points: number; of: number; status: string; comment?: string }>;
 }
 
 /** One finished delivery of the student's own class, or null. */
@@ -95,7 +111,7 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
   const pageOrder = parse(run.timing_json, null)?.pageOrder ?? null;
   const pages = modules.map((_, i) => pagesOf({ pageOrder } as any, modules, i));
 
-  const [inkRows, answersByModule, scoreRows, notes, feedback] = await Promise.all([
+  const [inkRows, answersByModule, scoreRows, notes, feedback, grades, released] = await Promise.all([
     db.prepare('SELECT page_id, strokes_json FROM run_ink WHERE run_id = ?1 ORDER BY page_id, part').bind(run.id).all(),
     studentAnswers(db, run.id, s.aliasId),
     db
@@ -106,7 +122,9 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
       .bind(run.id, s.aliasId)
       .all(),
     studentNotes(db, run.id, s.aliasId),
-    studentFeedback(db, run.id, s.aliasId)
+    studentFeedback(db, run.id, s.aliasId),
+    studentGrades(db, run.id, s.aliasId),
+    releasedModules(db, run.id)
   ]);
 
   const shown = new Set(pages.flat().map((p) => p.id));
@@ -129,6 +147,21 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
     marks[m.id] = out;
   }
 
+  // Points (and, once released, the teacher's grades: an override changes the mark too).
+  const points: PastLesson['points'] = {};
+  for (const m of gradedModules(lesson)) {
+    if (!answers[m.id]) continue;
+    const isReleased = released.has(m.id);
+    const sc = studentModuleScore(questionsOf(m), answers[m.id], isReleased, grades[m.id]);
+    const qs: PastPoints['questions'] = {};
+    for (const q of sc.questions) {
+      if (!q.of) continue;
+      qs[q.questionId] = { points: q.points, of: q.of, status: q.status, ...(q.comment ? { comment: q.comment } : {}) };
+      if (q.overridden) marks[m.id][q.questionId] = q.status === 'right' ? true : q.status === 'wrong' ? false : q.of ? q.points / q.of : null;
+    }
+    points[m.id] = { released: isReleased, total: sc.total, max: sc.max, pending: sc.pending, questions: qs };
+  }
+
   const scores: PastLesson['scores'] = {};
   for (const r of scoreRows.results as any[]) scores[r.module_id] = { best: Number(r.best), plays: Number(r.plays) };
 
@@ -142,6 +175,7 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
     marks,
     scores,
     notes,
-    feedback
+    feedback,
+    points
   };
 }

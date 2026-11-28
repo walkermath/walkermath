@@ -516,7 +516,7 @@ const allQuestions = (config: any): Question[] => (Array.isArray(config?.questio
 export interface StoredModule {
   config: ModuleConfig;
   /** Answer keys (and other accepted answers) by question id, and the teacher's notes. Never sent to students. */
-  private: { answers?: Record<string, string>; alts?: Record<string, string[]>; notes?: string };
+  private: { answers?: Record<string, string>; alts?: Record<string, string[]>; rubrics?: Record<string, string>; notes?: string };
 }
 
 export function splitModule(m: LessonModule): StoredModule {
@@ -527,26 +527,30 @@ export function splitModule(m: LessonModule): StoredModule {
   if (!allQuestions(m.config).length) return { config: m.config, private: priv };
   const answers: Record<string, string> = {};
   const alts: Record<string, string[]> = {};
+  const rubrics: Record<string, string> = {};
   const questions = allQuestions(m.config).map((q) => {
     if (q.answer) answers[q.id] = q.answer;
     if (q.alts?.length) alts[q.id] = q.alts;
-    const { alts: _x, ...rest } = q;
+    if (q.rubric) rubrics[q.id] = q.rubric;
+    const { alts: _x, rubric: _y, ...rest } = q;
     return { ...rest, answer: '' };
   });
   if (Object.keys(answers).length) priv.answers = answers;
   if (Object.keys(alts).length) priv.alts = alts;
+  if (Object.keys(rubrics).length) priv.rubrics = rubrics;
   return { config: { ...(m.config as any), questions }, private: priv };
 }
 
 /** Puts the private keys back into a module's questions (notes are read separately). */
 export function joinModule(config: ModuleConfig, priv: StoredModule['private'], _type?: ModuleType): ModuleConfig {
-  if ((!priv?.answers && !priv?.alts) || !allQuestions(config).length) return config;
+  if ((!priv?.answers && !priv?.alts && !priv?.rubrics) || !allQuestions(config).length) return config;
   return {
     ...(config as any),
     questions: allQuestions(config).map((q) => ({
       ...q,
       answer: priv.answers?.[q.id] ?? '',
-      ...(priv.alts?.[q.id]?.length ? { alts: priv.alts[q.id] } : {})
+      ...(priv.alts?.[q.id]?.length ? { alts: priv.alts[q.id] } : {}),
+      ...(priv.rubrics?.[q.id] ? { rubric: priv.rubrics[q.id] } : {})
     }))
   };
 }
@@ -556,6 +560,6 @@ export function publicModule(m: LessonModule) {
   const { config } = splitModule(m);
   // Questions lose their key field altogether, so nothing key-shaped leaves.
   const strip = (c: ModuleConfig) =>
-    allQuestions(c).length ? { ...(c as any), questions: allQuestions(c).map(({ answer: _a, alts: _b, ...q }) => q) } : c;
+    allQuestions(c).length ? { ...(c as any), questions: allQuestions(c).map(({ answer: _a, alts: _b, rubric: _c, ...q }) => q) } : c;
   return { id: m.id, type: m.type, title: m.title, collects: MODULE_TYPES[m.type].collects(m.config), config: strip(config) };
 }
