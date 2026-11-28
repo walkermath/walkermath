@@ -159,7 +159,11 @@ export async function runAnswers(db: any, run: LiveRun): Promise<{ modules: Coll
         match: q.match === 'any' ? 'any' : 'form',
         ...(q.sort ? { sort: q.sort } : {}),
         ...(q.grid ? { grid: q.grid } : {}),
-        ...(q.partial ? { partial: true } : {})
+        ...(q.partial ? { partial: true } : {}),
+        ...(q.format ? { format: q.format } : {}),
+        ...(q.decimals !== undefined ? { decimals: q.decimals } : {}),
+        ...(q.multi ? { multi: true } : {}),
+        ...(q.alts?.length ? { alts: q.alts } : {})
       }));
       keys.set(m.id, entry.questions);
     }

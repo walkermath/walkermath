@@ -12,7 +12,7 @@
   import { heading, label, panel } from '../teach/ui.ts';
   import { FEEDBACK_MESSAGE_MAX, MARK_COLOR, MARK_SYMBOL, isRevised, type Feedback, type Mark } from '../../lib/lesson/feedback.ts';
 
-  type Q = { id: string; kind: string; text: string; choices: string[]; answer: string; sort?: any };
+  type Q = { id: string; kind: string; text: string; choices: string[]; answer: string; sort?: any; multi?: boolean };
   type CollectModule = { id: string; title: string; kind: 'questions' | 'short' | 'tap' | 'coliseum'; feedback?: boolean; questions?: Q[] };
   type FbRow = Feedback & { moduleId: string; aliasId: string; questionId: string };
   type Row = { moduleId: string; aliasId: string; alias: string; answers: Record<string, string>; correct: Record<string, boolean | null | number>; updatedAt: number };
@@ -139,7 +139,7 @@
     const answered = mRows.map((r) => r.answers[q.id] ?? '').filter((v) => v.trim() !== '');
     let bars: { label: string; count: number }[];
     if (q.kind === 'choice') {
-      bars = q.choices.map((c, i) => ({ label: `${letter(i)}. ${c}`, count: answered.filter((v) => v === String(i)).length }));
+      bars = q.choices.map((c, i) => ({ label: `${letter(i)}. ${c}`, count: answered.filter((v) => v.split(',').includes(String(i))).length }));
     } else {
       const groups = new Map<string, { label: string; count: number }>();
       for (const v of answered) {

@@ -24,10 +24,21 @@ export interface Question {
   sort?: SortSpec;
   /** Grid and card sort questions: partial credit (the share of keyed cells / cards that are right). Off = all or nothing. */
   partial?: boolean;
+  /** Number questions: the form answers must take. 'number' (default) or 'percent' (84.13 or 84.13%); only that form is accepted. */
+  format?: 'number' | 'percent';
+  /** Number questions: answers must be rounded to this many decimal places (0-6). Unset = exact. */
+  decimals?: number;
+  /** Multiple choice: students may pick more than one; right when they pick exactly the right set. */
+  multi?: boolean;
+  /** Short text: other answers that also count as right ("turning point" for "vertex"). Private, like the key. */
+  alts?: string[];
 }
 
+/** Fields that are part of the key: moved to a module's private part and never sent to students. */
+export const KEY_FIELDS = ['answer', 'alts'] as const;
+
 /** The teacher's side: how long a question's parts may be. */
-export const QUESTION_LIMITS = { text: 2000, choices: 6, choice: 200, answer: 200 } as const;
+export const QUESTION_LIMITS = { text: 2000, choices: 6, choice: 200, answer: 200, alts: 5, decimals: 6 } as const;
 
 /** The student's side: how long a typed answer may be. */
 export const ANSWER_LIMITS = {

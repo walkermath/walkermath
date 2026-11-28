@@ -515,8 +515,8 @@ const allQuestions = (config: any): Question[] => (Array.isArray(config?.questio
 
 export interface StoredModule {
   config: ModuleConfig;
-  /** Answer keys by question id, and the teacher's notes. Never sent to students. */
-  private: { answers?: Record<string, string>; notes?: string };
+  /** Answer keys (and other accepted answers) by question id, and the teacher's notes. Never sent to students. */
+  private: { answers?: Record<string, string>; alts?: Record<string, string[]>; notes?: string };
 }
 
 export function splitModule(m: LessonModule): StoredModule {
@@ -526,18 +526,29 @@ export function splitModule(m: LessonModule): StoredModule {
   // in the public config, whatever kind of module the questions are in.
   if (!allQuestions(m.config).length) return { config: m.config, private: priv };
   const answers: Record<string, string> = {};
+  const alts: Record<string, string[]> = {};
   const questions = allQuestions(m.config).map((q) => {
     if (q.answer) answers[q.id] = q.answer;
-    return { ...q, answer: '' };
+    if (q.alts?.length) alts[q.id] = q.alts;
+    const { alts: _x, ...rest } = q;
+    return { ...rest, answer: '' };
   });
   if (Object.keys(answers).length) priv.answers = answers;
+  if (Object.keys(alts).length) priv.alts = alts;
   return { config: { ...(m.config as any), questions }, private: priv };
 }
 
-/** Puts the private answer keys back into a module's questions (notes are read separately). */
+/** Puts the private keys back into a module's questions (notes are read separately). */
 export function joinModule(config: ModuleConfig, priv: StoredModule['private'], _type?: ModuleType): ModuleConfig {
-  if (!priv?.answers || !allQuestions(config).length) return config;
-  return { ...(config as any), questions: allQuestions(config).map((q) => ({ ...q, answer: priv.answers?.[q.id] ?? '' })) };
+  if ((!priv?.answers && !priv?.alts) || !allQuestions(config).length) return config;
+  return {
+    ...(config as any),
+    questions: allQuestions(config).map((q) => ({
+      ...q,
+      answer: priv.answers?.[q.id] ?? '',
+      ...(priv.alts?.[q.id]?.length ? { alts: priv.alts[q.id] } : {})
+    }))
+  };
 }
 
 /** The only module shape that will be sent to students: no answer keys, no private notes. */
@@ -545,6 +556,6 @@ export function publicModule(m: LessonModule) {
   const { config } = splitModule(m);
   // Questions lose their key field altogether, so nothing key-shaped leaves.
   const strip = (c: ModuleConfig) =>
-    allQuestions(c).length ? { ...(c as any), questions: allQuestions(c).map(({ answer: _a, ...q }) => q) } : c;
+    allQuestions(c).length ? { ...(c as any), questions: allQuestions(c).map(({ answer: _a, alts: _b, ...q }) => q) } : c;
   return { id: m.id, type: m.type, title: m.title, collects: MODULE_TYPES[m.type].collects(m.config), config: strip(config) };
 }

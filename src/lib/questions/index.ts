@@ -20,7 +20,8 @@ import { text } from './kinds/text.ts';
 import { QUESTION_LIMITS, type Grade, type Question, type QuestionKind, type QuestionKindDef, type QuestionMark } from './types.ts';
 
 export * from './types.ts';
-export { toNumber } from './kinds/number.ts';
+export { numberRule, toNumber } from './kinds/number.ts';
+export { cleanPicks } from './kinds/choice.ts';
 
 /** Every kind, in the order the editor offers them. */
 export const QUESTION_KINDS: Record<QuestionKind, QuestionKindDef> = { text, number, math, grid, sort, choice };
@@ -55,6 +56,8 @@ export function cleanQuestion(raw: any, where: string, n: number, keyless = fals
   if (keyless) {
     q.answer = '';
     delete q.match;
+    delete q.alts;
+    delete q.partial;
   }
   return q;
 }
@@ -122,7 +125,7 @@ export function answerText(q: Question, answer: string | undefined): string | nu
 /** The key as people read it ('' when there's none). `short`: a choice's letter only. */
 export function keyText(q: Question, opts: { short?: boolean } = {}): string {
   if (!q?.answer) return '';
-  if (opts.short && q.kind === 'choice') return String.fromCharCode(65 + Number(q.answer));
+  if (opts.short && q.kind === 'choice') return q.answer.split(',').map((x) => String.fromCharCode(65 + Number(x))).join(', ');
   return kindOf(q.kind).keyText(q);
 }
 

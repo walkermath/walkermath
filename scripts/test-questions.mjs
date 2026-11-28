@@ -159,3 +159,65 @@ test('partial credit (grid and card sort): the share right, only when the toggle
   assert.equal(kept.partial, true);
   assert.equal(Q.cleanQuestion({ kind: 'sort', text: 's', partial: 'yes', sort: sort.sort, answer: sort.answer }, 'B', 1).partial, undefined);
 });
+
+test('number format: a percent question accepts only percents; a number question refuses a % sign', () => {
+  const pct = Q.cleanQuestion({ kind: 'number', text: 'P(Z<1)?', answer: '84.13%', format: 'percent', decimals: 2 }, 'B', 1);
+  assert.deepEqual([pct.answer, pct.format, pct.decimals], ['84.13', 'percent', 2], 'a % on the key is fine');
+  for (const [a, want] of [['84.13', true], ['84.13%', true], [' 84.13 % ', true], ['0.8413', false], ['84.1', false], ['84.130', false], ['84.14', false]]) {
+    assert.equal(Q.isCorrect(pct, a), want, a);
+  }
+  const plain = { id: 'n', kind: 'number', text: 't', choices: [], answer: '0.75' };
+  assert.equal(Q.isCorrect(plain, '3/4'), true, 'no rule: exactly as before');
+  assert.equal(Q.isCorrect({ ...plain, decimals: 2 }, '75%'), false, 'a number question refuses a %');
+});
+
+test('rounding: written to exactly N places, equal to the key rounded the same way', () => {
+  const q = Q.cleanQuestion({ kind: 'number', text: 'p', answer: '0.84134', decimals: 2 }, 'B', 1);
+  assert.equal(Q.isCorrect(q, '0.84'), true);
+  assert.equal(Q.isCorrect(q, '.84'), true);
+  assert.equal(Q.isCorrect(q, '0.841'), false, 'too many places');
+  assert.equal(Q.isCorrect(q, '0.8'), false, 'too few places');
+  assert.equal(Q.isCorrect(q, '21/25'), false, 'a fraction is not a rounded decimal');
+  assert.equal(Q.keyText(q), '0.84');
+  const whole = Q.cleanQuestion({ kind: 'number', text: 'w', answer: '2.5', decimals: 0 }, 'B', 1);
+  assert.equal(Q.isCorrect(whole, '3'), true, 'half rounds up');
+  assert.equal(Q.numberRule(whole), 'a whole number');
+  assert.equal(Q.numberRule({ format: 'percent', decimals: 2 }), 'percent, 2 decimal places');
+  assert.equal(Q.numberRule({ decimals: 1 }), 'rounded to 1 decimal place');
+  assert.equal(Q.numberRule({}), '');
+  assert.equal(Q.cleanQuestion({ kind: 'number', text: 'x', answer: '1', decimals: 9 }, 'B', 1).decimals, undefined, 'out of range is exact');
+});
+
+test('multi-select choice: right only for exactly the right set', () => {
+  const q = Q.cleanQuestion({ kind: 'choice', text: 'Which are prime?', choices: ['2', '4', '5', '9'], answer: '2,0', multi: true }, 'B', 1);
+  assert.deepEqual([q.multi, q.answer], [true, '0,2'], 'the key is kept in order');
+  assert.equal(Q.isCorrect(q, '0,2'), true);
+  assert.equal(Q.isCorrect(q, '0'), false);
+  assert.equal(Q.isCorrect(q, '0,1,2'), false);
+  assert.equal(Q.cleanAnswer(q, '2,0,2'), '0,2', 'picks are cleaned into order');
+  assert.deepEqual(Q.cleanAnswer(q, '0,7'), { error: 'Invalid answers.' });
+  assert.equal(Q.answerText(q, '0,2'), 'A. 2; C. 5');
+  assert.equal(Q.keyText(q, { short: true }), 'A, C');
+  assert.deepEqual(Q.questionTags(q), ['pick all that apply']);
+  const single = Q.cleanQuestion({ kind: 'choice', text: 'One', choices: ['a', 'b'], answer: '1' }, 'B', 1);
+  assert.deepEqual(Q.cleanAnswer(single, '0,1'), { error: 'Invalid answers.' }, 'a one-answer question takes one pick');
+});
+
+test('other accepted answers (short text), kept private like the key', async () => {
+  const q = Q.cleanQuestion({ kind: 'text', text: 'The turning point?', answer: 'vertex', alts: ['Turning point', ' VERTEX ', '', 'apex'] }, 'B', 1);
+  assert.deepEqual(q.alts, ['Turning point', 'apex'], 'blanks and repeats of the key dropped');
+  assert.equal(Q.isCorrect(q, 'turning  point'), true);
+  assert.equal(Q.isCorrect(q, 'Apex'), true);
+  assert.equal(Q.isCorrect(q, 'peak'), false);
+  assert.equal(Q.keyText(q), 'vertex (also: Turning point, apex)');
+  assert.equal(Q.cleanQuestion({ kind: 'text', text: 't', answer: '', alts: ['x'] }, 'B', 1).alts, undefined, 'no key, no alternates');
+  assert.equal(Q.cleanQuestion({ kind: 'text', text: 't', answer: 'a', alts: ['b'] }, 'F', 1, true).alts, undefined, 'Active Feedback has none');
+
+  const { splitModule, publicModule, joinModule } = await import('../src/lib/lesson/modules.ts');
+  const m = { id: 'm', type: 'prompt', title: 'B', plannedSec: 300, pacing: 'flex', teacherNotes: '', config: { category: 'bellwork', questions: [q] } };
+  const s = splitModule(m);
+  assert.equal(s.config.questions[0].alts, undefined);
+  assert.deepEqual(s.private.alts, { [q.id]: ['Turning point', 'apex'] });
+  assert.ok(!JSON.stringify(publicModule(m)).includes('apex'), 'never sent to students');
+  assert.deepEqual(joinModule(s.config, s.private, 'prompt').questions[0].alts, ['Turning point', 'apex']);
+});

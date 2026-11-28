@@ -15,6 +15,7 @@
   import { ANSWER_LIMITS, answerSpec, isAnswered, type Answers } from '../../lib/lesson/answers.ts';
   import { MARK_COLOR, MARK_LABEL, MARK_SYMBOL, isRevised, type Feedback } from '../../lib/lesson/feedback.ts';
   import { renderMarkdown } from '../../lib/lesson/markdown.ts';
+  import { numberRule } from '../../lib/questions/index.ts';
   import { glossaryFor, useTerms } from '../../lib/lesson/termsContext.ts';
   import { GRID_BLANK_MAX, blankPositions, joinList, parseList } from '../../lib/lesson/grid.ts';
   import MathInput from './MathInput.svelte';
@@ -193,7 +194,40 @@
           {/if}
         </div>
         <div class="slide-text">{@html renderMarkdown(q.text, { glossary: glossaryFor(lessonTerms()) })}</div>
-        {#if q.kind === 'choice'}
+        {#if q.kind === 'choice' && q.multi}
+          {@const picked = (mine[q.id] ?? '') === '' ? [] : (mine[q.id] ?? '').split(',')}
+          <p class="text-xs {label}">// pick all that apply.</p>
+          <ul class="space-y-1">
+            {#each q.choices as choice, ci}
+              <li>
+                {#if student}
+                  <label
+                    class="flex gap-2 items-start p-2 rounded border {picked.includes(String(ci))
+                      ? 'border-[var(--accent)] bg-[var(--accent)]/10'
+                      : 'border-[var(--line)]'} {editable ? 'cursor-pointer hover:border-[var(--accent)]' : 'cursor-default'}"
+                  >
+                    <input
+                      type="checkbox"
+                      class="mt-1"
+                      checked={picked.includes(String(ci))}
+                      disabled={!editable}
+                      onchange={(e) => {
+                        const next = new Set(picked);
+                        if (e.currentTarget.checked) next.add(String(ci));
+                        else next.delete(String(ci));
+                        set(q.id, [...next].map(Number).sort((a, b) => a - b).join(','), true);
+                      }}
+                    />
+                    <span class={label}>{String.fromCharCode(65 + ci)}.</span>
+                    <span>{@html renderMarkdown(choice)}</span>
+                  </label>
+                {:else}
+                  <div class="flex gap-2"><span class={label}>{String.fromCharCode(65 + ci)}.</span><span>{@html renderMarkdown(choice)}</span></div>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {:else if q.kind === 'choice'}
           <ul class="space-y-1" role={student ? 'radiogroup' : undefined}>
             {#each q.choices as choice, ci}
               <li>
@@ -271,13 +305,14 @@
           </div>
         {:else if student}
           {#if q.kind === 'number'}
+            {#if numberRule(q)}<p class="text-xs font-bold">answer as {numberRule(q)}.</p>{/if}
             <input
               type="text"
               inputmode="decimal"
               autocomplete="off"
               class={field}
               aria-label="Answer to question {i + 1}"
-              placeholder={editable ? 'a number (3/4 and -2.5 work)' : ''}
+              placeholder={editable ? (numberRule(q) ? (q.format === 'percent' ? 'a percent, like 84.13' : 'a decimal number') : 'a number (3/4 and -2.5 work)') : ''}
               maxlength={ANSWER_LIMITS.number}
               value={mine[q.id] ?? ''}
               disabled={!editable}

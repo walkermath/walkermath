@@ -91,7 +91,7 @@
   /* The preview: how students see it, through the real student view. Keys are stripped, as for students. */
   const preview = $derived.by(() => {
     if (!draft) return null;
-    const { answer: _a, ...pub } = $state.snapshot(draft) as Question;
+    const { answer: _a, alts: _b, ...pub } = $state.snapshot(draft) as Question;
     // Shown as a question set either way: prompts and Active Feedback draw questions the same way.
     return { id: 'preview', type: 'prompt', title: '', plannedSec: 0, pacing: 'flex', collects: true, config: { category: 'other', questions: [pub] } } as any;
   });

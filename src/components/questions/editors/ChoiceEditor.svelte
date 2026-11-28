@@ -1,24 +1,54 @@
 <!-- src/components/questions/editors/ChoiceEditor.svelte -->
-<!-- Multiple choice: 2 to 6 choices; the radio button marks the right one (the key). -->
+<!-- Multiple choice: 2 to 6 choices. One right choice (radio buttons), or "pick all that apply"
+     (checkboxes: right when exactly the checked ones are picked). -->
 <script lang="ts">
   import { QUESTION_LIMITS, type Question } from '../../../lib/questions/index.ts';
   import { field, label } from '../../teach/ui.ts';
 
   let { q = $bindable(), keyless }: { q: Question; keyless: boolean } = $props();
 
+  const picks = $derived(q.answer === '' ? [] : q.answer.split(',').map(Number));
+
   function removeChoice(ci: number) {
     q.choices.splice(ci, 1);
-    const a = Number(q.answer);
-    if (q.answer !== '' && a === ci) q.answer = '';
-    else if (q.answer !== '' && a > ci) q.answer = String(a - 1);
+    if (q.answer === '') return;
+    // Picks after the removed one move up; the removed one is dropped.
+    const next = picks.filter((p) => p !== ci).map((p) => (p > ci ? p - 1 : p));
+    q.answer = q.multi ? next.join(',') : next.length ? String(next[0]) : '';
+  }
+  function togglePick(ci: number, on: boolean) {
+    const set = new Set(picks);
+    if (on) set.add(ci);
+    else set.delete(ci);
+    q.answer = [...set].sort((a, b) => a - b).join(',');
+  }
+  function setMulti(on: boolean) {
+    if (on) q.multi = true;
+    else {
+      delete q.multi;
+      // One right choice: keep the first one that was checked.
+      q.answer = picks.length ? String(picks[0]) : '';
+    }
   }
 </script>
 
 <div class="space-y-1">
+  <label class="flex items-center gap-2 pb-1">
+    <input type="checkbox" checked={!!q.multi} onchange={(e) => setMulti(e.currentTarget.checked)} />
+    <span>students pick all that apply</span>
+  </label>
   {#each q.choices as _, ci}
     <div class="flex items-center gap-2">
       {#if keyless}
         <span class="{label} w-4 text-center">{String.fromCharCode(65 + ci)}</span>
+      {:else if q.multi}
+        <input
+          type="checkbox"
+          checked={picks.includes(ci)}
+          onchange={(e) => togglePick(ci, e.currentTarget.checked)}
+          title="A right choice"
+          aria-label="Choice {ci + 1} is one of the right ones"
+        />
       {:else}
         <input
           type="radio"
@@ -43,5 +73,9 @@
       <button type="button" class="hover:text-[var(--accent)] cursor-pointer {label}" onclick={() => (q.answer = '')}>[no answer key]</button>
     {/if}
   </div>
-  {#if !keyless}<p class="text-xs {label} help-text">// pick the right choice with its circle. blank choices are dropped when you save.</p>{/if}
+  {#if !keyless}
+    <p class="text-xs {label} help-text">
+      {q.multi ? '// check every right choice: it counts as right only when a student picks exactly those.' : '// pick the right choice with its circle.'} blank choices are dropped when you save.
+    </p>
+  {/if}
 </div>

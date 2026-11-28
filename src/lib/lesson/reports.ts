@@ -62,6 +62,10 @@ export interface ReportQuestion {
   grid?: Grid;
   /** Grid and card sort questions: partial credit is on. */
   partial?: boolean;
+  format?: 'number' | 'percent';
+  decimals?: number;
+  multi?: boolean;
+  alts?: string[];
 }
 
 const KIND_LABEL: Record<ItemKind, string> = {
@@ -87,7 +91,11 @@ export function moduleQuestions(m: ReportModule): ReportQuestion[] {
     match: q.match === 'any' ? 'any' : 'form',
     ...(q.sort ? { sort: q.sort } : {}),
     ...(q.grid ? { grid: q.grid } : {}),
-    ...(q.partial ? { partial: true } : {})
+    ...(q.partial ? { partial: true } : {}),
+    ...(q.format ? { format: q.format } : {}),
+    ...(q.decimals !== undefined ? { decimals: q.decimals } : {}),
+    ...(q.multi ? { multi: true } : {}),
+    ...(q.alts?.length ? { alts: q.alts } : {})
   }));
 }
 
