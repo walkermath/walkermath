@@ -4,7 +4,6 @@
 import { generateAlias } from '../pseudonym.ts';
 import { generatePasscode, generatePin } from '../classroom.ts';
 import { hmacHex, newId } from './crypto.ts';
-import { parseChecklist } from '../lesson/checklist.ts';
 
 export const MAX_ALIASES_PER_CLASS = 80;
 export const MAX_ALIASES_PER_REQUEST = 60;
@@ -30,8 +29,6 @@ export interface ClassRow {
   leaderboardPosting: boolean;
   /** Minutes before a delivery's start time that students may join (0-10). */
   earlyJoinMin: number;
-  /** The readiness checklist students see when they join a lesson (may be empty). */
-  checklist: string[];
   createdAt: number;
   activeAliases?: number;
 }
@@ -46,7 +43,6 @@ export const toClass = (r: any): ClassRow => ({
   archived: !!r.archived,
   leaderboardPosting: !!r.leaderboard_posting,
   earlyJoinMin: earlyMin(r.early_join_min),
-  checklist: parseChecklist(r.checklist_json),
   createdAt: r.created_at,
   ...(r.active_aliases !== undefined ? { activeAliases: Number(r.active_aliases) } : {})
 });

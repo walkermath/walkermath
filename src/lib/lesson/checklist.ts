@@ -1,6 +1,6 @@
 // src/lib/lesson/checklist.ts
-// The readiness checklist: a few short items a class sees when it joins a lesson ("Have your
-// journal out"). Saved per class (classes.checklist_json), copied into the room when a delivery
+// The readiness checklist: a few short items students see when they join a lesson ("Have your
+// journal out"). Part of the lesson (lessons.checklist_json), copied into the room when a delivery
 // opens, and shown to students. Who has finished it is kept in the live room only, never in the
 // database. Pure functions, shared by the server, the room and the screens.
 

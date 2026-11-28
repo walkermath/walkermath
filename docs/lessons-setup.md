@@ -124,7 +124,7 @@ npx wrangler d1 execute walkermath-leaderboards --local --file migrations/0014_c
 | `0011_library.sql` | the lesson library: lessons teachers share with each other |
 | `0012_feedback.sql` | your marks and messages on students' answers in Active Feedback activities |
 | `0013_early_join.sql` | per class: how many minutes before the start time students may join (default 3). **Run before deploying the code that uses it**: the live lesson lookups read this column. Not safe to run twice (adds a column). |
-| `0014_checklist.sql` | per class: the readiness checklist students tick when they join a lesson. **Run before deploying** (the live lesson lookups read it). Not safe to run twice. |
+| `0014_checklist.sql` | per lesson: the readiness checklist students tick when they join it (set in the lesson builder). **Run before deploying**: saving a lesson writes this column. Not safe to run twice. |
 
 ## 4. Try it locally
 

@@ -27,6 +27,7 @@
   import { download } from '../../lib/reports/files.ts';
   import ModuleSettings from './ModuleSettings.svelte';
   import WhenPanel, { type Run } from './WhenPanel.svelte';
+  import { CHECKLIST } from '../../lib/lesson/checklist.ts';
   import { btn, btnDanger, btnMain, field, heading, label, panel } from './ui.ts';
 
   type Lesson = {
@@ -37,6 +38,7 @@
     successCriteria: string;
     standards: string;
     resources: Link[];
+    checklist: string[];
     durationSec: number;
     archived: boolean;
     updatedAt: number;
@@ -78,7 +80,7 @@
   let previewMin = $state(2);
 
   const editable = (l: Lesson) =>
-    JSON.stringify({ t: l.title, p: l.topic, o: l.objective, s: l.successCriteria, st: l.standards, r: l.resources, d: l.durationSec, m: l.modules });
+    JSON.stringify({ t: l.title, p: l.topic, o: l.objective, s: l.successCriteria, st: l.standards, r: l.resources, c: l.checklist, d: l.durationSec, m: l.modules });
   const dirty = $derived(lesson ? editable(lesson) !== savedJson : false);
   const planned = $derived(lesson ? totalSec(lesson.modules) : 0);
   const hasFlex = $derived(lesson ? lesson.modules.some((m) => m.pacing === 'flex') : false);
@@ -140,6 +142,7 @@
           successCriteria: lesson.successCriteria,
           standards: lesson.standards,
           resources: lesson.resources,
+          checklist: lesson.checklist,
           durationSec: lesson.durationSec,
           modules: lesson.modules
         }
@@ -434,6 +437,25 @@
           {#if lesson.resources.length < LIMITS.resources}
             <button type="button" class="hover:text-[var(--accent)] cursor-pointer" onclick={() => lesson?.resources.push({ label: '', url: '' })}>[+ resource]</button>
           {/if}
+        </div>
+
+        <div class="space-y-1">
+          <label class={label} for="f-checklist">
+            readiness checklist <span class="help-text">(one item per line, up to {CHECKLIST.items})</span>
+          </label>
+          <textarea
+            id="f-checklist"
+            class={field}
+            rows="3"
+            value={lesson.checklist.join('\n')}
+            oninput={(e) => {
+              if (lesson) lesson.checklist = e.currentTarget.value.split('\n').slice(0, CHECKLIST.items).map((l) => l.slice(0, CHECKLIST.chars));
+            }}
+            placeholder={'Have your journal out\nPencil ready'}
+          ></textarea>
+          <p class="text-[var(--text-muted)] help-text">
+            // students tick these when they join. before the start time, the first module waits until they're done; after it, the list flashes on the side but never blocks work. leave empty for none.
+          </p>
         </div>
       </div>
     </section>

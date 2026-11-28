@@ -46,6 +46,7 @@ export function lessonToMarkdown(lesson: any): string {
   out.push(facts.join(' · '), '');
   if (lesson.objective) out.push('## Objective', '', lesson.objective, '');
   if (lesson.successCriteria) out.push('## Success criteria', '', lesson.successCriteria, '');
+  if (lesson.checklist?.length) out.push('## Readiness checklist', '', ...lesson.checklist.map((i: string) => `- [ ] ${i}`), '');
   if (lesson.resources?.length) out.push('## Resources', '', ...lesson.resources.map((r: any) => `- [${r.label}](${r.url})`), '');
 
   (lesson.modules ?? []).forEach((m: any, i: number) => {

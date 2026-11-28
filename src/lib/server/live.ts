@@ -6,7 +6,6 @@
 import { MODULE_TYPES, publicModule } from '../lesson/modules.ts';
 import type { RoomModule } from '../lesson/room.ts';
 import { earlyMin } from './classes.ts';
-import { parseChecklist } from '../lesson/checklist.ts';
 import { getLesson, type Lesson } from './lessons.ts';
 import type { Student, Teacher } from './sessions.ts';
 
@@ -24,12 +23,10 @@ export interface LiveRun {
   startedAt: number | null;
   /** The class's early-join window, in minutes. */
   earlyJoinMin: number;
-  /** The class's readiness checklist, copied into the room when the delivery opens. */
-  checklist: string[];
 }
 
 const RUN = `SELECT r.id, r.lesson_id, r.class_id, r.status, r.scheduled_start, r.scheduled_end, r.started_at,
-                    l.title AS lesson_title, l.teacher_id, c.name AS class_name, c.period, c.early_join_min, c.checklist_json
+                    l.title AS lesson_title, l.teacher_id, c.name AS class_name, c.period, c.early_join_min
                FROM lesson_runs r
                JOIN lessons l ON l.id = r.lesson_id
                JOIN classes c ON c.id = r.class_id`;
@@ -46,8 +43,7 @@ const toLiveRun = (r: any): LiveRun => ({
   scheduledStart: r.scheduled_start,
   scheduledEnd: r.scheduled_end,
   startedAt: r.started_at ?? null,
-  earlyJoinMin: earlyMin(r.early_join_min),
-  checklist: parseChecklist(r.checklist_json)
+  earlyJoinMin: earlyMin(r.early_join_min)
 });
 
 export async function getLiveRun(db: any, runId: unknown): Promise<LiveRun | null> {
@@ -164,7 +160,7 @@ export async function startRun(env: any, run: LiveRun, now = Date.now()): Promis
       modules: roomModules(lesson),
       endsAt: run.scheduledEnd,
       startsAt: run.scheduledStart,
-      checklist: run.checklist
+      checklist: lesson.checklist
     })
   });
   if (!res.ok) return { ok: false, error: 'The live room could not start.', status: 502 };

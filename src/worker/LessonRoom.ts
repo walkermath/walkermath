@@ -54,11 +54,11 @@ const STORAGE_BATCH = 128;
 type Role = 'teacher' | 'student' | 'test';
 type Who = { role: Role; who: string; name: string; at?: number };
 /** `hand`: when the student tapped "I'm stuck" (epoch ms), or null. */
-/** `ready`: the student has finished the class's readiness checklist (kept in the room only). */
+/** `ready`: the student has finished the lesson's readiness checklist (kept in the room only). */
 type RosterRow = { aliasId: string; alias: string; devices: number; here: boolean; hand: number | null; ready: boolean };
 type Link = { label: string; url: string };
 /** What every device gets once: the title, the lesson's Resources links and the student-safe modules. */
-/** `checklist`: the class's readiness checklist, copied in when the delivery opened. */
+/** `checklist`: the lesson's readiness checklist, copied in when the delivery opened. */
 type Lesson = { title: string; resources: Link[]; modules: RoomModule[]; checklist: string[] };
 
 const json = (data: unknown, status = 200) =>

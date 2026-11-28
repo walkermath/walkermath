@@ -15,7 +15,7 @@ import type { RoomModule, RoomState, Command } from './room.ts';
 import type { InkOp, Stroke } from './ink.ts';
 
 export type Link = { label: string; url: string };
-/** `checklist`: the class's readiness checklist (empty, or missing in rooms opened before it existed). */
+/** `checklist`: the lesson's readiness checklist (empty, or missing in rooms opened before it existed). */
 export type LiveLesson = { title: string; resources: Link[]; modules: RoomModule[]; checklist?: string[] };
 /** `here: false` = was in this lesson earlier and has left (closed the tab, lost wifi). `ready`: finished the checklist. */
 export type RosterRow = { aliasId: string; alias: string; devices: number; here: boolean; hand?: number | null; ready?: boolean };

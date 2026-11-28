@@ -31,3 +31,10 @@ test('before the lesson it blocks; once running it nudges; done or empty shows n
   assert.equal(checklistMode([], false, 'waiting'), null);
   assert.equal(checklistMode(items, false, 'ended'), null);
 });
+
+test('the checklist is a lesson field: cleaned on save, empty by default', async () => {
+  const { cleanLessonFields } = await import('../src/lib/lesson/modules.ts');
+  const base = { title: 'T', durationSec: 2700 };
+  assert.deepEqual(cleanLessonFields(base).checklist, []);
+  assert.deepEqual(cleanLessonFields({ ...base, checklist: [' Journal out ', '', 'Pencil'] }).checklist, ['Journal out', 'Pencil']);
+});
