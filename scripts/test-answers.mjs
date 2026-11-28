@@ -98,3 +98,22 @@ test('math questions: marked by the checker, with the question\'s own matching r
   assert.deepEqual(cleanAnswers(spec, { m: ' x\u00b2 + 1 ' }), { m: ' x\u00b2 + 1 ' });
   assert.match(cleanAnswers(spec, { m: 'x'.repeat(201) }), /under 200/);
 });
+
+test('before the lesson: an early Bellwork takes answers; anything else waits for the start', async () => {
+  const { checkSubmission } = await import('../src/lib/lesson/answers.ts');
+  const { startRoom } = await import('../src/lib/lesson/room.ts');
+  const q = { id: 'q1', kind: 'text', text: 'Q', choices: [] };
+  const bell = { id: 'b', type: 'prompt', title: 'Bellwork', plannedSec: 300, pacing: 'locked', minSec: null, onTimeUp: 'auto', collects: true, config: { category: 'bellwork', questions: [q] } };
+  const other = { ...bell, id: 'c', title: 'Check-in', config: { category: 'check-in', questions: [{ ...q, id: 'q2' }] } };
+  const T = 1_000_000_000_000;
+  const w = startRoom('run', [bell, other], T + 50 * 60_000, T - 120_000, T);
+  assert.equal(w.status, 'waiting');
+  const ok = checkSubmission(w, [bell, other], 'b', { q1: 'early' }, T - 60_000);
+  assert.equal(ok.ok, true);
+  const no = checkSubmission(w, [bell, other], 'c', { q2: 'x' }, T - 60_000);
+  assert.equal(no.ok, false);
+  assert.equal(no.error, "The lesson hasn't started yet.");
+  // A lesson that opens with something else takes nothing before the start.
+  const w2 = startRoom('run', [other, bell], T + 50 * 60_000, T - 120_000, T);
+  assert.equal(checkSubmission(w2, [other, bell], 'c', { q2: 'x' }, T - 60_000).ok, false);
+});

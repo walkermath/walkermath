@@ -14,6 +14,8 @@ import {
   type LessonModule,
   type ModuleType
 } from '../lesson/modules.ts';
+import { parseChecklist } from '../lesson/checklist.ts';
+import { parseTerms } from '../lesson/terms.ts';
 import { clockMinutes, isIsoDate, zonedToUtc } from '../lesson/time.ts';
 import { newId } from './crypto.ts';
 
@@ -156,6 +158,8 @@ export async function getLesson(db: any, teacherId: string, lessonId: unknown): 
     successCriteria: row.success_criteria,
     standards: row.standards ?? '',
     resources: parse(row.resources_json, []),
+    checklist: parseChecklist(row.checklist_json),
+    terms: parseTerms(row.terms_json),
     durationSec: row.duration_sec,
     archived: !!row.archived,
     createdAt: row.created_at,
@@ -195,8 +199,8 @@ export async function createLesson(db: any, teacherId: string, fields: LessonFie
   await db.batch([
     db
       .prepare(
-        `INSERT INTO lessons (id, teacher_id, title, topic, objective, success_criteria, standards, resources_json, duration_sec, archived, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10, ?10)`
+        `INSERT INTO lessons (id, teacher_id, title, topic, objective, success_criteria, standards, resources_json, checklist_json, terms_json, duration_sec, archived, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, ?12, ?12)`
       )
       .bind(
         id,
@@ -207,6 +211,8 @@ export async function createLesson(db: any, teacherId: string, fields: LessonFie
         fields.successCriteria,
         fields.standards,
         JSON.stringify(fields.resources),
+        JSON.stringify(fields.checklist ?? []),
+        JSON.stringify(fields.terms ?? []),
         fields.durationSec,
         now
       ),
@@ -241,7 +247,7 @@ export async function saveLesson(
   await db.batch([
     db
       .prepare(
-        `UPDATE lessons SET title = ?2, topic = ?3, objective = ?4, success_criteria = ?5, standards = ?6, resources_json = ?7, duration_sec = ?8, updated_at = ?9
+        `UPDATE lessons SET title = ?2, topic = ?3, objective = ?4, success_criteria = ?5, standards = ?6, resources_json = ?7, checklist_json = ?8, terms_json = ?9, duration_sec = ?10, updated_at = ?11
           WHERE id = ?1`
       )
       .bind(
@@ -252,6 +258,8 @@ export async function saveLesson(
         fields.successCriteria,
         fields.standards,
         JSON.stringify(fields.resources),
+        JSON.stringify(fields.checklist ?? []),
+        JSON.stringify(fields.terms ?? []),
         fields.durationSec,
         now
       ),

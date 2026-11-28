@@ -13,6 +13,10 @@
 //
 // The bell doesn't move (`endsAt`), so every change re-plans the unfinished modules with
 // replan(): overruns and early finishes are absorbed by the flex modules.
+//
+// Before the lesson: a room opened before its start time (`startsAt`) is 'waiting'. Students can
+// join and, when the first module is a Bellwork, start answering it; no clock runs. The alarm
+// starts the lesson at `startsAt`, unless the teacher holds it ([hold]); [start] starts it now.
 
 import { floorOf, replan, type Pacing } from './pacing.ts';
 import { STEP_SEC } from './time.ts';
@@ -34,7 +38,7 @@ export interface RoomModule {
 export interface RoomState {
   runId: string;
   version: number;
-  status: 'live' | 'ended';
+  status: 'waiting' | 'live' | 'ended';
   /** The current module. */
   index: number;
   /** Seconds each module is given (re-planned for flex modules that haven't finished). */
@@ -58,6 +62,12 @@ export interface RoomState {
   holding: boolean;
   /** The bell (epoch ms). */
   endsAt: number;
+  /** When the lesson is due to start (epoch ms). Rooms from before early join don't have it. */
+  startsAt?: number;
+  /** Waiting: the teacher stopped the lesson from starting by itself at `startsAt`. */
+  held?: boolean;
+  /** Waiting: students may answer the first module early (it's a Bellwork). */
+  earlyWork?: boolean;
   startedAt: number;
   endedAt: number | null;
   /** The page the teacher shows (an index into pagesOf()): a Notes page, or the open board of another module. */
@@ -112,6 +122,8 @@ export type Command =
   | { type: 'addBoard'; id: string }
   | { type: 'board'; on: boolean }
   | { type: 'spotlight'; spot: Spotlight | null }
+  | { type: 'start' }
+  | { type: 'hold'; on: boolean }
   | { type: 'end' };
 
 /** Pages a module can have (40 slides plus the blackboards added in class). */
@@ -182,6 +194,8 @@ export const ANSWER_GRACE_MS = 8000;
  * few keystrokes land. Coming back to a module with time left reopens it.
  */
 export function answersOpen(s: RoomState, i: number, now: number): boolean {
+  // Before the lesson: only an early Bellwork (module 0) takes answers; they carry over at the bell.
+  if (s.status === 'waiting') return i === 0 && !!s.earlyWork;
   if (s.status !== 'live') return false;
   if (i === s.index && !s.holding) return true;
   const c = s.closedAt?.[i];
@@ -209,8 +223,12 @@ export const holdingMs = (s: RoomState, now: number) => (s.holding ? Math.max(0,
 /** Milliseconds until the bell at `now`. */
 export const lessonLeftMs = (s: RoomState, now: number) => s.endsAt - now;
 
+/** Waiting: when the lesson will start (its start time, or now if that has passed or it's held). */
+const waitStart = (s: RoomState, now: number) => (s.held ? now : Math.max(s.startsAt ?? now, now));
+
 /** When the current module's clock will reach 0:00, counting a pause still going on. */
 function currentEnd(s: RoomState, now: number): number {
+  if (s.status === 'waiting') return waitStart(s, now) + (s.plan[0] ?? 0) * 1000;
   if (s.holding) return now;
   return moduleEndsAt(s) + (s.pausedAt ? now - s.pausedAt : 0);
 }
@@ -221,7 +239,7 @@ function currentEnd(s: RoomState, now: number): number {
  */
 export function moduleStarts(s: RoomState, now: number): (number | null)[] {
   const starts: (number | null)[] = s.plan.map(() => null);
-  if (s.status !== 'live') return starts;
+  if (s.status === 'ended') return starts;
   starts[s.index] = s.holding ? null : currentEnd(s, now) - ((s.plan[s.index] ?? 0) * 1000);
   let t = currentEnd(s, now);
   for (let i = s.index + 1; i < s.plan.length; i++) {
@@ -241,6 +259,7 @@ export function finishesAt(s: RoomState, now: number): number {
 
 /** When the room should next wake itself (the current module's end), or null. */
 export function nextAlarm(s: RoomState): number | null {
+  if (s.status === 'waiting') return s.held ? null : (s.startsAt ?? null);
   if (s.status !== 'live' || s.pausedAt !== null || s.holding) return null;
   return moduleEndsAt(s);
 }
@@ -326,7 +345,14 @@ function hold(s: RoomState, now: number): RoomState {
 
 /* ---------------- start and apply ---------------- */
 
-export function startRoom(runId: string, modules: RoomModule[], endsAt: number, now: number): RoomState {
+/** Bellwork first: students may start it before the bell. */
+export const earlyWorkOf = (modules: RoomModule[]) => modules[0]?.type === 'prompt' && modules[0]?.config?.category === 'bellwork';
+
+/**
+ * A new room. With `startsAt` still ahead, it waits (no clock) and the alarm starts it then;
+ * otherwise (no start time, or it has passed) it starts now.
+ */
+export function startRoom(runId: string, modules: RoomModule[], endsAt: number, now: number, startsAt?: number): RoomState {
   const base: RoomState = {
     runId,
     version: 1,
@@ -348,9 +374,18 @@ export function startRoom(runId: string, modules: RoomModule[], endsAt: number, 
     pageOrder: modules.map(() => null),
     onBoard: false,
     overSec: 0,
-    spareSec: 0
+    spareSec: 0,
+    ...(startsAt !== undefined ? { startsAt } : {})
   };
+  if (startsAt !== undefined && startsAt > now && modules.length) {
+    return { ...base, status: 'waiting', held: false, earlyWork: earlyWorkOf(modules) };
+  }
   return modules.length ? enter(base, modules, 0, now) : base;
+}
+
+/** A waiting room goes live now: the first module's clock starts and the rest are fitted to the bell. */
+function goLive(s: RoomState, modules: RoomModule[], now: number): RoomState {
+  return enter({ ...s, status: 'live', held: false, startedAt: now, moduleStartedAt: now }, modules, 0, now);
 }
 
 /** Checks a command from the network; returns null for anything malformed. */
@@ -361,8 +396,11 @@ export function parseCommand(v: any): Command | null {
     case 'back':
     case 'pause':
     case 'resume':
+    case 'start':
     case 'end':
       return { type: v.type };
+    case 'hold':
+      return typeof v.on === 'boolean' ? { type: 'hold', on: v.on } : null;
     case 'jump':
       return Number.isInteger(v.index) ? { type: 'jump', index: v.index } : null;
     case 'adjust': {
@@ -390,6 +428,16 @@ export function parseCommand(v: any): Command | null {
  */
 export function apply(s: RoomState, modules: RoomModule[], cmd: Command, now: number): RoomState {
   if (s.status === 'ended') return s;
+  if (s.status === 'waiting') {
+    // Before the lesson only [start], [hold] and [end] mean anything.
+    let w: RoomState = s;
+    if (cmd.type === 'start') w = goLive(s, modules, now);
+    else if (cmd.type === 'hold' && cmd.on !== !!s.held) {
+      // Letting go of a hold after the start time starts the lesson now.
+      w = !cmd.on && now >= (s.startsAt ?? now) ? goLive(s, modules, now) : { ...s, held: cmd.on };
+    } else if (cmd.type === 'end') w = { ...s, status: 'ended', endedAt: now, held: false };
+    return w === s ? s : { ...w, version: s.version + 1 };
+  }
   s = upgradeState(s);
   const last = modules.length - 1;
   let next: RoomState = s;
@@ -473,6 +521,9 @@ export function apply(s: RoomState, modules: RoomModule[], cmd: Command, now: nu
       if (cmd.spot === null && !s.spotlight) break;
       next = { ...s, spotlight: cmd.spot };
       break;
+    case 'start':
+    case 'hold':
+      break; // already running
     case 'end':
       next = { ...close(s, now), status: 'ended', endedAt: now, holding: false, pausedAt: null, spotlight: null };
       break;
@@ -481,11 +532,16 @@ export function apply(s: RoomState, modules: RoomModule[], cmd: Command, now: nu
 }
 
 /**
- * The alarm: the current module's time is up. Modules set to 'auto' move on; 'hold' modules (and
+ * The alarm. Waiting: the start time has come (see goLive). Live: the current module's time is up. Modules set to 'auto' move on; 'hold' modules (and
  * the last module) stop at 0:00 and wait for the teacher, and so does a board the teacher is
  * writing on (`writing`: ink in the last few seconds). Early or stale alarms change nothing.
  */
 export function timeUp(s: RoomState, modules: RoomModule[], now: number, opts: { writing?: boolean } = {}): RoomState {
+  if (s.status === 'waiting') {
+    // The start time: begin, unless the teacher is holding it. Early or stale alarms change nothing.
+    if (s.held || now < (s.startsAt ?? Infinity) - 500) return s;
+    return { ...goLive(s, modules, now), version: s.version + 1 };
+  }
   if (s.status !== 'live' || s.pausedAt !== null || s.holding) return s;
   s = upgradeState(s);
   if (moduleLeftMs(s, now) > 500) return s;

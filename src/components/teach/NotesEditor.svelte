@@ -191,6 +191,7 @@
             <textarea
               class="{field} font-mono min-h-[16rem]"
               rows="14"
+              data-terms
               bind:value={config.slides[si].markdown}
               onblur={splitCurrent}
               maxlength={LIMITS.slide}

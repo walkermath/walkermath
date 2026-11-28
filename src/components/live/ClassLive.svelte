@@ -7,6 +7,7 @@
 <!-- The teacher's ink shows on every page; a student reading anything other than the teacher's -->
 <!-- page (or board) gets a small live view of it in the corner, which takes them back. -->
 <script lang="ts">
+  import { provideTerms } from '../../lib/lesson/termsContext.ts';
   import { onDestroy, onMount } from 'svelte';
   import { MODULE_TYPES } from '../../lib/lesson/modules.ts';
   import { ANSWER_GRACE_MS, lessonLeftMs, livePage, moduleLeftMs, pagesOf, type RoomState } from '../../lib/lesson/room.ts';
@@ -17,14 +18,20 @@
   import LiveModule, { type SaveState } from './LiveModule.svelte';
   import PageView from './PageView.svelte';
   import PersonalNote from './PersonalNote.svelte';
+  import ReadyChecklist from './ReadyChecklist.svelte';
+  import { checklistMode } from '../../lib/lesson/checklist.ts';
 
   let runId = $state('');
   let lesson = $state<LiveLesson | null>(null);
+  // The lesson's own tooltips reach every slide and question below.
+  provideTerms(() => lesson?.terms);
   let rs = $state<RoomState | null>(null);
   let transport = $state<Transport>('connecting');
   let gone = $state<string | null>(null);
   let now = $state(Date.now());
-  let showList = $state(true);
+  // The module list starts open on a wide screen (it sits beside the module) and folded on a phone
+  // or narrow window (it sits above it, pushing the module down). Students can open or fold it.
+  let showList = $state(typeof window === 'undefined' || window.matchMedia('(min-width: 1024px)').matches);
   let conn: LiveConnection | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   const ink = new InkStore();
@@ -43,6 +50,7 @@
         transport = t;
       },
       onHand: (on) => (hand = on),
+      onReady: (on) => (ready = on),
       onFeedback: (rev) => {
         // The first number only says where the counter stands (the page loaded the feedback itself).
         if (lastFbRev !== null && rev !== lastFbRev) loadFeedback(true);
@@ -76,6 +84,11 @@
 
   let hand = $state(false);
   let handBusy = $state(false);
+  /** This student finished the readiness checklist (the room keeps it; other devices follow). */
+  let ready = $state(false);
+  const setReady = async (on: boolean) => {
+    await conn?.ready(on);
+  };
   async function toggleHand() {
     handBusy = true;
     try {
@@ -313,7 +326,14 @@
     browsing = lesson.modules[rs.index]?.type === 'notes' ? null : teacherPage.id;
   }
   /** The student can change their answers to module i: it's the live module and its time hasn't run out. */
-  const editable = (i: number) => !!rs && rs.status === 'live' && i === rs.index && !rs.holding;
+  const editable = (i: number) =>
+    !!rs && ((rs.status === 'live' && i === rs.index && !rs.holding) || (rs.status === 'waiting' && i === 0 && !!rs.earlyWork));
+  /** Before the lesson: the room is open but no clock runs yet. */
+  const waiting = $derived(rs?.status === 'waiting');
+  /** Readiness checklist: 'block' before the lesson (the first module waits), 'nudge' once it runs, or nothing. */
+  const checkMode = $derived(lesson && rs ? checklistMode(lesson.checklist ?? [], ready, rs.status) : null);
+  /** Time until the lesson starts (0 once it's due; a held lesson stays at 0 until the teacher starts it). */
+  const startsIn = $derived(rs?.status === 'waiting' && rs.startsAt ? Math.max(0, rs.startsAt - now) : 0);
 
   /** The module has been running and has closed (moved on from, or its time ran out). Skipped ones never ran. */
   const closed = (i: number) =>
@@ -363,6 +383,9 @@
   <div class="grid gap-6 lg:grid-cols-[17rem_minmax(0,1fr)] items-start">
     <!-- sidebar -->
     <aside class="space-y-4 lg:sticky lg:top-16">
+      {#if checkMode === 'nudge' && lesson}
+        <ReadyChecklist items={lesson.checklist ?? []} done={ready} mode="nudge" onready={setReady} />
+      {/if}
       <section class="rounded-md border border-[var(--line)] bg-[var(--bg-surface)]">
         <button
           type="button"
@@ -399,7 +422,7 @@
                   {#if unseenFb.includes(m.id)}
                     <span class="text-[var(--accent)] font-bold" title="New feedback from your teacher" aria-label="New feedback from your teacher">✉</span>
                   {/if}
-                  {#if i === rs.index}
+                  {#if i === rs.index && !waiting}
                     <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
                   {/if}
                 </button>
@@ -418,7 +441,9 @@
               onclick={() => open(rs.index)}
             >
               <span class="truncate">{onLive ? '>' : '↩'} {live.title}</span>
-              <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
+              {#if !waiting}
+                <span class="tabular-nums font-bold {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</span>
+              {/if}
             </button>
           </div>
         {/if}
@@ -474,14 +499,32 @@
             <h1 class="text-xl font-bold">{current.title}</h1>
             <div class="text-xs {label} help-text">// {MODULE_TYPES[current.type].hint}</div>
           </div>
-          {#if onLive}
+          {#if waiting}
+            <div class="text-right">
+              <div class="text-xs {label}">{startsIn > 0 ? 'starts in' : 'starting soon'}</div>
+              <div class="text-2xl font-bold tabular-nums">{startsIn > 0 ? countdown(startsIn) : '--:--'}</div>
+            </div>
+          {:else if onLive}
             <div class="text-2xl font-bold tabular-nums {modLeft < 0 ? 'text-[var(--bad)]' : ''}">{countdown(Math.max(modLeft, 0))}</div>
           {:else}
             <div class="text-xs {label}">{rs.done?.[shownIndex] ? 'time ran out' : 'not live'}</div>
           {/if}
         </header>
 
-        {#if onLive}
+        {#if checkMode === 'block'}
+          <ReadyChecklist items={lesson.checklist ?? []} done={ready} mode="block" onready={setReady} />
+        {/if}
+        {#if waiting}
+          <p class="p-3 rounded border border-[var(--accent)] text-sm">
+            {#if checkMode === 'block'}
+              // you're early. finish the checklist{rs.earlyWork ? ', then you can start the bellwork' : ''}. the lesson starts at {rs.startsAt ? clockAt(rs.startsAt) : 'the bell'}.
+            {:else if rs.earlyWork}
+              // you're early. you can start the bellwork now; the clock starts at {rs.startsAt ? clockAt(rs.startsAt) : 'the bell'}.
+            {:else}
+              // you're early. the lesson starts at {rs.startsAt ? clockAt(rs.startsAt) : 'the bell'}.
+            {/if}
+          </p>
+        {:else if onLive}
           {#if rs.pausedAt}
             <p class="p-3 rounded border border-[var(--warn)] text-[var(--warn)] text-sm">// paused by your teacher.</p>
           {:else if rs.holding}
@@ -489,6 +532,7 @@
           {/if}
         {/if}
 
+        {#if (!waiting || rs.earlyWork) && checkMode !== 'block'}
         {#key current.id}
           <LiveModule
             module={current}
@@ -508,6 +552,7 @@
           />
           <PersonalNote {runId} moduleId={current.id} bind:text={() => notes[current!.id] ?? '', (v) => (notes[current!.id] = v)} />
         {/key}
+        {/if}
       </main>
     {/if}
   </div>

@@ -18,6 +18,7 @@
   import 'katex/dist/katex.min.css';
   import type { Snippet } from 'svelte';
   import { renderMarkdown } from '../../lib/lesson/markdown.ts';
+  import { glossaryFor, useTerms } from '../../lib/lesson/termsContext.ts';
 
   let {
     markdown,
@@ -40,7 +41,8 @@
   let width = $state(0);
   let content = $state<HTMLDivElement | null>(null);
   // Vocabulary is marked; it's underlined only where the site's help script runs (not the projector).
-  const html = $derived(renderMarkdown(markdown, { glossary: true }));
+  const lessonTerms = useTerms();
+  const html = $derived(renderMarkdown(markdown, { glossary: glossaryFor(lessonTerms()) }));
   const scale = $derived(width > 0 ? width / SLIDE_W : 0);
 
   /** Shrinks the text until it fits (a few rounds of halving the gap), then reports. */

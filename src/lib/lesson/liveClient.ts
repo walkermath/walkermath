@@ -13,11 +13,13 @@
 
 import type { RoomModule, RoomState, Command } from './room.ts';
 import type { InkOp, Stroke } from './ink.ts';
+import type { GlossaryEntry } from '../glossary.ts';
 
 export type Link = { label: string; url: string };
-export type LiveLesson = { title: string; resources: Link[]; modules: RoomModule[] };
-/** `here: false` = was in this lesson earlier and has left (closed the tab, lost wifi). */
-export type RosterRow = { aliasId: string; alias: string; devices: number; here: boolean; hand?: number | null };
+/** `checklist`: the lesson's readiness checklist (empty, or missing in rooms opened before it existed). */
+export type LiveLesson = { title: string; resources: Link[]; modules: RoomModule[]; checklist?: string[]; terms?: GlossaryEntry[] };
+/** `here: false` = was in this lesson earlier and has left (closed the tab, lost wifi). `ready`: finished the checklist. */
+export type RosterRow = { aliasId: string; alias: string; devices: number; here: boolean; hand?: number | null; ready?: boolean };
 export type Transport = 'connecting' | 'socket' | 'polling' | 'offline';
 
 export interface LiveHandlers {
@@ -35,6 +37,8 @@ export interface LiveHandlers {
   onInkRev?: (rev: Record<string, number>) => void;
   /** Students: their "I'm stuck" hand went up or down (from this device, another, or the teacher). */
   onHand?: (on: boolean) => void;
+  /** Students: they finished the readiness checklist (on this device or another). */
+  onReady?: (on: boolean) => void;
   /** Students: the teacher gave them feedback (Active Feedback). `rev` goes up each time; slow mode reads it from the poll. */
   onFeedback?: (rev: number) => void;
   /** Teacher: a student saved an answer in an Active Feedback activity (time to refresh the answers). */
@@ -51,6 +55,8 @@ export interface LiveConnection {
   sendInk: (op: InkOp) => Promise<void>;
   /** "I'm stuck": a student's own hand up or down; the teacher passes an alias id to lower theirs. */
   hand: (on: boolean, aliasId?: string) => Promise<void>;
+  /** Students: the readiness checklist is finished (or an item was un-ticked). */
+  ready: (on: boolean) => Promise<void>;
   close: () => void;
 }
 
@@ -102,6 +108,7 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
       if (data.lesson) h.onLesson(data.lesson);
       if (data.students) h.onRoster?.(data.students);
       if (typeof data.hand === 'boolean') h.onHand?.(data.hand);
+      if (typeof data.ready === 'boolean') h.onReady?.(data.ready);
       if (typeof data.feedbackRev === 'number') h.onFeedback?.(data.feedbackRev);
       takeState(data.state, data.serverNow);
       if (data.inkRev) h.onInkRev?.(data.inkRev);
@@ -156,6 +163,7 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
       else if (msg.type === 'state') takeState(msg.state, msg.serverNow);
       else if (msg.type === 'roster') h.onRoster?.(msg.students);
       else if (msg.type === 'hand') h.onHand?.(!!msg.on);
+      else if (msg.type === 'ready') h.onReady?.(!!msg.on);
       else if (msg.type === 'feedback') h.onFeedback?.(Number(msg.rev) || 0);
       else if (msg.type === 'answers') h.onAnswers?.();
       else if (msg.type === 'ink') h.onInk?.(msg.op, msg.rev);
@@ -254,6 +262,17 @@ export function connectLive(runId: string, h: LiveHandlers): LiveConnection {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
       if (!aliasId) h.onHand?.(!!data.hand);
+    },
+    async ready(on) {
+      const res = await fetch(base, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ready: on }),
+        credentials: 'same-origin'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
+      h.onReady?.(!!data.ready);
     },
     close: stop
   };

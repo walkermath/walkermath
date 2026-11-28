@@ -5,6 +5,7 @@
 <!-- Writing on the board happens on the presenter screen ([presenter], /teach/present); the -->
 <!-- preview here shows the ink as it's written. -->
 <script lang="ts">
+  import { provideTerms } from '../../lib/lesson/termsContext.ts';
   import { gridText } from '../../lib/lesson/grid.ts';
   import { sortText } from '../../lib/lesson/sort.ts';
   import { onDestroy, onMount } from 'svelte';
@@ -41,6 +42,8 @@
   /** The lesson as you wrote it (for your private notes and answer keys); the room only has the public part. */
   let mine = $state<LessonModule[]>([]);
   let lesson = $state<LiveLesson | null>(null);
+  // The lesson's own tooltips reach every slide and question below.
+  provideTerms(() => lesson?.terms);
   let rs = $state<RoomState | null>(null);
   let students = $state<RosterRow[]>([]);
   let transport = $state<Transport>('connecting');
@@ -141,6 +144,9 @@
   const starts = $derived(rs ? moduleStarts(rs, now) : []);
   const plannedEnd = $derived(rs ? finishesAt(rs, now) : 0);
   const here = $derived(students.filter((s) => s.here));
+  /** The class has a readiness checklist: count who's done it, of those here. */
+  const hasChecklist = $derived(!!lesson?.checklist?.length);
+  const readyHere = $derived(here.filter((s) => s.ready).length);
   /** Students with "I'm stuck" up, longest waiting first. */
   const hands = $derived(students.filter((s) => s.hand).sort((a, b) => (a.hand ?? 0) - (b.hand ?? 0)));
   async function lowerHand(aliasId: string) {
@@ -207,8 +213,10 @@
         <span class={transport === 'socket' ? 'text-[var(--ok)]' : transport === 'offline' ? 'text-[var(--warn)]' : label}>
           ● {transport === 'socket' ? 'live' : transport === 'polling' ? 'live (slow mode)' : transport}
         </span>
-        {#if rs.status === 'live'}
+        {#if rs.status !== 'ended'}
           <a class={btnMain} href="/teach/present?run={run.id}" target="_blank" rel="noopener" title="The projector screen, where you write on the board">[presenter ↗]</a>
+        {/if}
+        {#if rs.status === 'live'}
           <button type="button" class={btnDanger} onclick={end} disabled={busy}>[end lesson]</button>
         {/if}
       </div>
@@ -225,6 +233,37 @@
         <div class="space-y-4 min-w-0">
           <!-- the current module -->
           {#if current}
+            {#if rs.status === 'waiting'}
+              <!-- Before the lesson: students can join (and start an opening Bellwork); no clock runs yet. -->
+              <section class="{panel} space-y-4">
+                <div class="flex flex-wrap justify-between items-start gap-3">
+                  <div>
+                    <div class={heading}>// before the lesson</div>
+                    <div class="text-xl font-bold mt-1">first up: {current.title}</div>
+                    <div class="mt-1 {label}">
+                      {rs.earlyWork ? 'students who are here can start the bellwork; its clock starts with the lesson.' : 'students who are here see a countdown.'}
+                    </div>
+                    <div class="mt-2 text-lg font-bold tabular-nums">
+                      {here.length} here{#if hasChecklist} · <span class={readyHere === here.length && here.length ? 'text-[var(--ok)]' : ''}>{readyHere} of {here.length} ready</span>{/if}
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-5xl font-bold tabular-nums leading-none">{rs.held ? '--:--' : countdown(Math.max(0, (rs.startsAt ?? now) - now))}</div>
+                    <div class="mt-1 {rs.held ? 'text-[var(--warn)]' : label}">
+                      {rs.held ? 'held: starts when you press [start now]' : `starts by itself at ${rs.startsAt ? clockAt(rs.startsAt) : 'the start time'}`}
+                    </div>
+                  </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class={btnMain} onclick={() => send({ type: 'start' })}>[start now]</button>
+                  {#if rs.held}
+                    <button type="button" class={btn} onclick={() => send({ type: 'hold', on: false })} title="Start by itself at the start time (now, if it has passed)">[release hold]</button>
+                  {:else}
+                    <button type="button" class={btn} onclick={() => send({ type: 'hold', on: true })} title="Don't start by itself: wait for [start now]">[hold]</button>
+                  {/if}
+                </div>
+              </section>
+            {:else}
             <section class="{panel} space-y-4">
               <div class="flex flex-wrap justify-between items-start gap-3">
                 <div>
@@ -282,6 +321,7 @@
                 </div>
               {/if}
             </section>
+            {/if}
 
             {#if mineCurrent?.teacherNotes}
               <section class="{panel} space-y-1">
@@ -367,7 +407,7 @@
           {/if}
 
           <section class="{panel} space-y-2">
-            <div class={heading}>// here now ({here.length}{gone.length ? ` · ${gone.length} left` : ''})</div>
+            <div class={heading}>// here now ({here.length}{gone.length ? ` · ${gone.length} left` : ''}{hasChecklist ? ` · ${readyHere} ready` : ''})</div>
             {#if students.length === 0}
               <p class={label}>no students connected yet. they join from /class.</p>
             {:else}
@@ -377,7 +417,7 @@
                     class="px-1.5 py-0.5 rounded border border-[var(--line)] {s.here ? '' : label}"
                     title={s.here ? `${s.devices} device${s.devices === 1 ? '' : 's'}` : 'left the lesson (closed the page or lost connection)'}
                   >
-                    <span class={s.here ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}>{s.here ? '●' : '○'}</span> {s.alias}{s.hand ? ' ✋' : ''}
+                    <span class={s.here ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}>{s.here ? '●' : '○'}</span> {s.alias}{s.hand ? ' ✋' : ''}{hasChecklist && s.ready ? ' ✓' : ''}
                   </li>
                 {/each}
               </ul>

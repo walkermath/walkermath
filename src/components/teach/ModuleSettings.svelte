@@ -222,7 +222,7 @@
         <button type="button" class="hover:text-[var(--accent)] cursor-pointer disabled:opacity-40" onclick={() => moveQuestion(qi, qi + 1)} disabled={qi === module.config.questions.length - 1} aria-label="Move down">[down]</button>
         <button type="button" class="hover:text-[var(--bad)] cursor-pointer" onclick={() => module.config.questions.splice(qi, 1)}>[x]</button>
       </div>
-      <textarea class={field} rows="2" bind:value={q.text} maxlength={LIMITS.text} placeholder="Question (use $...$ for math)"></textarea>
+      <textarea class={field} rows="2" data-terms bind:value={q.text} maxlength={LIMITS.text} placeholder="Question (use $...$ for math)"></textarea>
 
       {#if q.kind === 'choice'}
         <div class="space-y-1">
@@ -633,7 +633,7 @@
       {/if}
       <label class="block space-y-1">
         <span class={label}>instructions</span>
-        <textarea class={field} rows="4" bind:value={module.config.instructions} maxlength={LIMITS.text} placeholder="What students do (use $...$ for math)"></textarea>
+        <textarea class={field} rows="4" data-terms bind:value={module.config.instructions} maxlength={LIMITS.text} placeholder="What students do (use $...$ for math)"></textarea>
       </label>
 
       <div class="space-y-1">

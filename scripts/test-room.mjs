@@ -323,3 +323,108 @@ test('spotlight: the teacher puts a poll result or one answer on the projector; 
     'hello'
   ]) assert.equal(parseCommand({ type: 'spotlight', spot: bad }), null, JSON.stringify(bad));
 });
+
+/* ---------------- before the lesson: early join, auto-start, hold ---------------- */
+
+const bellworkLesson = () => {
+  const ms = lesson();
+  ms[0] = { ...ms[0], config: { category: 'bellwork', questions: [] } };
+  return ms;
+};
+
+test('opened before its start time, a room waits: no clock, the alarm is the start time', () => {
+  const ms = bellworkLesson();
+  const s = startRoom('run', ms, T0 + min(48), T0 - min(3), T0);
+  assert.equal(s.status, 'waiting');
+  assert.equal(s.startsAt, T0);
+  assert.equal(s.earlyWork, true);
+  assert.equal(nextAlarm(s), T0);
+  assert.equal(livePage(s, ms), null);
+  // The schedule counts from the start time, not from when the room opened.
+  const st = moduleStarts(s, T0 - min(2));
+  assert.equal(st[0], T0);
+  assert.equal(st[1], T0 + 360_000);
+  assert.equal(finishesAt(s, T0 - min(2)), T0 + min(48));
+});
+
+test('opened at or after its start time, a room starts at once (as before)', () => {
+  const ms = bellworkLesson();
+  const s = startRoom('run', ms, T0 + min(48), T0 + min(1), T0);
+  assert.equal(s.status, 'live');
+  assert.equal(s.startedAt, T0 + min(1));
+  assert.equal(nextAlarm(s), T0 + min(1) + 360_000);
+});
+
+test('the alarm starts the lesson at the start time, with the full plan; an early alarm changes nothing', () => {
+  const ms = bellworkLesson();
+  let s = startRoom('run', ms, T0 + min(48), T0 - min(3), T0);
+  assert.equal(timeUp(s, ms, T0 - min(1)), s);
+  s = timeUp(s, ms, T0 + 200);
+  assert.equal(s.status, 'live');
+  assert.equal(s.index, 0);
+  assert.equal(s.startedAt, T0 + 200);
+  assert.equal(s.plan[0], 360, 'the bellwork clock starts at the bell: early time does not count');
+  assert.equal(moduleLeftMs(s, T0 + 200 + 60_000), 300_000);
+  assert.equal(s.version, 2);
+});
+
+test('early answers: only an early Bellwork takes them, and they stay open across the bell', () => {
+  const ms = bellworkLesson();
+  let s = startRoom('run', ms, T0 + min(48), T0 - min(3), T0);
+  assert.equal(answersOpen(s, 0, T0 - min(2)), true);
+  assert.equal(answersOpen(s, 1, T0 - min(2)), false);
+  s = timeUp(s, ms, T0);
+  assert.equal(answersOpen(s, 0, T0 + 1000), true);
+  // A lesson that doesn't open with a Bellwork: nothing to answer before the start.
+  const plain = startRoom('run', lesson(), T0 + min(48), T0 - min(3), T0);
+  assert.equal(plain.earlyWork, false);
+  assert.equal(answersOpen(plain, 0, T0 - min(2)), false);
+});
+
+test('[hold] stops the auto-start; letting go after the start time starts it then', () => {
+  const ms = bellworkLesson();
+  let s = startRoom('run', ms, T0 + min(48), T0 - min(3), T0);
+  s = apply(s, ms, { type: 'hold', on: true }, T0 - min(1));
+  assert.equal(s.held, true);
+  assert.equal(nextAlarm(s), null);
+  assert.equal(timeUp(s, ms, T0 + 1000), s, 'held: the start time passes and nothing happens');
+  // Letting go before the start time just re-arms the alarm.
+  const early = apply(s, ms, { type: 'hold', on: false }, T0 - 30_000);
+  assert.equal(early.status, 'waiting');
+  assert.equal(nextAlarm(early), T0);
+  // Letting go after it starts the lesson now, fitted to the bell.
+  const late = apply(s, ms, { type: 'hold', on: false }, T0 + min(4));
+  assert.equal(late.status, 'live');
+  assert.equal(late.startedAt, T0 + min(4));
+  assert.equal(late.plan.reduce((a, b) => a + b, 0), 44 * 60);
+  assert.equal(late.plan[0], 360, 'locked bellwork keeps its time');
+});
+
+test('[start] begins a waiting lesson now; [end] closes one that never started', () => {
+  const ms = bellworkLesson();
+  const w = startRoom('run', ms, T0 + min(48), T0 - min(3), T0);
+  const now = apply(w, ms, { type: 'start' }, T0 - min(2));
+  assert.equal(now.status, 'live');
+  assert.equal(now.startedAt, T0 - min(2));
+  assert.equal(apply(now, ms, { type: 'start' }, T0), now, 'start on a live lesson does nothing');
+  assert.equal(apply(now, ms, { type: 'hold', on: true }, T0), now, 'hold on a live lesson does nothing');
+  const ended = apply(w, ms, { type: 'end' }, T0 - min(1));
+  assert.equal(ended.status, 'ended');
+  assert.equal(nextAlarm(ended), null);
+});
+
+test('while waiting, other commands do nothing', () => {
+  const ms = bellworkLesson();
+  const w = startRoom('run', ms, T0 + min(48), T0 - min(3), T0);
+  for (const cmd of [{ type: 'next' }, { type: 'back' }, { type: 'jump', index: 2 }, { type: 'adjust', seconds: 60 }, { type: 'pause' }, { type: 'page', page: 1 }]) {
+    assert.equal(apply(w, ms, cmd, T0 - min(1)), w, cmd.type);
+  }
+  assert.equal(apply(w, ms, { type: 'hold', on: false }, T0 - min(1)), w, 'releasing a hold that is not on');
+});
+
+test('start and hold commands from the network are checked', () => {
+  assert.deepEqual(parseCommand({ type: 'start' }), { type: 'start' });
+  assert.deepEqual(parseCommand({ type: 'hold', on: true }), { type: 'hold', on: true });
+  assert.equal(parseCommand({ type: 'hold' }), null);
+  assert.equal(parseCommand({ type: 'hold', on: 'yes' }), null);
+});

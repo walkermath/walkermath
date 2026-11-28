@@ -7,6 +7,7 @@
 //   POST { cmd }                  -> { state, serverNow }   teacher only (next, back, adjust...)
 //   POST { ink }                  -> { ok, rev }            teacher only: a pen stroke, erase or clear (slow mode)
 //   POST { hand, aliasId? }       -> { hand }               "I'm stuck": a student's own hand; the teacher lowers anyone's
+//   POST { ready }                -> { ready }              a student finished (or un-ticked) the readiness checklist
 //
 // Who is connecting is checked here, from the session cookie, and passed to the room as
 // headers. Only those headers are forwarded: the room never sees cookies, IPs or anything else.
@@ -63,6 +64,16 @@ export async function onRequestPost({ request, env, params }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...w.headers },
       body: JSON.stringify({ on: body.hand === true, aliasId: w.role === 'teacher' ? body.aliasId : undefined })
+    });
+    return new Response(res.body, { status: res.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  }
+  // The readiness checklist: students only, about themselves.
+  if ('ready' in body) {
+    if (w.role !== 'student') return fail('Not found.', 404);
+    const res = await roomStub(env, w.run.id).fetch('https://room.internal/ready', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...w.headers },
+      body: JSON.stringify({ on: body.ready === true })
     });
     return new Response(res.body, { status: res.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   }

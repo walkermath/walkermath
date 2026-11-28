@@ -6,6 +6,7 @@
 <!-- [board] opens a scratch blackboard, kept with that module. Clicker keys turn pages; the screen -->
 <!-- stays awake. The control panel can stay open on another device; both stay in step. -->
 <script lang="ts">
+  import { provideTerms } from '../../lib/lesson/termsContext.ts';
   import { onDestroy, onMount } from 'svelte';
   import { api, ApiError } from '../../lib/api.ts';
   import { MODULE_TYPES } from '../../lib/lesson/modules.ts';
@@ -23,6 +24,8 @@
 
   let run = $state<Run | null>(null);
   let lesson = $state<LiveLesson | null>(null);
+  // The lesson's own tooltips reach every slide and question below.
+  provideTerms(() => lesson?.terms);
   let rs = $state<RoomState | null>(null);
   let transport = $state<Transport>('connecting');
   let error = $state('');
@@ -245,6 +248,19 @@
     <div class="m-auto max-w-md p-6 space-y-3 text-sm text-center">
       <p>// the lesson has ended.</p>
       <a class="underline hover:text-[var(--accent)]" href="/teach">[lessons]</a>
+    </div>
+  {:else if rs.status === 'waiting'}
+    <!-- Before the lesson: a big countdown for the room, and what's first. -->
+    <div class="m-auto p-6 space-y-4 text-center">
+      <div class="text-2xl font-bold">{lesson.title}</div>
+      {#if rs.held}
+        <div class="text-lg {label}">starting soon</div>
+      {:else}
+        <div class="{label}">starts in</div>
+        <div class="text-8xl font-bold tabular-nums">{countdown(Math.max(0, (rs.startsAt ?? now) - now))}</div>
+      {/if}
+      <div class="text-lg">first up: {lesson.modules[0]?.title}{rs.earlyWork ? ' (you can start now)' : ''}</div>
+      <a class="{tool} {toolOff} inline-block" href="/teach/live?run={run.id}" target="_blank" rel="noopener">panel ↗</a>
     </div>
   {:else}
     <!-- top bar: where we are, the clock, the screen -->
