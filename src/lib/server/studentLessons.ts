@@ -8,7 +8,7 @@
 import { cleanTerms } from '../lesson/terms.ts';
 import type { GlossaryEntry } from '../glossary.ts';
 import type { Answers } from '../lesson/answers.ts';
-import { isCorrect, questionsOf } from '../questions/index.ts';
+import { questionMark, questionsOf, type QuestionMark } from '../questions/index.ts';
 import type { FeedbackByModule } from '../lesson/feedback.ts';
 import { pagesOf, type Page, type RoomModule } from '../lesson/room.ts';
 import { studentFeedback } from './feedback.ts';
@@ -73,7 +73,7 @@ export interface PastLesson {
   /** This student's answers, by module id. */
   answers: Record<string, Answers>;
   /** Right / wrong / no key, by module id then question id. */
-  marks: Record<string, Record<string, boolean | null>>;
+  marks: Record<string, Record<string, QuestionMark>>;
   /** This student's best game score, by module id. */
   scores: Record<string, { best: number; plays: number }>;
   /** This student's personal notes, by module id. */
@@ -124,8 +124,8 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
   const marks: PastLesson['marks'] = {};
   for (const m of lesson.modules as any[]) {
     if (!questionsOf(m).length || !answers[m.id]) continue;
-    const out: Record<string, boolean | null> = {};
-    for (const q of questionsOf(m)) out[q.id] = isCorrect(q, answers[m.id][q.id]);
+    const out: Record<string, QuestionMark> = {};
+    for (const q of questionsOf(m)) out[q.id] = questionMark(q, answers[m.id][q.id]);
     marks[m.id] = out;
   }
 

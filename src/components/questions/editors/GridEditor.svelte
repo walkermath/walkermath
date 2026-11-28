@@ -166,4 +166,9 @@
       </p>
     {/if}
   </div>
+  <label class="flex items-center gap-2 pt-1">
+    <input type="checkbox" checked={!!q.partial} onchange={(e) => (e.currentTarget.checked ? (q.partial = true) : delete q.partial)} />
+    <span>partial credit</span>
+    <span class="{label} help-text">// on: a student gets the share they got right (3 of 4 right = 75%). off: right only when all of it is.</span>
+  </label>
 {/if}

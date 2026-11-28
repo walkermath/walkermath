@@ -5,7 +5,7 @@
 // lesson afterwards never changes what a delivery collected or how it was marked.
 
 import { answerSpec, checkSubmission, type Answers, type AnswerSpec } from '../lesson/answers.ts';
-import { isCorrect, questionsOf, type Question } from '../questions/index.ts';
+import { questionMark, questionsOf, type Question, type QuestionMark } from '../questions/index.ts';
 import { answersOpen, type RoomState } from '../lesson/room.ts';
 import { isFeedbackActivity } from '../lesson/modules.ts';
 import type { Lesson } from './lessons.ts';
@@ -82,17 +82,17 @@ export async function studentAnswers(db: any, runId: string, aliasId: string): P
  * so a key is never judged against an answer the student can still change. Computed against the
  * run's own snapshot; the keys never leave the server.
  */
-export async function closedMarks(env: any, run: LiveRun, answers: Record<string, { answers: Answers }>, now = Date.now()): Promise<Record<string, Record<string, boolean | null>>> {
+export async function closedMarks(env: any, run: LiveRun, answers: Record<string, { answers: Answers }>, now = Date.now()): Promise<Record<string, Record<string, QuestionMark>>> {
   const lesson = await runSnapshot(env.DB, run.id);
   const state = lesson ? await peekRoom(env, run.id) : null;
-  const out: Record<string, Record<string, boolean | null>> = {};
+  const out: Record<string, Record<string, QuestionMark>> = {};
   if (!lesson || !state) return out;
   (lesson.modules as any[]).forEach((m, i) => {
     if (!questionsOf(m).length || !answers[m.id]) return;
     const ran = state.closedAt?.[i] != null || !!state.done?.[i] || (state.took?.[i] ?? 0) > 0 || (i === state.index && state.holding);
     if (!ran || answersOpen(state, i, now)) return;
-    const marks: Record<string, boolean | null> = {};
-    for (const q of questionsOf(m)) marks[q.id] = isCorrect(q, answers[m.id].answers[q.id]);
+    const marks: Record<string, QuestionMark> = {};
+    for (const q of questionsOf(m)) marks[q.id] = questionMark(q, answers[m.id].answers[q.id]);
     out[m.id] = marks;
   });
   return out;
@@ -118,7 +118,8 @@ export interface AnswerRow {
   alias: string;
   answers: Answers;
   /** questionId -> right / wrong / null (no key, or no answer). */
-  correct: Record<string, boolean | null>;
+  /** ✓ true, ✗ false, not marked null, or partly right: the share right (partial credit). */
+  correct: Record<string, QuestionMark>;
   updatedAt: number;
 }
 
@@ -157,7 +158,8 @@ export async function runAnswers(db: any, run: LiveRun): Promise<{ modules: Coll
         answer: q.answer ?? '',
         match: q.match === 'any' ? 'any' : 'form',
         ...(q.sort ? { sort: q.sort } : {}),
-        ...(q.grid ? { grid: q.grid } : {})
+        ...(q.grid ? { grid: q.grid } : {}),
+        ...(q.partial ? { partial: true } : {})
       }));
       keys.set(m.id, entry.questions);
     }
@@ -175,8 +177,8 @@ export async function runAnswers(db: any, run: LiveRun): Promise<{ modules: Coll
     .all();
   const rows: AnswerRow[] = subs.results.map((r: any) => {
     const answers: Answers = parse(r.answers_json, {});
-    const correct: Record<string, boolean | null> = {};
-    for (const q of keys.get(r.module_id) ?? []) correct[q.id] = isCorrect(q as Question, answers[q.id]);
+    const correct: Record<string, QuestionMark> = {};
+    for (const q of keys.get(r.module_id) ?? []) correct[q.id] = questionMark(q as Question, answers[q.id]);
     return { moduleId: r.module_id, aliasId: r.alias_id, alias: r.alias, answers, correct, updatedAt: r.updated_at };
   });
 

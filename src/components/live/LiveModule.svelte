@@ -62,7 +62,7 @@
     editable?: boolean;
     saveState?: SaveState;
     /** Looking back at a finished lesson: right (true), not right (false) or not marked (null), by question id. */
-    marks?: Record<string, boolean | null>;
+    marks?: Record<string, boolean | null | number>;
     /** Active Feedback: the teacher's mark and message on each of this student's answers, by question id. */
     feedback?: Record<string, Feedback>;
     /** A change to the answers; `flush` = save now (a choice picked, a field left) rather than after a pause in typing. */
@@ -188,6 +188,8 @@
             <span class="ml-2 text-sm text-[var(--ok)]">✓ right</span>
           {:else if marks?.[q.id] === false}
             <span class="ml-2 text-sm text-[var(--bad)]">✗ not right</span>
+          {:else if typeof marks?.[q.id] === 'number'}
+            <span class="ml-2 text-sm text-[var(--warn)]">◐ partly right ({Math.round(Number(marks?.[q.id]) * 100)}%)</span>
           {/if}
         </div>
         <div class="slide-text">{@html renderMarkdown(q.text, { glossary: glossaryFor(lessonTerms()) })}</div>

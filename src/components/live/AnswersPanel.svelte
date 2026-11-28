@@ -15,7 +15,7 @@
   type Q = { id: string; kind: string; text: string; choices: string[]; answer: string; sort?: any };
   type CollectModule = { id: string; title: string; kind: 'questions' | 'short' | 'tap' | 'coliseum'; feedback?: boolean; questions?: Q[] };
   type FbRow = Feedback & { moduleId: string; aliasId: string; questionId: string };
-  type Row = { moduleId: string; aliasId: string; alias: string; answers: Record<string, string>; correct: Record<string, boolean | null>; updatedAt: number };
+  type Row = { moduleId: string; aliasId: string; alias: string; answers: Record<string, string>; correct: Record<string, boolean | null | number>; updatedAt: number };
   type Score = { moduleId: string; aliasId: string; alias: string; best: number; plays: number };
 
   let {
@@ -158,8 +158,11 @@
   }
   const showAnswer = (title: string, text: string, math: boolean) => onspotlight?.({ kind: 'answer', title, text, math });
 
-  const cellCls = (v: boolean | null | undefined) =>
-    v === true ? 'text-[var(--ok)]' : v === false ? 'text-[var(--bad)]' : '';
+  const cellCls = (v: boolean | null | number | undefined) =>
+    v === true ? 'text-[var(--ok)]' : v === false ? 'text-[var(--bad)]' : typeof v === 'number' ? 'text-[var(--warn)]' : '';
+  /** ✓ / ✗ / ◐ 75% before an answer in the table. */
+  const markPrefix = (v: boolean | null | number | undefined) =>
+    v === true ? '✓ ' : v === false ? '✗ ' : typeof v === 'number' ? `◐ ${Math.round(v * 100)}% ` : '';
 
   /* ---------------- Active Feedback: your marks and messages ---------------- */
 
@@ -491,9 +494,9 @@
                         class="text-left line-clamp-2 break-words hover:underline cursor-pointer"
                         title="Show this answer on the projector (no name)"
                         onclick={() => showAnswer(`Q${qi + 1}`, v, q.kind === 'math')}
-                      >{r?.correct[q.id] === true ? '✓ ' : r?.correct[q.id] === false ? '✗ ' : ''}{v}</button>
+                      >{markPrefix(r?.correct[q.id])}{v}</button>
                     {:else if v}
-                      <span class="line-clamp-2 break-words">{r?.correct[q.id] === true ? '✓ ' : r?.correct[q.id] === false ? '✗ ' : ''}{v}</span>
+                      <span class="line-clamp-2 break-words">{markPrefix(r?.correct[q.id])}{v}</span>
                     {:else}
                       <span class={label}>-</span>
                     {/if}

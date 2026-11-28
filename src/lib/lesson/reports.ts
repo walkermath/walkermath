@@ -17,7 +17,7 @@
 // Rows are student aliases, never names. A blank cell means nothing was handed in.
 
 import { answerSpec, isAnswered, type Answers } from './answers.ts';
-import { answerText as questionAnswerText, isCorrect, questionsOf, toNumber, type Question } from '../questions/index.ts';
+import { answerText as questionAnswerText, gradeAnswer, isCorrect, questionsOf, toNumber, type Question } from '../questions/index.ts';
 import { MARK_POINTS, MARK_REPORT, type Mark } from './feedback.ts';
 import type { Grid } from './grid.ts';
 import { isFeedbackActivity } from './modules.ts';
@@ -60,6 +60,8 @@ export interface ReportQuestion {
   sort?: SortSpec;
   /** Grid questions: the table (how it is marked: groups, area model). */
   grid?: Grid;
+  /** Grid and card sort questions: partial credit is on. */
+  partial?: boolean;
 }
 
 const KIND_LABEL: Record<ItemKind, string> = {
@@ -84,7 +86,8 @@ export function moduleQuestions(m: ReportModule): ReportQuestion[] {
     answer: String(q.answer ?? ''),
     match: q.match === 'any' ? 'any' : 'form',
     ...(q.sort ? { sort: q.sort } : {}),
-    ...(q.grid ? { grid: q.grid } : {})
+    ...(q.grid ? { grid: q.grid } : {}),
+    ...(q.partial ? { partial: true } : {})
   }));
 }
 
@@ -293,6 +296,25 @@ export function buildReport(data: ReportData, req: ReportRequest): Sheet[] {
             return moduleQuestions(m).filter((q) => q.answer !== '' && isCorrect(q as Question, a[q.id]) === true).length;
           }
         });
+        // With partial credit on any question: points too (a partly right answer earns its share).
+        if (moduleQuestions(mod!).some((q) => q.answer !== '' && q.partial)) {
+          inst.columns.push({
+            header: head(`Points (of ${total})`),
+            value: (run, s) => {
+              const m = find(run);
+              const a = answersOf(run, s);
+              const spec = m && answerSpec(m);
+              if (!m || !a || !spec || !isAnswered(spec, a)) return null;
+              const pts = moduleQuestions(m)
+                .filter((q) => q.answer !== '')
+                .reduce((n, q) => {
+                  const g = gradeAnswer(q as Question, a[q.id]);
+                  return n + (g.status === 'right' || g.status === 'partial' ? g.score : 0);
+                }, 0);
+              return Math.round(pts * 100) / 100;
+            }
+          });
+        }
       } else if (item.kind === 'feedback') {
         // The score first (right 1, partly right a half, not yet 0; blank until something is marked),
         // then each question's mark.

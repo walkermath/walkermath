@@ -22,6 +22,8 @@ export interface Question {
   grid?: Grid;
   /** Card sort questions: the groups and cards (the key, each card's group, is in `answer`; see sort.ts). */
   sort?: SortSpec;
+  /** Grid and card sort questions: partial credit (the share of keyed cells / cards that are right). Off = all or nothing. */
+  partial?: boolean;
 }
 
 /** The teacher's side: how long a question's parts may be. */
@@ -53,6 +55,12 @@ export interface Grade {
   feedback?: string;
   source: 'auto' | 'teacher' | 'llm';
 }
+
+/**
+ * A mark as students and the answers table see it: right (true), not right (false), not marked
+ * (null), or partly right: the share right, between 0 and 1 (partial credit).
+ */
+export type QuestionMark = boolean | null | number;
 
 /** What a kind's cleanQuestion gets besides the raw question. */
 export interface CleanContext {

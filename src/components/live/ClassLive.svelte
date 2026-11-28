@@ -117,7 +117,7 @@
   /** The student's answers, by module id (what's on screen; may be ahead of what's saved). */
   let mine = $state<Record<string, Answers>>({});
   /** Right / wrong per question for modules that have closed (sent by the server only after they close). */
-  let marks = $state<Record<string, Record<string, boolean | null>>>({});
+  let marks = $state<Record<string, Record<string, boolean | null | number>>>({});
   let saves = $state<Record<string, SaveState>>({});
   const dirty = new Set<string>(); // changed since the last save started
   const inflight = new Set<string>();

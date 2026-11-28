@@ -17,7 +17,7 @@ import { math } from './kinds/math.ts';
 import { number } from './kinds/number.ts';
 import { sort } from './kinds/sort.ts';
 import { text } from './kinds/text.ts';
-import { QUESTION_LIMITS, type Grade, type Question, type QuestionKind, type QuestionKindDef } from './types.ts';
+import { QUESTION_LIMITS, type Grade, type Question, type QuestionKind, type QuestionKindDef, type QuestionMark } from './types.ts';
 
 export * from './types.ts';
 export { toNumber } from './kinds/number.ts';
@@ -99,7 +99,16 @@ export function markOf(g: Grade): boolean | null {
   return null;
 }
 
-/** true / false against the key, or null. The ✓ / ✗ every screen shows. */
+/** A grade as students and the answers table see it: ✓, ✗, not marked, or partly right (the share right). */
+export function studentMark(g: Grade): QuestionMark {
+  if (g.status === 'partial') return g.max ? Math.round((g.score / g.max) * 100) / 100 : false;
+  return markOf(g);
+}
+
+/** The mark for one answer (see studentMark). */
+export const questionMark = (q: Question, answer: string | undefined): QuestionMark => studentMark(gradeAnswer(q, answer));
+
+/** true / false against the key, or null. The ✓ / ✗ count (a partly right answer counts as not right). */
 export const isCorrect = (q: Question, answer: string | undefined): boolean | null => markOf(gradeAnswer(q, answer));
 
 /* ---------------- as text ---------------- */

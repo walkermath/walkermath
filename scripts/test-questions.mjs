@@ -138,3 +138,24 @@ test('a key is moved out of the public config whatever module it sits in', async
   assert.ok(!JSON.stringify(publicModule(m)).includes('secret'));
   assert.equal(joinModule(s.config, s.private, 'activity').questions[0].answer, 'secret');
 });
+
+test('partial credit (grid and card sort): the share right, only when the toggle is on', () => {
+  const sort = { id: 's', kind: 'sort', text: 't', choices: [], answer: '["0","1","0","1"]', sort: { groups: ['A', 'B'], cards: ['p', 'q', 'r', 's'] } };
+  assert.equal(Q.gradeAnswer(sort, '["0","1","0","0"]').status, 'wrong', 'off: all or nothing, as before');
+  const on = { ...sort, partial: true };
+  assert.deepEqual([Q.gradeAnswer(on, '["0","1","0","0"]').status, Q.gradeAnswer(on, '["0","1","0","0"]').score], ['partial', 0.75]);
+  assert.equal(Q.gradeAnswer(on, '["0","1","0","1"]').status, 'right');
+  assert.equal(Q.gradeAnswer(on, '["1","0","1","0"]').status, 'wrong');
+  assert.equal(Q.gradeAnswer(on, '["0","","",""]').score, 0.25, 'cards left out count as not right');
+  assert.equal(Q.questionMark(on, '["0","1","0","0"]'), 0.75);
+  assert.equal(Q.isCorrect(on, '["0","1","0","0"]'), false, 'the ✓ count still needs all of it');
+
+  const grid = { rows: 2, cols: 2, cells: [[{ text: '', blank: true }, { text: '', blank: true }], [{ text: '', blank: true }, { text: 'x' }]] };
+  const g = { id: 'g', kind: 'grid', text: 't', choices: [], answer: '["1","2",""]', match: 'form', grid, partial: true };
+  assert.equal(Q.gradeAnswer(g, '["1","3","9"]').score, 0.5, 'unkeyed blanks are not counted');
+  assert.deepEqual(Q.questionTags(g), ['same form, any order', 'partial credit']);
+
+  const kept = Q.cleanQuestion({ kind: 'sort', text: 's', partial: true, sort: sort.sort, answer: sort.answer }, 'B', 1);
+  assert.equal(kept.partial, true);
+  assert.equal(Q.cleanQuestion({ kind: 'sort', text: 's', partial: 'yes', sort: sort.sort, answer: sort.answer }, 'B', 1).partial, undefined);
+});

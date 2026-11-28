@@ -23,7 +23,7 @@
     modules: { module: RoomModule; pages: Page[] }[];
     ink: Record<string, any[]>;
     answers: Record<string, Answers>;
-    marks: Record<string, Record<string, boolean | null>>;
+    marks: Record<string, Record<string, boolean | null | number>>;
     scores: Record<string, { best: number; plays: number }>;
     notes: Record<string, string>;
     feedback?: FeedbackByModule;

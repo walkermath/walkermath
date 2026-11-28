@@ -202,3 +202,25 @@ test('math questions: marked at export time with each question\'s own rule, answ
   const [q] = buildReport(d, { runIds: ['r3'], items: {}, breakdown: 'period', questions: ['L1:m-fac:a', 'L1:m-fac:b'], timeZone: 'UTC' });
   assert.deepEqual(q.rows.map((r) => r.slice(4, 7)), [[2, 1, 50], [2, 2, 100]]);
 });
+
+test('points: a Points column only when a module uses partial credit, with each partly right answer worth its share', () => {
+  const sortQ = { id: 'qs', kind: 'sort', text: 'Sort them', choices: [], answer: '["0","1","0","1"]', partial: true, sort: { groups: ['A', 'B'], cards: ['p', 'q', 'r', 's'] } };
+  const check = { id: 'm-check', type: 'prompt', title: 'Check-in', config: { category: 'other', questions: [{ id: 'qn', kind: 'number', text: '2+2', choices: [], answer: '4' }, sortQ] } };
+  const runs = [{ id: 'r9', lessonId: 'L9', lessonTitle: 'Sorting', classId: 'c3', className: 'Honors Algebra II', period: 'P3', date: '2026-11-03', startTime: '09:00', modules: [check] }];
+  const d = {
+    runs,
+    aliases: [{ id: 'a1', classId: 'c3', alias: 'VectorFox42', retired: false }],
+    submissions: [{ runId: 'r9', moduleId: 'm-check', aliasId: 'a1', answers: { qn: '4', qs: '["0","1","0","0"]' } }],
+    scores: [],
+    joins: []
+  };
+  const items = reportItems([check]).filter((i) => i.available).map((i) => i.key);
+  const [sheet] = buildReport(d, { runIds: ['r9'], items: { L9: items }, breakdown: 'aggregate', questions: [], timeZone: 'America/Chicago' });
+  const col = (h) => sheet.columns.findIndex((c) => c.includes(h));
+  assert.equal(sheet.rows[0][col('Correct (of 2)')], 1, 'the ✓ count is unchanged');
+  assert.equal(sheet.columns[col('Points')], 'Sorting · Check-in · Points (of 2)');
+  assert.equal(sheet.rows[0][col('Points')], 1.75);
+  // And no Points column for the plain bellwork in the other test data.
+  const [plain] = buildReport(data, req());
+  assert.equal(plain.columns.findIndex((c) => c.includes('Points')), -1);
+});
