@@ -49,10 +49,10 @@
   class="rounded-md border-2 bg-[var(--bg-surface)] {mode === 'block' ? 'p-5 border-[var(--accent)] space-y-3' : 'p-3 border-[var(--warn)] space-y-2 ready-nudge'}"
   aria-label="Get ready"
 >
-  <div class="font-bold {mode === 'block' ? 'text-lg' : 'text-sm text-[var(--warn)]'}">
-    {mode === 'block' ? 'before we start:' : `get ready (${left} left)`}
+  <div class="font-bold {mode === 'block' ? 'text-lg' : 'text-base text-[var(--warn)]'}">
+    {mode === 'block' ? 'before we start:' : `⚠ do the checklist (${left} left)`}
   </div>
-  <ul class="space-y-1 {mode === 'block' ? 'text-base' : 'text-xs'}">
+  <ul class="space-y-1 {mode === 'block' ? 'text-base' : 'text-sm'}">
     {#each items as item, i (item)}
       <li>
         <label class="flex items-start gap-2 cursor-pointer select-none">
@@ -66,13 +66,22 @@
 </section>
 
 <style>
-  /* Flashes until it's done, but stops for anyone who asks their device for less motion. */
+  /* Pulses until it's done: a wide glow and a warm tint, so it's hard to miss. Reduced-motion
+     devices get no movement, but keep the thick border and tint so it still stands out. */
   .ready-nudge {
-    animation: ready-flash 1.6s ease-in-out infinite;
+    border-width: 3px;
+    background-color: color-mix(in srgb, var(--warn) 10%, var(--bg-surface));
+    animation: ready-pulse 1.2s ease-in-out infinite;
   }
-  @keyframes ready-flash {
+  @keyframes ready-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 70%, transparent);
+      background-color: color-mix(in srgb, var(--warn) 10%, var(--bg-surface));
+    }
     50% {
-      box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 35%, transparent);
+      box-shadow: 0 0 0 10px color-mix(in srgb, var(--warn) 0%, transparent), 0 0 18px 4px color-mix(in srgb, var(--warn) 55%, transparent);
+      background-color: color-mix(in srgb, var(--warn) 28%, var(--bg-surface));
     }
   }
   @media (prefers-reduced-motion: reduce) {
