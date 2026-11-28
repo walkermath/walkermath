@@ -6,8 +6,7 @@
 <!-- preview here shows the ink as it's written. -->
 <script lang="ts">
   import { provideTerms } from '../../lib/lesson/termsContext.ts';
-  import { gridText } from '../../lib/lesson/grid.ts';
-  import { sortText } from '../../lib/lesson/sort.ts';
+  import { keyText } from '../../lib/questions/index.ts';
   import { onDestroy, onMount } from 'svelte';
   import { api } from '../../lib/api.ts';
   import { MODULE_TYPES, type LessonModule } from '../../lib/lesson/modules.ts';
@@ -334,7 +333,7 @@
                 <div class={heading}>// answer key</div>
                 <ol class="list-decimal pl-5 space-y-0.5 text-sm">
                   {#each (mineCurrent.config as any).questions as q}
-                    <li>{q.kind === 'choice' && q.answer !== '' ? `${String.fromCharCode(65 + Number(q.answer))}. ${q.choices[Number(q.answer)] ?? ''}` : q.kind === 'grid' ? gridText(q.answer) || '-' : q.kind === 'sort' ? sortText(q.sort, q.answer) || '-' : q.answer || '-'}</li>
+                    <li>{keyText(q) || '-'}</li>
                   {/each}
                 </ol>
               </section>

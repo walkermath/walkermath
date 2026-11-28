@@ -127,3 +127,14 @@ test('a new question of each kind starts the way the builder always started it',
   assert.equal(Q.newQuestion('math').match, 'form');
   assert.ok(Q.newQuestion('grid').grid && Q.newQuestion('sort').sort);
 });
+
+test('a key is moved out of the public config whatever module it sits in', async () => {
+  const { splitModule, publicModule, joinModule } = await import('../src/lib/lesson/modules.ts');
+  // An activity carrying a keyed question (not possible through the builder today, but it mustn't leak).
+  const m = { id: 'm', type: 'activity', title: 'T&T', plannedSec: 300, pacing: 'flex', teacherNotes: '', config: { category: 'turn-talk', questions: [{ id: 'q', kind: 'text', text: 't', choices: [], answer: 'secret' }] } };
+  const s = splitModule(m);
+  assert.equal(s.config.questions[0].answer, '');
+  assert.deepEqual(s.private.answers, { q: 'secret' });
+  assert.ok(!JSON.stringify(publicModule(m)).includes('secret'));
+  assert.equal(joinModule(s.config, s.private, 'activity').questions[0].answer, 'secret');
+});

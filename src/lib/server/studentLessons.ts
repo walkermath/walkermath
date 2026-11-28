@@ -7,7 +7,8 @@
 
 import { cleanTerms } from '../lesson/terms.ts';
 import type { GlossaryEntry } from '../glossary.ts';
-import { isCorrect, type Answers } from '../lesson/answers.ts';
+import type { Answers } from '../lesson/answers.ts';
+import { isCorrect, questionsOf } from '../questions/index.ts';
 import type { FeedbackByModule } from '../lesson/feedback.ts';
 import { pagesOf, type Page, type RoomModule } from '../lesson/room.ts';
 import { studentFeedback } from './feedback.ts';
@@ -122,9 +123,9 @@ export async function pastLesson(db: any, s: Student, runId: unknown): Promise<P
   // Marked against the run's own keys (the snapshot), the keys themselves never leave the server.
   const marks: PastLesson['marks'] = {};
   for (const m of lesson.modules as any[]) {
-    if (m.type !== 'prompt' || !answers[m.id]) continue;
+    if (!questionsOf(m).length || !answers[m.id]) continue;
     const out: Record<string, boolean | null> = {};
-    for (const q of m.config?.questions ?? []) out[q.id] = isCorrect(q, answers[m.id][q.id]);
+    for (const q of questionsOf(m)) out[q.id] = isCorrect(q, answers[m.id][q.id]);
     marks[m.id] = out;
   }
 

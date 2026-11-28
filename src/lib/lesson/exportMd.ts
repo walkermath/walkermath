@@ -4,8 +4,7 @@
 // the exact lesson as one line of JSON, which is what import reads. Answer keys and teacher notes
 // are included: an export is the teacher's own copy.
 
-import { gridText } from './grid.ts';
-import { sortText } from './sort.ts';
+import { keyText } from '../questions/index.ts';
 import { MODULE_TYPES } from './modules.ts';
 
 export const EXPORT_FENCE = 'walkermath-lesson';
@@ -15,13 +14,7 @@ const VERSION = 1;
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 const letter = (i: number) => String.fromCharCode(65 + i);
 
-function keyLine(q: any): string {
-  if (!q.answer) return '';
-  if (q.kind === 'choice') return `${letter(Number(q.answer))}. ${q.choices?.[Number(q.answer)] ?? ''}`;
-  if (q.kind === 'grid') return gridText(q.answer);
-  if (q.kind === 'sort') return sortText(q.sort, q.answer);
-  return q.answer;
-}
+const keyLine = (q: any): string => keyText(q);
 
 function gridTable(q: any): string[] {
   const g = q.grid;

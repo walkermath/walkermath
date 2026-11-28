@@ -4,7 +4,8 @@
 // answers are checked against the run's own copy of the lesson (snapshot_json), so editing the
 // lesson afterwards never changes what a delivery collected or how it was marked.
 
-import { answerSpec, checkSubmission, isCorrect, type Answers, type AnswerSpec } from '../lesson/answers.ts';
+import { answerSpec, checkSubmission, type Answers, type AnswerSpec } from '../lesson/answers.ts';
+import { isCorrect, questionsOf, type Question } from '../questions/index.ts';
 import { answersOpen, type RoomState } from '../lesson/room.ts';
 import { isFeedbackActivity } from '../lesson/modules.ts';
 import type { Lesson } from './lessons.ts';
@@ -87,11 +88,11 @@ export async function closedMarks(env: any, run: LiveRun, answers: Record<string
   const out: Record<string, Record<string, boolean | null>> = {};
   if (!lesson || !state) return out;
   (lesson.modules as any[]).forEach((m, i) => {
-    if (m.type !== 'prompt' || !answers[m.id]) return;
+    if (!questionsOf(m).length || !answers[m.id]) return;
     const ran = state.closedAt?.[i] != null || !!state.done?.[i] || (state.took?.[i] ?? 0) > 0 || (i === state.index && state.holding);
     if (!ran || answersOpen(state, i, now)) return;
     const marks: Record<string, boolean | null> = {};
-    for (const q of m.config?.questions ?? []) marks[q.id] = isCorrect(q, answers[m.id].answers[q.id]);
+    for (const q of questionsOf(m)) marks[q.id] = isCorrect(q, answers[m.id].answers[q.id]);
     out[m.id] = marks;
   });
   return out;
@@ -148,7 +149,7 @@ export async function runAnswers(db: any, run: LiveRun): Promise<{ modules: Coll
     if (!kind) continue;
     const entry: CollectModule = { id: m.id, title: m.title, kind, ...(isFeedbackActivity(m) ? { feedback: true } : {}) };
     if (kind === 'questions') {
-      entry.questions = (m.config.questions ?? []).map((q: any) => ({
+      entry.questions = questionsOf(m).map((q: any) => ({
         id: q.id,
         kind: q.kind,
         text: q.text,
@@ -175,7 +176,7 @@ export async function runAnswers(db: any, run: LiveRun): Promise<{ modules: Coll
   const rows: AnswerRow[] = subs.results.map((r: any) => {
     const answers: Answers = parse(r.answers_json, {});
     const correct: Record<string, boolean | null> = {};
-    for (const q of keys.get(r.module_id) ?? []) correct[q.id] = isCorrect(q, answers[q.id]);
+    for (const q of keys.get(r.module_id) ?? []) correct[q.id] = isCorrect(q as Question, answers[q.id]);
     return { moduleId: r.module_id, aliasId: r.alias_id, alias: r.alias, answers, correct, updatedAt: r.updated_at };
   });
 

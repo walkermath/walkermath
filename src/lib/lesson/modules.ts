@@ -6,9 +6,8 @@
 // Answer keys live only in a module's private part. splitModule() separates them before storage
 // and publicModule() is the only shape that will ever be sent to students.
 
-import { cleanGrid, newGrid, type Grid } from './grid.ts';
-import { readMath, type MathMatch } from './mathcheck.ts';
-import { cleanSort, newSort, type SortSpec } from './sort.ts';
+import { cleanLine, cleanText, isUuid, newUuid } from './clean.ts';
+import { cleanQuestions, KEYLESS_KINDS, newQuestion as registryNewQuestion, type Question, type QuestionKind } from '../questions/index.ts';
 import { splitSlides } from './slides.ts';
 import { STEP_SEC } from './time.ts';
 import { cleanChecklist } from './checklist.ts';
@@ -57,23 +56,8 @@ export interface Link {
   url: string;
 }
 
-export type QuestionKind = 'text' | 'number' | 'choice' | 'math' | 'grid' | 'sort';
-
-export interface Question {
-  id: string;
-  kind: QuestionKind;
-  text: string;
-  /** Multiple choice only. */
-  choices: string[];
-  /** Optional answer key: text, a number as text, algebra as typed, or the correct choice's index as text. Private. */
-  answer: string;
-  /** Math and grid questions: 'form' = same form, any order (default); 'any' = any equivalent form. */
-  match?: MathMatch;
-  /** Grid questions: the table with its given cells and blanks (keys are in `answer`, see grid.ts). */
-  grid?: Grid;
-  /** Card sort questions: the groups and cards (the key, each card's group, is in `answer`; see sort.ts). */
-  sort?: SortSpec;
-}
+export type { Question, QuestionKind } from '../questions/index.ts';
+export { cleanLine, cleanText, isUuid } from './clean.ts';
 
 /** What a question set is for. Picking one gives the module its starting title (and, for the two
  *  bookends, the usual locked length). */
@@ -146,7 +130,7 @@ export interface ActivityConfig {
 }
 
 /** Question kinds an Active Feedback activity can ask (grids and card sorts need a key to be useful). */
-export const FEEDBACK_QUESTION_KINDS = ['text', 'number', 'math', 'choice'] as const satisfies readonly QuestionKind[];
+export const FEEDBACK_QUESTION_KINDS: readonly QuestionKind[] = KEYLESS_KINDS;
 
 /** An Active Feedback activity: questions with no key, marked live by the teacher. */
 export const isFeedbackActivity = (m: { type: string; config: any }): boolean =>
@@ -244,7 +228,6 @@ export const MODULE_TYPES: Record<ModuleType, ModuleTypeInfo> = {
 export const MODULE_TYPE_LIST = Object.keys(MODULE_TYPES) as ModuleType[];
 export const isModuleType = (v: unknown): v is ModuleType => typeof v === 'string' && v in MODULE_TYPES;
 
-const newUuid = () => crypto.randomUUID();
 
 export function newModule(type: ModuleType, category?: ActivityCategory | PromptCategory): LessonModule {
   const t = MODULE_TYPES[type];
@@ -345,35 +328,14 @@ export function normalizeOrder<T extends Placed>(modules: T[]): T[] {
   return [...(first ? [first] : []), ...middle, ...(last ? [last] : [])];
 }
 
-export const newQuestion = (kind: QuestionKind = 'text'): Question => ({
-  id: newUuid(),
-  kind,
-  text: '',
-  choices: kind === 'choice' ? ['', ''] : [],
-  answer: '',
-  ...(kind === 'math' || kind === 'grid' ? { match: 'form' as const } : {}),
-  ...(kind === 'grid' ? { grid: newGrid() } : {}),
-  ...(kind === 'sort' ? { sort: newSort() } : {})
-});
+/** A new, empty question of a kind (the question registry decides its starting fields). */
+export const newQuestion = (kind: QuestionKind = 'text'): Question => registryNewQuestion(kind);
 
 export const DEFAULT_LESSON_SEC = 50 * 60;
 
 /* ---------------- validation ---------------- */
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const isUuid = (v: unknown): v is string => typeof v === 'string' && UUID.test(v);
 
-/** Single line: control characters removed, whitespace collapsed, trimmed, cut to `max`. */
-export function cleanLine(v: unknown, max: number): string {
-  if (typeof v !== 'string') return '';
-  return v.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
-}
-
-/** Multi-line text: keeps newlines and tabs, drops other control characters, trims the ends. */
-export function cleanText(v: unknown, max: number): string {
-  if (typeof v !== 'string') return '';
-  return v.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, max);
-}
 
 const isStep = (n: unknown): n is number => Number.isInteger(n) && (n as number) % STEP_SEC === 0;
 
@@ -427,68 +389,12 @@ export function upgradeNotesConfig(c: any): { slides: any[] } {
   return { slides: slides.length ? slides : [newSlide()] };
 }
 
-/**
- * A list of questions, checked. `keyless` (Active Feedback): only the kinds in
- * FEEDBACK_QUESTION_KINDS, and any answer key or matching rule is dropped.
- */
-function cleanQuestions(v: unknown, where: string, keyless: boolean): Question[] | string {
-  const qs = Array.isArray(v) ? v : [];
-  if (qs.length > LIMITS.questions) return `${where}: at most ${LIMITS.questions} questions.`;
-  const kinds: readonly QuestionKind[] = keyless ? FEEDBACK_QUESTION_KINDS : ['text', 'number', 'choice', 'math', 'grid', 'sort'];
-  const questions: Question[] = [];
-  for (const [i, q] of qs.entries()) {
-    const kind: QuestionKind = kinds.includes(q?.kind) ? q.kind : 'text';
-    const text = cleanText(q?.text, LIMITS.text);
-    if (!text) return `${where}: question ${i + 1} is empty.`;
-    let choices: string[] = [];
-    let answer = keyless || kind === 'grid' || kind === 'sort' ? '' : cleanLine(q?.answer, LIMITS.answer);
-    let grid: Grid | undefined;
-    let sort: SortSpec | undefined;
-    if (kind === 'sort') {
-      const so = cleanSort(q?.sort, q?.answer);
-      if (typeof so === 'string') return `${where}: question ${i + 1}: ${so}`;
-      sort = so.sort;
-      answer = so.answer;
-    }
-    if (kind === 'grid') {
-      const g = cleanGrid(q?.grid, q?.answer);
-      if (typeof g === 'string') return `${where}: question ${i + 1}: ${g}`;
-      grid = g.grid;
-      answer = g.answer;
-    }
-    if (kind === 'choice') {
-      choices = (Array.isArray(q?.choices) ? q.choices : []).map((x: unknown) => cleanLine(x, LIMITS.choice)).filter(Boolean);
-      if (choices.length < 2 || choices.length > LIMITS.choices) {
-        return `${where}: question ${i + 1} needs 2 to ${LIMITS.choices} choices.`;
-      }
-      if (answer && !(Number.isInteger(Number(answer)) && Number(answer) >= 0 && Number(answer) < choices.length)) answer = '';
-    }
-    if (kind === 'number' && answer && !Number.isFinite(Number(answer))) {
-      return `${where}: the answer to question ${i + 1} should be a number.`;
-    }
-    if (kind === 'math' && answer) {
-      const read = readMath(answer);
-      if (!read.ok) return `${where}: the answer to question ${i + 1} can't be read (${read.error})`;
-    }
-    questions.push({
-      id: isUuid(q?.id) ? q.id : newUuid(),
-      kind,
-      text,
-      choices,
-      answer,
-      ...(!keyless && (kind === 'math' || kind === 'grid') ? { match: q?.match === 'any' ? ('any' as const) : ('form' as const) } : {}),
-      ...(grid ? { grid } : {}),
-      ...(sort ? { sort } : {})
-    });
-  }
-  return questions;
-}
 
 function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | string {
   c = c && typeof c === 'object' ? c : {};
   switch (type) {
     case 'prompt': {
-      const questions = cleanQuestions(c.questions, where, false);
+      const questions = cleanQuestions(c.questions, where, false, LIMITS.questions);
       if (typeof questions === 'string') return questions;
       return { category: isPromptCategory(c.category) ? c.category : 'other', questions };
     }
@@ -521,7 +427,7 @@ function cleanConfig(type: ModuleType, c: any, where: string): ModuleConfig | st
       };
       if (category === 'feedback') {
         // Answering the questions is the hand-in, so there's no "done" tap.
-        const questions = cleanQuestions(c.questions, where, true);
+        const questions = cleanQuestions(c.questions, where, true, LIMITS.questions);
         if (typeof questions === 'string') return questions;
         out.questions = questions;
         out.doneTap = false;
@@ -604,6 +510,9 @@ export function cleanModules(list: unknown): LessonModule[] | string {
 
 /* ---------------- public / private split ---------------- */
 
+/** Every question in a config, whatever the module type: the split never trusts the type, so a key can't slip out. */
+const allQuestions = (config: any): Question[] => (Array.isArray(config?.questions) ? config.questions : []);
+
 export interface StoredModule {
   config: ModuleConfig;
   /** Answer keys by question id, and the teacher's notes. Never sent to students. */
@@ -613,34 +522,29 @@ export interface StoredModule {
 export function splitModule(m: LessonModule): StoredModule {
   const priv: StoredModule['private'] = {};
   if (m.teacherNotes) priv.notes = m.teacherNotes;
-  if (m.type !== 'prompt') return { config: m.config, private: priv };
+  // Any module with questions: every key goes to the private part, so a key can never be stored
+  // in the public config, whatever kind of module the questions are in.
+  if (!allQuestions(m.config).length) return { config: m.config, private: priv };
   const answers: Record<string, string> = {};
-  const questions = (m.config as PromptConfig).questions.map((q) => {
+  const questions = allQuestions(m.config).map((q) => {
     if (q.answer) answers[q.id] = q.answer;
     return { ...q, answer: '' };
   });
   if (Object.keys(answers).length) priv.answers = answers;
-  return { config: { category: (m.config as PromptConfig).category, questions }, private: priv };
+  return { config: { ...(m.config as any), questions }, private: priv };
 }
 
-/** Puts the private answer keys back into a prompt's config (notes are read separately). */
-export function joinModule(config: ModuleConfig, priv: StoredModule['private'], type: ModuleType): ModuleConfig {
-  if (type !== 'prompt' || !priv?.answers) return config;
-  return {
-    ...(config as PromptConfig),
-    questions: (config as PromptConfig).questions.map((q) => ({ ...q, answer: priv.answers?.[q.id] ?? '' }))
-  };
+/** Puts the private answer keys back into a module's questions (notes are read separately). */
+export function joinModule(config: ModuleConfig, priv: StoredModule['private'], _type?: ModuleType): ModuleConfig {
+  if (!priv?.answers || !allQuestions(config).length) return config;
+  return { ...(config as any), questions: allQuestions(config).map((q) => ({ ...q, answer: priv.answers?.[q.id] ?? '' })) };
 }
 
 /** The only module shape that will be sent to students: no answer keys, no private notes. */
 export function publicModule(m: LessonModule) {
   const { config } = splitModule(m);
+  // Questions lose their key field altogether, so nothing key-shaped leaves.
   const strip = (c: ModuleConfig) =>
-    m.type === 'prompt'
-      ? { category: (c as PromptConfig).category, questions: (c as PromptConfig).questions.map(({ answer: _a, ...q }) => q) }
-      : m.type === 'activity' && Array.isArray((c as ActivityConfig).questions)
-        ? // Active Feedback questions have no key; drop the empty field anyway so nothing key-shaped leaves.
-          { ...c, questions: (c as ActivityConfig).questions!.map(({ answer: _a, ...q }) => q) }
-        : c;
+    allQuestions(c).length ? { ...(c as any), questions: allQuestions(c).map(({ answer: _a, ...q }) => q) } : c;
   return { id: m.id, type: m.type, title: m.title, collects: MODULE_TYPES[m.type].collects(m.config), config: strip(config) };
 }

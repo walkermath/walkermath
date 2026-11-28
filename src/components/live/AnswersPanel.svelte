@@ -5,8 +5,7 @@
 <!-- Active Feedback activities: click a cell to mark the answer ✓ ◐ ✗ and/or send that student a -->
 <!-- message. Also shown after the lesson ends (no room: `rs` is null), so you can finish marking. -->
 <script lang="ts">
-  import { gridText } from '../../lib/lesson/grid.ts';
-  import { sortText } from '../../lib/lesson/sort.ts';
+  import { answerText, keyText as questionKey, type Question } from '../../lib/questions/index.ts';
   import { onDestroy, onMount, tick } from 'svelte';
   import type { RoomModule, RoomState, Spotlight } from '../../lib/lesson/room.ts';
   import type { RosterRow } from '../../lib/lesson/liveClient.ts';
@@ -128,19 +127,13 @@
   const inCount = $derived(people.filter((p) => filled(rowOf(p.aliasId))).length);
 
   const letter = (i: number) => String.fromCharCode(65 + i);
-  function shownAnswer(q: Q, v: string | undefined): string {
-    if (v === undefined || v.trim() === '') return '';
-    if (q.kind === 'choice') return `${letter(Number(v))}. ${q.choices[Number(v)] ?? ''}`;
-    if (q.kind === 'grid') return gridText(v);
-    if (q.kind === 'sort') return sortText(q.sort, v);
-    return v;
-  }
+  const shownAnswer = (q: Q, v: string | undefined): string => answerText(q as unknown as Question, v) ?? '';
   function tally(q: Q) {
     const answered = mRows.filter((r) => (r.answers[q.id] ?? '').trim() !== '');
     const right = answered.filter((r) => r.correct[q.id] === true).length;
     return { answered: answered.length, right, keyed: !!q.answer };
   }
-  const keyText = (q: Q) => (q.kind === 'choice' && q.answer !== '' ? `${letter(Number(q.answer))}` : q.kind === 'grid' ? gridText(q.answer) : q.kind === 'sort' ? sortText(q.sort, q.answer) : q.answer);
+  const keyText = (q: Q) => questionKey(q as unknown as Question, { short: true });
   /** A question's answers as bars: each choice, or the most common answers (alike ones together). */
   function pollOf(q: Q, qi: number): Spotlight {
     const answered = mRows.map((r) => r.answers[q.id] ?? '').filter((v) => v.trim() !== '');

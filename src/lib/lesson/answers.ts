@@ -9,23 +9,19 @@
 //   tap        an activity's or independent work's "done" button: { done: '1' }
 // Answers are stored as { key: text }. Choice answers are the chosen index as text ('0', '1', ...).
 
-import { blankPositions, cleanGridAnswer, gridCorrect, type Grid } from './grid.ts';
-import { checkMath, MATH_MAX } from './mathcheck.ts';
-import { cleanSortAnswer, sortCorrect, type SortSpec } from './sort.ts';
+// Each question's own rules (what a valid answer is, how it's graded) live in the question
+// registry, src/lib/questions/. This file decides only what a module takes and when.
+
+import { stripControl } from './clean.ts';
+import { ANSWER_LIMITS, cleanAnswer, questionsOf, type Question } from '../questions/index.ts';
 import { answersOpen, type RoomModule, type RoomState } from './room.ts';
 
-export const ANSWER_LIMITS = {
-  text: 500,
-  number: 40,
-  math: MATH_MAX,
-  short: 1000,
-  keys: 50
-} as const;
+export { ANSWER_LIMITS, isCorrect, toNumber } from '../questions/index.ts';
 
 export type Answers = Record<string, string>;
 
 export type AnswerSpec =
-  | { kind: 'questions'; questions: { id: string; kind: 'text' | 'number' | 'choice' | 'math' | 'grid' | 'sort'; text: string; choices: string[]; grid?: Grid; sort?: SortSpec }[] }
+  | { kind: 'questions'; questions: Question[] }
   | { kind: 'short' }
   | { kind: 'tap' };
 
@@ -34,14 +30,12 @@ export function answerSpec(m: { type: string; config: any }): AnswerSpec | null 
   const c = m.config ?? {};
   switch (m.type) {
     case 'prompt':
-      return Array.isArray(c.questions) && c.questions.length ? { kind: 'questions', questions: c.questions } : null;
+      return questionsOf(m).length ? { kind: 'questions', questions: questionsOf(m) } : null;
     case 'independent':
       return c.response === 'short' ? { kind: 'short' } : c.response === 'done' ? { kind: 'tap' } : null;
     case 'activity':
       // Active Feedback: questions with no key, marked by the teacher (a "done" tap never applies).
-      if (c.category === 'feedback') {
-        return Array.isArray(c.questions) && c.questions.length ? { kind: 'questions', questions: c.questions } : null;
-      }
+      if (c.category === 'feedback') return questionsOf(m).length ? { kind: 'questions', questions: questionsOf(m) } : null;
       return c.doneTap ? { kind: 'tap' } : null;
     default:
       return null;
@@ -54,9 +48,6 @@ export function isAnswered(spec: AnswerSpec, a: Answers | undefined): boolean {
   if (spec.kind === 'tap') return a.done === '1';
   return Object.values(a).some((v) => typeof v === 'string' && v.trim() !== '');
 }
-
-// eslint-disable-next-line no-control-regex
-const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 
 /** Checks a student's answers against the module; returns the cleaned answers or an error message. */
 export function cleanAnswers(spec: AnswerSpec, input: unknown): Answers | string {
@@ -76,30 +67,17 @@ export function cleanAnswers(spec: AnswerSpec, input: unknown): Answers | string
     for (const [k, v] of entries) {
       if (k !== 'short' || typeof v !== 'string') return 'Invalid answers.';
       if (v.length > ANSWER_LIMITS.short) return `Keep it under ${ANSWER_LIMITS.short} characters.`;
-      out.short = v.replace(CONTROL, '');
+      out.short = stripControl(v);
     }
     return out;
   }
   const byId = new Map(spec.questions.map((q) => [q.id, q]));
   for (const [k, v] of entries) {
     const q = byId.get(k);
-    if (!q || typeof v !== 'string') return 'Invalid answers.';
-    if (q.kind === 'choice') {
-      if (v !== '' && !(/^\d{1,2}$/.test(v) && Number(v) < q.choices.length)) return 'Invalid answers.';
-      out[k] = v;
-    } else if (q.kind === 'sort') {
-      const so = cleanSortAnswer(v, q.sort);
-      if (so === null) return 'Invalid answers.';
-      out[k] = so;
-    } else if (q.kind === 'grid') {
-      const g = cleanGridAnswer(v, q.grid ? blankPositions(q.grid).length : 0);
-      if (g === null) return 'Invalid answers.';
-      out[k] = g;
-    } else {
-      const max = q.kind === 'number' ? ANSWER_LIMITS.number : q.kind === 'math' ? ANSWER_LIMITS.math : ANSWER_LIMITS.text;
-      if (v.length > max) return `Keep each answer under ${max} characters.`;
-      out[k] = v.replace(CONTROL, '');
-    }
+    if (!q) return 'Invalid answers.';
+    const a = cleanAnswer(q, v);
+    if (typeof a !== 'string') return a.error;
+    out[k] = a;
   }
   return out;
 }
@@ -125,31 +103,4 @@ export function checkSubmission(state: RoomState, modules: RoomModule[], moduleI
   const answers = cleanAnswers(spec, input);
   if (typeof answers === 'string') return { ok: false, status: 400, error: answers };
   return { ok: true, index, answers };
-}
-
-/* ---------------- checking against the teacher's key ---------------- */
-
-/** "1,000" -> 1000, "3/4" -> 0.75, " -2.5 " -> -2.5; NaN if it isn't a number. */
-export function toNumber(s: string): number {
-  const t = s.trim().replace(/,/g, '').replace(/\s+/g, '');
-  if (/^[-+]?\d+(\.\d+)?$/.test(t) || /^[-+]?\.\d+$/.test(t)) return Number(t);
-  const f = /^([-+]?\d+)\/(\d+)$/.exec(t);
-  return f && Number(f[2]) !== 0 ? Number(f[1]) / Number(f[2]) : NaN;
-}
-
-/** true / false against the question's key, or null when there is no key (or no answer to judge). */
-export function isCorrect(q: { kind: string; answer: string; match?: string; grid?: Grid }, answer: string | undefined): boolean | null {
-  if (!q.answer) return null;
-  if (answer === undefined || answer.trim() === '') return null;
-  if (q.kind === 'choice') return answer === q.answer;
-  if (q.kind === 'sort') return sortCorrect(q.answer, answer);
-  if (q.kind === 'grid') return gridCorrect(q.answer, answer, q.match === 'any' ? 'any' : 'form', q.grid);
-  if (q.kind === 'math') return checkMath(q.answer, answer, q.match === 'any' ? 'any' : 'form');
-  if (q.kind === 'number') {
-    const a = toNumber(answer);
-    const k = toNumber(q.answer);
-    if (!Number.isNaN(a) && !Number.isNaN(k)) return Math.abs(a - k) <= 1e-9 * Math.max(1, Math.abs(k));
-  }
-  const norm = (v: string) => v.trim().toLowerCase().replace(/\s+/g, ' ');
-  return norm(answer) === norm(q.answer);
 }

@@ -16,11 +16,12 @@
 //
 // Rows are student aliases, never names. A blank cell means nothing was handed in.
 
-import { answerSpec, isAnswered, isCorrect, toNumber, type Answers } from './answers.ts';
+import { answerSpec, isAnswered, type Answers } from './answers.ts';
+import { answerText as questionAnswerText, isCorrect, questionsOf, toNumber, type Question } from '../questions/index.ts';
 import { MARK_POINTS, MARK_REPORT, type Mark } from './feedback.ts';
-import { gridText, type Grid } from './grid.ts';
+import type { Grid } from './grid.ts';
 import { isFeedbackActivity } from './modules.ts';
-import { sortText, type SortSpec } from './sort.ts';
+import type { SortSpec } from './sort.ts';
 
 export type ItemKind = 'joined' | 'responses' | 'results' | 'feedback' | 'coliseum';
 
@@ -75,18 +76,15 @@ const isColiseum = (m: ReportModule) => m.type === 'activity' && m.config?.categ
 
 /** A module's questions with their keys ([] when it takes no questions). */
 export function moduleQuestions(m: ReportModule): ReportQuestion[] {
-  const spec = answerSpec(m);
-  if (spec?.kind !== 'questions') return [];
-  const keys = new Map<string, any>((m.config?.questions ?? []).map((q: any) => [q.id, q]));
-  return spec.questions.map((q) => ({
+  return questionsOf(m).map((q: any) => ({
     id: q.id,
     kind: q.kind,
     text: q.text ?? '',
     choices: q.choices ?? [],
-    answer: String(keys.get(q.id)?.answer ?? ''),
-    match: keys.get(q.id)?.match === 'any' ? 'any' : 'form',
-    ...((q as any).sort ? { sort: (q as any).sort } : {}),
-    ...((q as any).grid ? { grid: (q as any).grid } : {})
+    answer: String(q.answer ?? ''),
+    match: q.match === 'any' ? 'any' : 'form',
+    ...(q.sort ? { sort: q.sort } : {}),
+    ...(q.grid ? { grid: q.grid } : {})
   }));
 }
 
@@ -195,14 +193,7 @@ const runOrder = (a: ReportRun, b: ReportRun) => (a.date + a.startTime).localeCo
 
 /** A choice answer ('1') as its text ('B. x = 3'); other answers as typed. */
 export function answerText(q: ReportQuestion, a: string | undefined): string | null {
-  if (a === undefined || a.trim() === '') return null;
-  if (q.kind === 'grid') return gridText(a);
-  if (q.kind === 'sort') return sortText(q.sort, a);
-  if (q.kind === 'choice') {
-    const i = Number(a);
-    return Number.isInteger(i) && q.choices[i] !== undefined ? `${String.fromCharCode(65 + i)}. ${q.choices[i]}` : a;
-  }
-  return a.trim();
+  return questionAnswerText(q as Question, a);
 }
 
 function timeOf(ms: number, timeZone: string): string {
@@ -299,7 +290,7 @@ export function buildReport(data: ReportData, req: ReportRequest): Sheet[] {
             const a = answersOf(run, s);
             const spec = m && answerSpec(m);
             if (!m || !a || !spec || !isAnswered(spec, a)) return null;
-            return moduleQuestions(m).filter((q) => q.answer !== '' && isCorrect(q, a[q.id]) === true).length;
+            return moduleQuestions(m).filter((q) => q.answer !== '' && isCorrect(q as Question, a[q.id]) === true).length;
           }
         });
       } else if (item.kind === 'feedback') {
@@ -462,7 +453,7 @@ function questionAnalysis(
           if (raw === undefined || raw.trim() === '') continue;
           g.answered++;
           per.answered++;
-          const ok = isCorrect(q, raw);
+          const ok = isCorrect(q as Question, raw);
           if (ok === true) {
             g.correct++;
             per.correct++;
