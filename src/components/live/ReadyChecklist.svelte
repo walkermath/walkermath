@@ -41,8 +41,6 @@
       busy = false;
     }
   }
-
-  const left = $derived(items.length - ticks.filter(Boolean).length);
 </script>
 
 <section
@@ -50,7 +48,7 @@
   aria-label="Get ready"
 >
   <div class="font-bold {mode === 'block' ? 'text-lg' : 'text-base text-[var(--warn)]'}">
-    {mode === 'block' ? 'before we start:' : `⚠ do the checklist (${left} left)`}
+    {mode === 'block' ? 'before we start:' : '⚠ do the checklist'}
   </div>
   <ul class="space-y-1 {mode === 'block' ? 'text-base' : 'text-sm'}">
     {#each items as item, i (item)}
